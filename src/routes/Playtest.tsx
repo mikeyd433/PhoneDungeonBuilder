@@ -23,6 +23,8 @@ export default function Playtest() {
   const [ttsOn, setTtsOn] = useState(true)
   const [showOverride, setShowOverride] = useState(false)
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null)
+  /** True while the room is still reading itself out. */
+  const [playing, setPlaying] = useState(false)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const logRef = useRef<HTMLDivElement | null>(null)
 
@@ -33,22 +35,38 @@ export default function Playtest() {
   const engine = useMemo(() => (graph ? new PlaytestEngine(graph) : null), [graph])
   const node = state && graph ? graph.nodes.get(state.nodeId) : null
 
-  const speak = useCallback(
-    (text: string) => {
-      // F5.2 — browser TTS stands in wherever audio hasn't been recorded, so a
-      // story can be playtested long before anyone books a session.
-      //
-      // REHEARSAL ONLY. The exported flow never speaks: anything unrecorded is
-      // silence on the phone. This is here so a writer can hear the shape of a
-      // scene, not so an unfinished story sounds finished.
-      if (!ttsOn || !text || typeof speechSynthesis === 'undefined') return
+  /**
+   * Speak a line, and call `done` when it has finished.
+   *
+   * F5.2 — browser TTS stands in wherever audio hasn't been recorded, so a
+   * story can be playtested long before anyone books a session. REHEARSAL ONLY:
+   * the exported flow never speaks, and anything unrecorded is silence on the
+   * phone. This exists so a writer can hear the shape of a scene, not so an
+   * unfinished story sounds finished.
+   *
+   * The completion callback is the whole point. Without it the caller has no
+   * way to know an utterance has ended, so a scene of several unrecorded lines
+   * would start them all at once — and since `cancel()` runs before each one,
+   * only the last would actually be heard. `done` fires on error and when TTS
+   * is switched off too, so the sequence never stalls.
+   */
+  const speakThen = useCallback(
+    (text: string, done: () => void) => {
+      if (!ttsOn || !text || typeof speechSynthesis === 'undefined') {
+        done()
+        return
+      }
       speechSynthesis.cancel()
       const u = new SpeechSynthesisUtterance(text)
       u.rate = 0.95
+      u.onend = done
+      u.onerror = done
       speechSynthesis.speak(u)
     },
     [ttsOn],
   )
+
+  const speak = useCallback((text: string) => speakThen(text, () => {}), [speakThen])
 
   /**
    * What a room reads out, as transcript lines.
@@ -92,27 +110,36 @@ export default function Playtest() {
   // recorded line by line plays its takes back to back, so a conversation
   // between two separately-booked actors sounds on the playtest the way it will
   // sound on the phone rather than as one voice reading both parts.
+  //
+  // Strictly one part at a time. Recorded parts chain on the audio element's
+  // `ended`; spoken ones chain on the utterance's `onend`. Advancing without
+  // waiting — which is what this used to do for spoken parts — meant the next
+  // part cancelled the previous one mid-sentence, so in a mixed scene only a
+  // trailing unrecorded line was ever heard.
   useEffect(() => {
     if (!node || !graph) return
     const parts = playbackFor(graph, node.id)
     let cancelled = false
     let index = 0
+    setPlaying(parts.length > 0)
 
     const el = audioRef.current
     const playNext = () => {
-      if (cancelled || index >= parts.length) return
+      if (cancelled) return
+      if (index >= parts.length) {
+        setPlaying(false)
+        return
+      }
       const part = parts[index++]
       if (part.audioPath && el) {
         speechSynthesis?.cancel?.()
         el.src = publicAudioUrl(part.audioPath)
-        void el.play().catch(() => speak(part.say))
+        // A file that won't load falls back to being spoken, so one broken
+        // upload doesn't silently swallow a line of the scene.
+        void el.play().catch(() => speakThen(part.say, playNext))
         return
       }
-      speak(part.say)
-      // An unrecorded line in the middle of a recorded scene: TTS doesn't
-      // report completion through the audio element, so move on immediately
-      // rather than stalling the rest of the conversation.
-      playNext()
+      speakThen(part.say, playNext)
     }
 
     if (el) el.onended = playNext
@@ -121,12 +148,18 @@ export default function Playtest() {
     return () => {
       cancelled = true
       if (el) el.onended = null
+      speechSynthesis?.cancel?.()
     }
-  }, [node, graph, speak])
+  }, [node, graph, speakThen])
 
   // F5.4 — the timeout branch fires if the caller says nothing in time.
+  //
+  // The clock starts when the room has finished speaking, not when the caller
+  // walks in. Studio's gather runs after its play widget, so a 30-second scene
+  // with a 5-second timeout does NOT time out mid-narration on the phone — and
+  // a playtest that did would make long scenes impossible to test.
   useEffect(() => {
-    if (!state || !node || state.finished || !engine) return
+    if (!state || !node || state.finished || !engine || playing) return
     setSecondsLeft(node.timeout_seconds)
     const tick = window.setInterval(() => setSecondsLeft((s) => (s === null ? null : s - 1)), 1000)
     const fire = window.setTimeout(() => {
@@ -138,7 +171,7 @@ export default function Playtest() {
       window.clearTimeout(fire)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state, node, engine])
+  }, [state, node, engine, playing])
 
   useEffect(() => {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: 'smooth' })
