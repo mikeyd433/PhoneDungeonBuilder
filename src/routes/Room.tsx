@@ -9,6 +9,7 @@ import { useAutomapLayout } from '@/features/automap/useAutomapLayout'
 import SatchelPanel from '@/features/state/SatchelPanel'
 import { useSolver } from '@/features/state/useSolver'
 import { usePresence } from '@/features/collab/usePresence'
+import { useOfflineSync } from '@/features/offline/useOfflineSync'
 
 export default function Room() {
   const { storyId } = useParams<{ storyId: string }>()
@@ -32,6 +33,7 @@ export default function Room() {
   const { result: solverResult, solving } = useSolver()
   const [satchelOpen, setSatchelOpen] = useState(false)
   const peers = usePresence(storyId, currentNodeId)
+  const { queued, syncing } = useOfflineSync()
 
   useEffect(() => {
     if (storyId) void loadStory(storyId)
@@ -85,12 +87,12 @@ export default function Room() {
 
   return (
     <main className="flex min-h-full flex-col">
-      <header className="flex items-center justify-between border-b border-mortar/40 px-4 py-3 text-sm">
-        <Link to="/" className="text-mortar underline">
-          ◄ {graph.story.title}
+      <header className="flex items-center gap-3 border-b border-mortar/40 px-4 py-3 text-sm">
+        <Link to="/" className="shrink-0 text-mortar underline">
+          ◄
         </Link>
-        <span className="font-paper text-torch">{view.node.slug}</span>
-        <nav className="flex gap-3">
+        <span className="min-w-0 truncate font-paper text-torch">{view.node.slug}</span>
+        <nav className="ml-auto flex shrink-0 gap-3 overflow-x-auto">
           <button
             onClick={() => void undo()}
             disabled={undoStack.length === 0}
@@ -121,6 +123,13 @@ export default function Room() {
           </Link>
         </nav>
       </header>
+
+      {queued > 0 && (
+        <p className="border-b border-cold/50 bg-cold/10 px-4 py-2 text-xs">
+          {queued} edit{queued === 1 ? '' : 's'} waiting for signal
+          {syncing ? ' · syncing…' : ' · they\'ll sync when you\'re back online'}
+        </p>
+      )}
 
       {/* F9.5 — a soft lock: it tells you someone is here, it doesn't stop you. */}
       {peers.some((p) => p.nodeId === currentNodeId) && (

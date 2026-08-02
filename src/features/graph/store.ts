@@ -10,6 +10,7 @@ import type {
 import { deriveGraph } from './derived'
 import * as api from '@/lib/api'
 import { uniqueSlug } from '@/lib/slug'
+import { enqueue, isOffline } from '@/lib/offlineQueue'
 
 /** F2.10 — undo stack, last 20 actions. */
 const UNDO_LIMIT = 20
@@ -228,8 +229,21 @@ export const useDelve = create<DelveState>((set, get) => {
           },
         })
       } catch (e) {
-        // Roll the optimistic write back, so the UI never claims a save the
-        // database rejected — RLS refusing a `voice` edit lands here.
+        // F7.4 — a write that failed because the signal dropped hasn't been
+        // rejected, it just hasn't landed yet. Keep the optimistic state and
+        // queue it; the sync hook replays it on reconnect.
+        if (isOffline(e)) {
+          await enqueue({
+            table: 'nodes',
+            op: 'update',
+            rowId: id,
+            payload: patch as Record<string, unknown>,
+            storyId: graph.story.id,
+          })
+          return
+        }
+        // A real rejection: roll back, so the UI never claims a save the
+        // database refused — RLS blocking a `voice` edit lands here.
         patchGraph((g) => ({ ...g, nodes: new Map(g.nodes).set(id, before) }))
         fail(e)
       }
@@ -258,6 +272,16 @@ export const useDelve = create<DelveState>((set, get) => {
           },
         })
       } catch (e) {
+        if (isOffline(e)) {
+          await enqueue({
+            table: 'choices',
+            op: 'update',
+            rowId: id,
+            payload: patch as Record<string, unknown>,
+            storyId: graph.story.id,
+          })
+          return
+        }
         patchGraph((g) => ({ ...g, choices: new Map(g.choices).set(id, before) }))
         fail(e)
       }
