@@ -2,7 +2,8 @@ import { useRef, useState } from 'react'
 import { useDelve } from '@/features/graph/store'
 import { canRecord } from '@/types/domain'
 import { formatDuration } from '@/lib/speech'
-import { extensionFor, measureDuration, RecorderSession, recordingSupported } from '@/features/audio/recorder'
+import { measureDuration, RecorderSession, recordingSupported } from '@/features/audio/recorder'
+import { IVR_EXT, IVR_MIME, toIvrWav } from '@/features/audio/ivrWav'
 import { audioPath, publicAudioUrl, removeAudio, uploadAudio } from '@/features/audio/storage'
 
 /**
@@ -31,20 +32,24 @@ export default function LineRecorder({ lineId }: { lineId: string }) {
   if (!line || !graph) return null
   if (!canRecord(role)) return null
 
-  const save = async (blob: Blob, mimeType: string, durationMs: number) => {
+  const save = async (blob: Blob, _mimeType: string, durationMs: number) => {
     setBusy(true)
     try {
       const previous = line.audio_path
       // The slug carries the line's position so the bucket stays legible when
       // somebody goes looking for a file by hand.
       const node = graph.nodes.get(line.node_id)
+      // Converted before it leaves the browser. MediaRecorder gives webm or
+      // m4a, and Twilio's <Play> accepts neither — uploading the raw take
+      // means silence on the phone. See features/audio/ivrWav.ts.
+      const wav = await toIvrWav(blob)
       const path = audioPath(
         graph.story.id,
         `${node?.slug ?? 'room'}-line${line.sort_order + 1}`,
-        extensionFor(mimeType),
+        IVR_EXT,
       )
-      await uploadAudio(path, blob, mimeType)
-      await setLineAudio(line.id, path, durationMs)
+      await uploadAudio(path, wav.blob, IVR_MIME)
+      await setLineAudio(line.id, path, wav.durationMs || durationMs)
       if (previous) await removeAudio(previous)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))

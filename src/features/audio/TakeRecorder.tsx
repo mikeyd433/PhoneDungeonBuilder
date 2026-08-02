@@ -2,7 +2,8 @@ import { useRef, useState } from 'react'
 import { useDelve } from '@/features/graph/store'
 import { canRecord } from '@/types/domain'
 import { formatDuration } from '@/lib/speech'
-import { extensionFor, measureDuration, RecorderSession, recordingSupported } from './recorder'
+import { measureDuration, RecorderSession, recordingSupported } from './recorder'
+import { IVR_EXT, IVR_MIME, toIvrWav } from './ivrWav'
 import { audioPath, publicAudioUrl, removeAudio, uploadAudio } from './storage'
 
 /**
@@ -35,13 +36,17 @@ export default function TakeRecorder({
 
   if (!graph || !canRecord(role)) return null
 
-  const save = async (blob: Blob, mimeType: string, ms: number) => {
+  const save = async (blob: Blob, _mimeType: string, ms: number) => {
     setBusy(true)
     try {
       const previous = path
-      const next = audioPath(graph.story.id, name, extensionFor(mimeType))
-      await uploadAudio(next, blob, mimeType)
-      await onSaved(next, ms)
+      // Converted before it leaves the browser. MediaRecorder gives webm or
+      // m4a, and Twilio's <Play> accepts neither — uploading the raw take
+      // means silence on the phone. See features/audio/ivrWav.ts.
+      const wav = await toIvrWav(blob)
+      const next = audioPath(graph.story.id, name, IVR_EXT)
+      await uploadAudio(next, wav.blob, IVR_MIME)
+      await onSaved(next, wav.durationMs || ms)
       if (previous) await removeAudio(previous)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))

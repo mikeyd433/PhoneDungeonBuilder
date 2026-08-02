@@ -4,12 +4,12 @@ import { canRecord, canWrite } from '@/types/domain'
 import { formatDuration } from '@/lib/speech'
 import {
   computePeaks,
-  extensionFor,
   measureDuration,
   RecorderSession,
   recordingSupported,
 } from './recorder'
 import { audioPath, downloadAudio, publicAudioUrl, removeAudio, uploadAudio } from './storage'
+import { IVR_EXT, IVR_MIME, toIvrWav } from './ivrWav'
 import Waveform from './Waveform'
 import { nextStatus } from './status'
 import { isFullyRecorded, playsLineByLine } from '@/features/cast/dialogue'
@@ -57,16 +57,20 @@ export default function AudioPanel({ nodeId }: { nodeId: string }) {
   )
 
   const save = useCallback(
-    async (blob: Blob, mimeType: string, durationMs: number) => {
+    async (blob: Blob, _mimeType: string, durationMs: number) => {
       if (!node || !graph) return
       setBusy('Uploading…')
       try {
         const previous = node.audio_path
-        const path = audioPath(graph.story.id, node.slug, extensionFor(mimeType))
-        await uploadAudio(path, blob, mimeType)
+      // Converted before it leaves the browser. MediaRecorder gives webm or
+      // m4a, and Twilio's <Play> accepts neither — uploading the raw take
+      // means silence on the phone. See features/audio/ivrWav.ts.
+        const wav = await toIvrWav(blob)
+        const path = audioPath(graph.story.id, node.slug, IVR_EXT)
+        await uploadAudio(path, wav.blob, IVR_MIME)
         await updateNode(node.id, {
           audio_path: path,
-          audio_duration_ms: durationMs,
+          audio_duration_ms: wav.durationMs || durationMs,
           status: nextStatus(node.status, true, Boolean(node.narration)),
         })
         if (previous) await removeAudio(previous)
