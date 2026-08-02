@@ -144,7 +144,7 @@ export default function Room() {
             {view.node.title || view.node.slug}
           </button>
         )}
-        <nav className="flex w-full shrink-0 gap-3 overflow-x-auto sm:ml-auto sm:w-auto">
+        <nav className="flex w-full shrink-0 gap-3 overflow-x-auto sm:ml-auto sm:w-auto sm:pr-16">
           <button
             onClick={() => void undo()}
             disabled={undoStack.length === 0}

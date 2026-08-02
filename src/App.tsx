@@ -10,6 +10,7 @@ import MapScreen from '@/routes/Map'
 import Playtest from '@/routes/Playtest'
 import Export from '@/routes/Export'
 import Cast from '@/routes/Cast'
+import VersionBadge from '@/features/app/VersionBadge'
 
 export default function App() {
   const { session, ready } = useSession()
@@ -18,24 +19,35 @@ export default function App() {
   // a session: the room-art bench, and the walkthrough story, which is built in
   // memory and never touches the database.
   const path = window.location.pathname
-  if (path.endsWith('/preview')) {
+  const screen = () => {
+    if (path.endsWith('/preview')) {
+      return (
+        <Routes>
+          <Route path="/preview" element={<Preview />} />
+        </Routes>
+      )
+    }
+    if (path.includes('/story/demo')) return <StoryRoutes />
+
+    if (!ready) return <p className="p-6 text-mortar">…</p>
+    if (!session) return <Login />
+
     return (
       <Routes>
-        <Route path="/preview" element={<Preview />} />
+        <Route path="/" element={<Stories />} />
+        <Route path="/import" element={<Import />} />
+        <Route path="*" element={<StoryRoutes />} />
       </Routes>
     )
   }
-  if (path.includes('/story/demo')) return <StoryRoutes />
-
-  if (!ready) return <p className="p-6 text-mortar">…</p>
-  if (!session) return <Login />
 
   return (
-    <Routes>
-      <Route path="/" element={<Stories />} />
-      <Route path="/import" element={<Import />} />
-      <Route path="*" element={<StoryRoutes />} />
-    </Routes>
+    <>
+      {screen()}
+      {/* Outside the routes: the sign-in screen is exactly where you most need
+          to know whether a deploy has landed. */}
+      <VersionBadge />
+    </>
   )
 }
 

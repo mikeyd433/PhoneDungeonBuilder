@@ -262,18 +262,44 @@ export default function ItemsSection({ nodeId }: { nodeId: string }) {
           Items, flags &amp; counters
         </span>
         <div className="flex flex-wrap gap-2">
-          {vars.map((v: StateVar) => (
-            <span
-              key={v.id}
-              className="rounded border border-mortar/50 px-2 py-1 text-xs"
-              title={v.kind}
-            >
-              {v.slug}
-              {v.is_consumable && ' ·used up'}
-            </span>
-          ))}
           {vars.length === 0 && <span className="text-xs text-cold">None yet.</span>}
         </div>
+
+        {/* The name is what the story calls it — on doors, in the satchel, and
+            read aloud in the inventory. The slug is what the exported flow
+            TESTS, and what every gate is written in terms of, so it is shown
+            and not editable: changing it would silently orphan the gates that
+            name it. */}
+        {vars.length > 0 && (
+          <ul className="flex flex-col gap-1">
+            {vars.map((v: StateVar) => (
+              <li key={v.id} className="flex flex-wrap items-center gap-2">
+                <input
+                  // Remounts when the value changes underneath, never while
+                  // typing — the graph only moves on blur.
+                  key={`${v.id}:${v.name}`}
+                  defaultValue={v.name}
+                  placeholder={v.slug}
+                  aria-label={`Name for ${v.slug}`}
+                  disabled={busy}
+                  onBlur={(e) => {
+                    const name = e.target.value.trim()
+                    if (name === v.name || name === '') return
+                    void run(() => api.updateStateVar(v.id, { name }))
+                  }}
+                  className={`${field} min-w-0 flex-1 basis-40 text-sm`}
+                />
+                <span
+                  title={`${v.kind} · the identifier the exported flow tests against`}
+                  className="shrink-0 font-carved text-xs text-mortar"
+                >
+                  {v.slug}
+                  {v.is_consumable && ' ·used up'}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
         <div className="flex gap-2">
           <input
             value={newVar}
