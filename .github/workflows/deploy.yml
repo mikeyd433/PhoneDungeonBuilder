@@ -1,0 +1,80 @@
+# The Delve's source lives here, but the site that serves it is Dabingabongo —
+# its build.sh clones this repo at ${DELVE_REF:-main} and builds /delve. Nothing
+# in that arrangement watches this repo, so before this workflow existed a push
+# to main sat here until someone remembered to rebuild the other site by hand.
+#
+# This closes that gap: verify the commit, then poke a Netlify build hook.
+name: Deploy to dabingabongo.com
+
+on:
+  push:
+    branches: [main]
+    # Docs cannot change the bundle — nothing under src/ imports markdown — so a
+    # README tweak shouldn't spend a build. Everything else does trigger one:
+    # a too-clever filter here reads as "I pushed but nothing deployed", which
+    # is the exact failure this workflow is meant to remove.
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - '.gitignore'
+  workflow_dispatch: # deploy by hand from the Actions tab
+
+# One deploy at a time. Two pushes in quick succession should produce one build
+# of the later commit, not a race between two builds of different trees.
+concurrency:
+  group: delve-deploy
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Typecheck, lint, test, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Reads the pinned version out of package.json's packageManager field.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm test
+
+      # Deliberately built with no Supabase credentials, which is what a fork or
+      # a fresh clone gets. The app is meant to build and run in that state and
+      # report itself unconfigured, so a build that needs them is a bug.
+      - run: pnpm build
+
+  deploy:
+    name: Trigger the Netlify build
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      # Netlify's build hook URL is a credential: anyone holding it can start a
+      # build on the site. It lives in repo secrets and is never printed —
+      # `curl --silent` plus a URL passed through the environment keeps it out
+      # of the run log even with debug logging on.
+      - name: Ping the build hook
+        env:
+          HOOK_URL: ${{ secrets.NETLIFY_BUILD_HOOK_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${HOOK_URL:-}" ]; then
+            echo "::error::NETLIFY_BUILD_HOOK_URL is not set."
+            echo "Create a build hook on the Dabingabongo Netlify site"
+            echo "(Site configuration -> Build & deploy -> Build hooks), then add"
+            echo "the URL here as a repository secret named NETLIFY_BUILD_HOOK_URL."
+            exit 1
+          fi
+          # trigger_title is what shows up in Netlify's deploy list, so the deploy
+          # says which commit caused it instead of a bare "Deploy triggered by hook".
+          curl --silent --show-error --fail-with-body \
+            --retry 3 --retry-connrefused --max-time 30 \
+            -X POST -d '{}' \
+            "${HOOK_URL}?trigger_title=Delve+${GITHUB_SHA:0:7}+by+${GITHUB_ACTOR}"
+          echo "Build requested. Watch it at https://app.netlify.com/"

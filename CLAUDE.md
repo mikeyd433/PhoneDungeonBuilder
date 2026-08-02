@@ -137,3 +137,11 @@ VITE_SUPABASE_PUBLISHABLE_KEY
 ```
 
 Supabase project: **the-delve** (`tzfkylvtndgaugbgxbuc`).
+
+## Deploying
+
+This repo is not a Netlify site. Dabingabongo's `build.sh` clones it at
+`${DELVE_REF:-main}` and builds `/delve`, so **only what is on `main` ships**.
+`.github/workflows/deploy.yml` verifies a push to `main` and then pings a Netlify
+build hook, whose URL is the repo secret `NETLIFY_BUILD_HOOK_URL`. Set `DELVE_REF`
+in the Netlify UI to put an unmerged branch on the live site.
