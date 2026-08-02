@@ -34,6 +34,7 @@ export default function RoomStage({
   onWalk,
 }: RoomStageProps) {
   const { node } = view
+  const [peek, setPeek] = useState(false)
 
   // §3: lighting the torch is the reward for recording a node, and that
   // transition gets a half-second flare. Fires only on the dark -> lit edge, not
@@ -75,6 +76,11 @@ export default function RoomStage({
   const handleExit = (exit: ExitView) =>
     exit.kind === 'bricked' ? onChisel(exit) : onEnter(exit)
 
+  // Kept here rather than per-room, so surveying a branch doesn't mean tapping
+  // this again in every doorway. Walking somewhere re-keys the room, not the
+  // stage, so the setting rides along.
+  const hasDoors = view.exits.length > 0 || view.overflowExits.length > 0
+
   return (
     <div
       key={node.id}
@@ -83,7 +89,26 @@ export default function RoomStage({
       /* F1.4 — swipe right retreats. */
       onTouchEnd={swipeHandler(undefined, onRetreat)}
     >
-      <DungeonRoom view={view} flare={flare} onExit={handleExit} />
+      <DungeonRoom view={view} flare={flare} onExit={handleExit} peek={peek} />
+
+      {/* Where the doors go. The narration sometimes says so and sometimes
+          doesn't, and the arch itself only ever carried the digit — so without
+          this the only way to learn a door's destination was to walk through
+          it and then walk back. */}
+      {hasDoors && (
+        <div className="px-4 pt-2">
+          <button
+            onClick={() => setPeek((v) => !v)}
+            aria-pressed={peek}
+            className={[
+              'rounded border px-3 py-1.5 text-xs',
+              peek ? 'border-torch text-torch' : 'border-mortar/60 text-mortar',
+            ].join(' ')}
+          >
+            {peek ? '👁 Hide where doors lead' : '👁 Show where doors lead'}
+          </button>
+        </div>
+      )}
 
       {/* The fight, as a caller meets it: one round at a time, each with the
           move that answers it. Shown in full because this is the authoring
@@ -169,8 +194,18 @@ export default function RoomStage({
                 ].join(' ')}
               >
                 <span className="font-carved">{exit.digit}</span>
-                <span>{exit.label || 'unwritten'}</span>
-                {exit.grants.length > 0 && <span className="ml-auto">🎁</span>}
+                <span className="min-w-0 truncate">{exit.label || 'unwritten'}</span>
+                {peek && exit.kind !== 'bricked' && (
+                  <span className="ml-auto flex min-w-0 items-baseline gap-1 text-xs">
+                    <span aria-hidden className="text-mortar">
+                      →
+                    </span>
+                    <span className={exit.targetTitle ? 'truncate font-carved' : 'text-grave'}>
+                      {exit.targetTitle ?? 'nowhere'}
+                    </span>
+                  </span>
+                )}
+                {exit.grants.length > 0 && <span className={peek ? '' : 'ml-auto'}>🎁</span>}
               </button>
             </li>
           ))}

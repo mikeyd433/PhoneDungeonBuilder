@@ -38,6 +38,54 @@ export function archX(slot: number): number {
 
 export const ARCH = { w: ARCH_W, top: ARCH_TOP, bottom: BACK.y1 } as const
 
+/**
+ * Greedy word wrap for a threshold nameplate.
+ *
+ * SVG text neither wraps nor ellipsizes: it just keeps drawing, straight out
+ * over the wall and into the next archway's label. So anything going on a plate
+ * has to be broken to width here, before it is drawn. `maxChars` is a per-line
+ * budget calibrated to the 70-unit arch at the size it is rendered — Cinzel's
+ * small caps are far wider per character than the body face, so the two lines
+ * of a plate get different budgets.
+ *
+ * Returns at most `maxLines` lines, with an ellipsis when something was cut, so
+ * a truncated room name never reads as a complete one.
+ */
+export function wrapToPlate(text: string, maxChars: number, maxLines: number): string[] {
+  const words = text.trim().split(/\s+/).filter(Boolean)
+  const lines: string[] = []
+  let line = ''
+
+  for (const word of words) {
+    const candidate = line ? `${line} ${word}` : word
+    if (candidate.length <= maxChars) {
+      line = candidate
+      continue
+    }
+    if (line) lines.push(line)
+    if (lines.length >= maxLines) {
+      line = ''
+      break
+    }
+    // A single word wider than the plate has to be cut mid-word; there is no
+    // break opportunity in SHIPWRECK_INTERIOR.
+    line = word.length > maxChars ? `${word.slice(0, maxChars - 1)}…` : word
+  }
+  if (line && lines.length < maxLines) lines.push(line)
+  if (lines.length === 0) return []
+
+  // Did everything fit? Compare against the source, ignoring the whitespace we
+  // normalised away.
+  const shown = lines.join(' ').replace(/…$/, '')
+  if (shown.length < text.trim().replace(/\s+/g, ' ').length) {
+    const last = lines[lines.length - 1]
+    lines[lines.length - 1] = last.endsWith('…')
+      ? last
+      : `${last.length >= maxChars ? last.slice(0, maxChars - 1) : last}…`
+  }
+  return lines
+}
+
 /** A rounded archway: straight jambs, semicircular head. */
 export function archPath(slot: number): string {
   const x = archX(slot)

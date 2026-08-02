@@ -1,7 +1,7 @@
 import { type KeyboardEvent } from 'react'
 import type { ExitView, RoomView } from '../roomModel'
 import Torch from './Torch'
-import { ARCH, archPath, archX, BACK, TORCH, VIEW, WALLS } from './geometry'
+import { ARCH, archPath, archX, BACK, TORCH, VIEW, WALLS, wrapToPlate } from './geometry'
 import { designFor } from './designs'
 import { FloorMotifLayer, WallMotifLayer, WallTextureLayer } from './Texture'
 import Arena from './Arena'
@@ -10,6 +10,10 @@ interface Props {
   view: RoomView
   flare: boolean
   onExit: (exit: ExitView) => void
+  /** Hang a nameplate at each threshold saying what the caller hears and where
+   *  it goes. Off by default: the room is meant to read as a room, and the art
+   *  bench previews the art rather than this overlay. */
+  peek?: boolean
 }
 
 /** Enter and Space activate a focused archway, the way a button would. */
@@ -22,7 +26,90 @@ function keyActivate(handler: () => void) {
   }
 }
 
-function Archway({ exit, lit, onActivate }: { exit: ExitView; lit: boolean; onActivate: () => void }) {
+/**
+ * The plate on the floor at a threshold: what the caller hears, then where it
+ * puts them. The screen reader has always had both in the archway's aria-label
+ * — this is the same two facts, made visible.
+ */
+function Nameplate({ exit, lit }: { exit: ExitView; lit: boolean }) {
+  const x = archX(exit.slot)
+  const mid = x + ARCH.w / 2
+  const top = ARCH.bottom + 6
+
+  // Two kinds of bricked arch, and the difference matters: an empty slot is a
+  // wall nobody has written a choice for, while a choice with a label and no
+  // destination is a branch the caller CAN press and fall out of. The second
+  // keeps its label — it is the author's own words, and losing them here would
+  // hide the very thing that needs finishing.
+  const unwritten = exit.kind === 'bricked'
+  const emptySlot = unwritten && !exit.choiceId
+
+  // Budgets differ because the faces do: the destination is set in Cinzel, whose
+  // small caps run about half again as wide as the body face.
+  const said = emptySlot || !exit.label ? [] : wrapToPlate(exit.label, 17, 1)
+  const leadsTo = unwritten
+    ? [emptySlot ? 'no door yet' : 'unwritten']
+    : wrapToPlate(exit.targetTitle ?? 'nowhere', 12, 2)
+
+  const rows = said.length + leadsTo.length
+  const height = 6 + rows * 11
+
+  return (
+    <g>
+      <rect
+        x={x + 1}
+        y={top}
+        width={ARCH.w - 2}
+        height={height}
+        rx={2}
+        fill="#141010"
+        fillOpacity={0.88}
+        stroke={unwritten ? '#41525C' : lit ? '#6B5A47' : '#41525C'}
+        strokeWidth={1}
+      />
+      {said.map((line, i) => (
+        <text
+          key={`said-${i}`}
+          x={mid}
+          y={top + 11 + i * 11}
+          textAnchor="middle"
+          fontSize={8}
+          fill={lit ? '#8FB0C2' : '#6B5A47'}
+        >
+          {line}
+        </text>
+      ))}
+      {leadsTo.map((line, i) => (
+        <text
+          key={`to-${i}`}
+          x={mid}
+          y={top + 11 + (said.length + i) * 11}
+          textAnchor="middle"
+          fontSize={9}
+          fontFamily={unwritten ? undefined : 'Cinzel, Georgia, serif'}
+          /* Red only for a door that claims a destination and hasn't got one —
+             a dangling reference, which is broken rather than merely unfinished.
+             Unwritten branches stay the same cold blue as their brickwork. */
+          fill={unwritten ? '#41525C' : exit.targetTitle ? (lit ? '#E4D9BE' : '#8FB0C2') : '#8C2F22'}
+        >
+          {line}
+        </text>
+      ))}
+    </g>
+  )
+}
+
+function Archway({
+  exit,
+  lit,
+  peek,
+  onActivate,
+}: {
+  exit: ExitView
+  lit: boolean
+  peek: boolean
+  onActivate: () => void
+}) {
   const x = archX(exit.slot)
   const path = archPath(exit.slot)
   const label =
@@ -155,11 +242,13 @@ function Archway({ exit, lit, onActivate }: { exit: ExitView; lit: boolean; onAc
           strokeWidth={1.5}
         />
       )}
+
+      {peek && <Nameplate exit={exit} lit={lit} />}
     </g>
   )
 }
 
-export default function DungeonRoom({ view, flare, onExit }: Props) {
+export default function DungeonRoom({ view, flare, onExit, peek = false }: Props) {
   const lit = view.torchLit
 
   // §3: unlit rooms render dim, lit rooms brighten and a wash spills from the
@@ -245,7 +334,13 @@ export default function DungeonRoom({ view, flare, onExit }: Props) {
         </g>
       ) : (
         view.exits.map((exit) => (
-          <Archway key={exit.digit} exit={exit} lit={lit} onActivate={() => onExit(exit)} />
+          <Archway
+            key={exit.digit}
+            exit={exit}
+            lit={lit}
+            peek={peek}
+            onActivate={() => onExit(exit)}
+          />
         ))
       )}
 
