@@ -552,6 +552,30 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
         dest = wname(slug, 'gather')
       }
 
+      // The reaction to having pressed this digit, between the keypress and
+      // the next room. Wrapped closest to the destination, so what actually
+      // happens is: gate passes -> effects apply -> reaction plays -> arrive.
+      //
+      // Inside the gate on purpose: hearing the reaction to a thing you were
+      // not allowed to do would be worse than hearing nothing, and a refused
+      // door has its own take already.
+      if (choice.audio_path) {
+        const reactName = `${slug}_d${digitToken(choice.digit)}_react`
+        widgets.push({
+          name: reactName,
+          type: 'say-play',
+          nodeId: node.id,
+          note: `Reaction to pressing ${choice.digit}.`,
+          playUrl: `${audioBaseUrl}${choice.audio_path}`,
+          transitions: [{ event: 'audioComplete', next: dest }],
+        })
+        dest = reactName
+      } else if (choice.reaction_narration?.trim()) {
+        warnings.push(
+          `${slug} digit ${choice.digit} has a reaction written ("${choice.reaction_narration.trim().slice(0, 40)}…") with no recording, so the caller hears nothing between pressing and arriving.`,
+        )
+      }
+
       // Choice effects: one widget, only if there is something to do (§6.2 —
       // "Don't pay widgets for nothing").
       if (fx.length > 0) {

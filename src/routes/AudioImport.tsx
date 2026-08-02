@@ -38,6 +38,7 @@ export default function AudioImport() {
   const setLineAudio = useDelve((s) => s.setLineAudio)
   const editFightRound = useDelve((s) => s.editFightRound)
   const setItemAudio = useDelve((s) => s.setItemAudio)
+  const updateChoice = useDelve((s) => s.updateChoice)
   const updateStory = useDelve((s) => s.updateStory)
   const refresh = useDelve((s) => s.refresh)
 
@@ -92,6 +93,12 @@ export default function AudioImport() {
             ? { inventory_intro_audio_path: path, inventory_intro_audio_duration_ms: durationMs }
             : { inventory_empty_audio_path: path, inventory_empty_audio_duration_ms: durationMs },
         )
+        return
+      case 'reaction':
+        await updateChoice(ref.choiceId, {
+          audio_path: path,
+          audio_duration_ms: durationMs,
+        })
         return
       case 'refusal':
         // Gates have no store action of their own; the graph is re-read after

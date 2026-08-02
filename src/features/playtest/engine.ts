@@ -248,7 +248,18 @@ export class PlaytestEngine {
         spoken: '(This branch is unwritten — nothing happens.)',
       }
     }
-    return this.enter({ ...state, caller }, offer.choice.to_node_id)
+    const arrival = this.enter({ ...state, caller }, offer.choice.to_node_id)
+
+    // The reaction, between the press and the arrival, in that order. Written
+    // but unrecorded is flagged rather than read out as though it will ship:
+    // on the phone that moment is silence.
+    const reaction = offer.choice.reaction_narration?.trim()
+    if (!reaction) return arrival
+    const note = offer.choice.audio_path ? '' : ' (no recording — silence on the phone)'
+    return {
+      ...arrival,
+      spoken: [`${reaction}${note}`, arrival.spoken].filter(Boolean).join('\n\n'),
+    }
   }
 
   /**

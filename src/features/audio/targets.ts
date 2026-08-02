@@ -14,7 +14,14 @@ import { linesFor } from '@/features/cast/dialogue'
  * name uses `__`.
  */
 
-export type TargetKind = 'room' | 'line' | 'fight round' | 'refusal' | 'item' | 'inventory'
+export type TargetKind =
+  | 'room'
+  | 'line'
+  | 'fight round'
+  | 'reaction'
+  | 'refusal'
+  | 'item'
+  | 'inventory'
 
 export interface AudioTarget {
   /** Stable identity for this slot, and what the manifest shows. */
@@ -33,6 +40,7 @@ export interface AudioTarget {
     | { kind: 'room'; nodeId: string }
     | { kind: 'line'; lineId: string }
     | { kind: 'fight round'; roundId: string }
+    | { kind: 'reaction'; choiceId: string }
     | { kind: 'refusal'; gateId: string; choiceId: string }
     | { kind: 'item'; varId: string }
     | { kind: 'inventory'; slot: 'intro' | 'empty' }
@@ -89,6 +97,23 @@ export function audioTargets(graph: StoryGraph): AudioTarget[] {
         })
       })
     }
+  }
+
+  // A door's reaction: the moment between pressing and arriving.
+  for (const choice of [...graph.choices.values()].sort((a, b) => a.id.localeCompare(b.id))) {
+    if (!choice.reaction_narration?.trim() && !choice.audio_path) continue
+    const from = graph.nodes.get(choice.from_node_id)
+    if (!from) continue
+    out.push({
+      key: `${from.slug}#d${choice.digit}react`,
+      kind: 'reaction',
+      file: `${from.slug}__d${choice.digit}__react`,
+      label: `${from.slug} — reacting to ${choice.label || `digit ${choice.digit}`}`,
+      text: choice.reaction_narration ?? '',
+      currentPath: choice.audio_path,
+      currentDurationMs: choice.audio_duration_ms,
+      ref: { kind: 'reaction', choiceId: choice.id },
+    })
   }
 
   for (const gate of graph.gates.values()) {

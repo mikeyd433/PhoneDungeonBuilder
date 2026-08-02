@@ -5,6 +5,7 @@ import { slugify } from '@/lib/slug'
 import { nextFreeDigit } from './roomModel'
 import { isPlainRoom, roomKinds, type RoomKinds } from './roomKinds'
 import { describeCollapse, planCollapse } from './collapse'
+import ReactionSheet from './ReactionSheet'
 import { isPromptLine, promptsFor, withPrompts, type Joiner } from './prompts'
 import AudioPanel from '@/features/audio/AudioPanel'
 import ItemsSection from '@/features/state/ItemsSection'
@@ -261,6 +262,7 @@ export default function EditorSheet({ nodeId, onClose }: { nodeId: string; onClo
   }
 
   const [announcing, setAnnouncing] = useState(false)
+  const [reacting, setReacting] = useState<string | null>(null)
   const prompts = useMemo(
     () => (graph && derived && node ? promptsFor(graph, derived, node.id, 'for') : []),
     [graph, derived, node],
@@ -513,6 +515,29 @@ export default function EditorSheet({ nodeId, onClose }: { nodeId: string; onClo
                     </option>
                   ))}
               </select>
+              {/* The reaction to taking this door. Marked when it has one, so a
+                  room's doors can be scanned without opening each. */}
+              <button
+                onClick={() => setReacting(choice.id)}
+                title={
+                  choice.audio_path
+                    ? 'Reaction — recorded'
+                    : choice.reaction_narration?.trim()
+                      ? 'Reaction — written, not recorded'
+                      : 'Add a reaction to taking this door'
+                }
+                className={[
+                  'shrink-0 px-2',
+                  choice.audio_path
+                    ? 'text-torch'
+                    : choice.reaction_narration?.trim()
+                      ? 'text-grave'
+                      : 'text-mortar',
+                ].join(' ')}
+              >
+                🔊
+              </button>
+
               {/* The inverse of collapse, on the door it applies to: put a room
                   between here and wherever this goes. Disabled on an unwired
                   door, where the operation is a chisel and already exists. */}
@@ -670,6 +695,8 @@ export default function EditorSheet({ nodeId, onClose }: { nodeId: string; onClo
           {slugTaken && <span className="text-xs text-grave">Another room already uses that slug.</span>}
         </label>
       </fieldset>
+
+      {reacting && <ReactionSheet choiceId={reacting} onClose={() => setReacting(null)} />}
     </div>
   )
 }

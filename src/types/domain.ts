@@ -71,6 +71,17 @@ export interface Choice {
   label: string
   /** null = bricked archway, an unwritten branch. */
   to_node_id: string | null
+  /**
+   * The reaction to having made this choice: what is said between the keypress
+   * and the next room. It belongs to neither room either side of it — put it in
+   * the one you left and every other door hears it too; put it in the one you
+   * arrive at and it plays again when you come back by another route.
+   *
+   * Script and take, as everywhere else. Unrecorded is silence.
+   */
+  reaction_narration: string | null
+  audio_path: string | null
+  audio_duration_ms: number | null
   sort_order: number
   created_at: string
   updated_at: string
