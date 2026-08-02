@@ -87,7 +87,17 @@ function Nameplate({ exit, lit }: { exit: ExitView; lit: boolean }) {
       /* Red only for a door that claims a destination and hasn't got one — a
          dangling reference, which is broken rather than merely unfinished.
          Unwritten branches stay the same cold blue as their brickwork. */
-      fill: unwritten ? '#41525C' : exit.targetTitle ? (lit ? '#E4D9BE' : '#8FB0C2') : '#8C2F22',
+      fill: unwritten
+        ? '#41525C'
+        : !exit.targetTitle
+          ? '#8C2F22'
+          : // A slug standing in for a name is dimmer than a name: the door
+            // still says where it goes, without claiming somebody named it.
+            exit.targetTitled
+            ? lit
+              ? '#E4D9BE'
+              : '#8FB0C2'
+            : '#6B5A47',
     })
   }
 

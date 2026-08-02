@@ -175,14 +175,17 @@ export default function RoomStage({
                 {target ? (
                   <input
                     key={`title:${target}:${exit.targetTitle ?? ''}`}
-                    defaultValue={exit.targetTitle ?? ''}
-                    placeholder="name of the room it leads to"
+                    // Empty when the room is unnamed, so the placeholder shows
+                    // the slug rather than the field pretending the slug is a
+                    // name you already wrote.
+                    defaultValue={exit.targetTitled ? (exit.targetTitle ?? '') : ''}
+                    placeholder={exit.targetTitle ?? 'name of the room it leads to'}
                     aria-label={`Name of the room behind door ${exit.digit}`}
                     disabled={!onRenameTarget}
-                    onBlur={(e) =>
-                      e.target.value !== (exit.targetTitle ?? '') &&
-                      onRenameTarget?.(target, e.target.value)
-                    }
+                    onBlur={(e) => {
+                      const was = exit.targetTitled ? (exit.targetTitle ?? '') : ''
+                      if (e.target.value !== was) onRenameTarget?.(target, e.target.value)
+                    }}
                     className="min-w-0 flex-1 basis-40 rounded border border-mortar/60 bg-stone px-2 py-1.5 font-carved text-sm outline-none focus:border-torch disabled:opacity-60"
                   />
                 ) : (

@@ -38,6 +38,8 @@ export interface ExitView {
   choiceId: string | null
   targetId: string | null
   targetTitle: string | null
+  /** False when `targetTitle` is only the slug standing in for a real name. */
+  targetTitled: boolean
   /** Which wall: 0 = left, 1 = centre, 2 = right. */
   slot: number
   /** F1.7 — a chest at this door means the choice grants something. */
@@ -147,7 +149,11 @@ export function buildRoomView(
       label: choice.label,
       choiceId: choice.id,
       targetId: choice.to_node_id,
+      // Falls back to the slug so a door never reads as leading nowhere, but
+      // the two are different things: `titled` is what tells a renderer whether
+      // it is showing a name somebody wrote or an identifier standing in.
       targetTitle: target?.title || target?.slug || null,
+      targetTitled: Boolean(target?.title?.trim()),
       slot,
       grants,
       revokes,
@@ -182,6 +188,7 @@ export function buildRoomView(
         choiceId: null,
         targetId: null,
         targetTitle: null,
+        targetTitled: false,
         slot: exits.length,
         grants: [],
         revokes: [],

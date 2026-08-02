@@ -138,10 +138,18 @@ export default function Room() {
         ) : (
           <button
             onClick={() => setRenaming(true)}
-            title="Rename this room"
-            className="min-w-0 truncate font-paper text-torch underline decoration-dotted underline-offset-4"
+            title={view.node.title ? 'Rename this room' : 'This room has no name yet — tap to name it'}
+            className={[
+              'min-w-0 truncate font-paper underline decoration-dotted underline-offset-4',
+              // An unnamed room falls back to its slug, which is an identifier
+              // and not a name. Showing it in the same gold as a real title
+              // would read as "this room is called ENTER_DOOR" — which, for a
+              // room chiselled through a door, is exactly the confusion worth
+              // avoiding.
+              view.node.title ? 'text-torch' : 'text-mortar',
+            ].join(' ')}
           >
-            {view.node.title || view.node.slug}
+            {view.node.title || `${view.node.slug} — name it`}
           </button>
         )}
         <nav className="flex w-full shrink-0 gap-3 overflow-x-auto sm:ml-auto sm:w-auto sm:pr-16">

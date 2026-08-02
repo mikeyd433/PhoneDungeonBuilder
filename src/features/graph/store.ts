@@ -289,6 +289,18 @@ export const useDelve = create<DelveState>((set, get) => {
       const choice = graph.choices.get(fromChoiceId)
       if (!choice) return null
 
+      // The door's label names the SLUG and nothing else.
+      //
+      // It used to become the room's title too, which quietly made every door
+      // and the room behind it the same thing: a door saying "enter the door"
+      // left a room called "Enter The Door", and renaming either looked like it
+      // had failed to take. They are separate pieces of writing — one is what
+      // the caller hears at the threshold, the other is what the place is —
+      // so the room is created unnamed and says so until somebody names it.
+      //
+      // The slug still follows the label, because a slug is an identifier: it
+      // is the widget name in the exported flow and the filename in the bucket,
+      // and ENTER_DOOR is far easier to find in either than ROOM_87.
       const label = title || choice.label || 'New room'
       const slug = uniqueSlug(
         label,
@@ -296,7 +308,11 @@ export const useDelve = create<DelveState>((set, get) => {
       )
 
       try {
-        const node = await api.createNode(graph.story.id, { slug, title: label })
+        const node = await api.createNode(graph.story.id, {
+          slug,
+          // Only when a caller passed one deliberately; chiselling does not.
+          title: title ?? '',
+        })
         const wired = await api.updateChoice(fromChoiceId, { to_node_id: node.id })
 
         patchGraph((g) => ({
