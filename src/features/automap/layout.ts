@@ -1,6 +1,7 @@
 import ELK, { type ElkNode, type ElkExtendedEdge } from 'elkjs/lib/elk.bundled.js'
 import type { DerivedGraph, StoryGraph } from '@/types/domain'
 import { graphEdges } from '@/features/graph/edges'
+import { isFullyRecorded } from '@/features/cast/dialogue'
 
 /**
  * Automap layout (F4.1).
@@ -124,7 +125,9 @@ export async function layoutAutomap(
       h: ROOM_H,
       // "Written" means there is something for a caller to hear.
       written: n.narration.trim().length > 0,
-      recorded: Boolean(n.audio_path),
+      // Same rule as the torch: a room built from line takes is recorded when
+      // every line has one.
+      recorded: isFullyRecorded(graph, n.id),
       isEnding: n.node_type === 'ending',
       isOrphan: derived.orphans.has(n.id),
       isUnreachable: derived.unreachable.has(n.id),

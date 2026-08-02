@@ -271,7 +271,14 @@ export function audioManifestCsv(graph: StoryGraph): string {
   return rows.join('\n')
 }
 
-/** F6.3 — full backup, so the whole thing round-trips. */
+/**
+ * F6.3 — a complete dump of every table, for archival and for reading.
+ *
+ * NOT restorable yet: nothing in the app imports this back. The importer takes
+ * CSV and Brainstorm exports, neither of which is this shape. Calling it a
+ * round trip would be a promise the app cannot keep, and a backup you trust and
+ * cannot restore is worse than no backup at all.
+ */
 export function storyJson(graph: StoryGraph): string {
   return JSON.stringify(
     {

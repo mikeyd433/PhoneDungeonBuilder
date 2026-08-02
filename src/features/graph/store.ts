@@ -435,10 +435,33 @@ export const useDelve = create<DelveState>((set, get) => {
       // (the FK is ON DELETE SET NULL), so the lines that survive have to be
       // re-read rather than guessed at.
       const { graph } = get()
-      if (!graph) return
+      const before = graph?.characters.get(id)
+      if (!graph || !before) return
+
+      // Their lines survive with character_id nulled, so undo has to put the
+      // attributions back as well as the cast entry.
+      const spoken = [...graph.dialogue.values()].filter((l) => l.character_id === id)
+
       try {
         await api.deleteCharacter(id)
         await get().refresh()
+
+        pushUndo({
+          label: `remove ${before.name}`,
+          invert: async () => {
+            const made = await api.createCharacter(before.story_id, {
+              slug: before.slug,
+              name: before.name,
+              is_playable: before.is_playable,
+              voice_actor: before.voice_actor,
+              color: before.color,
+              notes: before.notes,
+            })
+            for (const line of spoken) {
+              await api.updateDialogueLine(line.id, { character_id: made.id })
+            }
+          },
+        })
       } catch (e) {
         fail(e)
       }
@@ -493,10 +516,65 @@ export const useDelve = create<DelveState>((set, get) => {
     },
 
     async removeFight(id) {
-      // Moves and rounds cascade with it; refresh rather than track the cascade.
+      const { graph } = get()
+      const before = graph?.fights.get(id)
+      if (!graph || !before) return
+
+      // Everything hanging off the fight goes with it, so undo has to rebuild
+      // all of it. Captured before the delete, because afterwards it is gone.
+      const moves = [...graph.fightMoves.values()].filter((m) => m.fight_id === id)
+      const rounds = [...graph.fightRounds.values()].filter((r) => r.fight_id === id)
+      const outcomes = [...graph.fightOutcomes.values()].filter((o) => o.fight_id === id)
+
       try {
         await api.deleteFight(id)
+        // Moves, rounds and outcomes cascade; refresh rather than model it.
         await get().refresh()
+
+        pushUndo({
+          label: `remove the ${before.opponent_name} fight`,
+          invert: async () => {
+            const fight = await api.createFight(before.story_id, {
+              node_id: before.node_id,
+              opponent_name: before.opponent_name,
+              win_node_id: before.win_node_id,
+              lose_node_id: before.lose_node_id,
+              silence_patience: before.silence_patience,
+            })
+            // Recreating yields new ids, so the outcomes have to be re-pointed
+            // at the rebuilt rows rather than restored verbatim.
+            const moveIds = new Map<string, string>()
+            for (const m of moves) {
+              const made = await api.createFightMove(before.story_id, {
+                fight_id: fight.id,
+                slug: m.slug,
+                label: m.label,
+                beats: m.beats,
+                sort_order: m.sort_order,
+              })
+              moveIds.set(m.id, made.id)
+            }
+            const roundIds = new Map<string, string>()
+            for (const r of rounds) {
+              const made = await api.createFightRound(before.story_id, {
+                fight_id: fight.id,
+                sort_order: r.sort_order,
+                opponent_move: r.opponent_move,
+                narration: r.narration,
+                audio_path: r.audio_path,
+                audio_duration_ms: r.audio_duration_ms,
+              })
+              roundIds.set(r.id, made.id)
+            }
+            for (const o of outcomes) {
+              const round = roundIds.get(o.round_id)
+              const move = moveIds.get(o.move_id)
+              if (round && move) {
+                await api.upsertFightOutcome(before.story_id, round, move, o.to_node_id)
+              }
+            }
+          },
+        })
       } catch (e) {
         fail(e)
       }

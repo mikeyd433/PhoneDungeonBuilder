@@ -160,7 +160,7 @@ export default function Export() {
           },
           {
             label: 'Story JSON',
-            help: 'Full backup. The whole thing round-trips.',
+            help: 'Every table, dumped. Keep it somewhere safe — but note that nothing reads it back in yet, so it is an archive, not a restore.',
             file: `${graph.story.title}.json`,
             body: storyJson(graph),
             type: 'application/json',

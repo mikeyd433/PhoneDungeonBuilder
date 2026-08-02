@@ -438,16 +438,34 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
 
       // The counters live for the whole call, so a fight re-entered by a loop
       // would start already out of patience. Zero them on the way in.
-      if (rounds.length > 0) {
-        widgets.push({
-          name: `${slug}_reset`,
-          type: 'set-variables',
-          nodeId: node.id,
-          note: 'Clear the silence counters, so re-entering this fight starts fresh.',
-          variables: rounds.map((_, i) => ({ key: `${slug}_r${i + 1}_silence`, value: '0' })),
-          transitions: [{ event: 'next', next: roundEntry(slug, rounds, 0) }],
-        })
-      }
+      //
+      // Emitted even for a fight with no rounds: the room's audio transitions
+      // here by name, so skipping it left the flow pointing at a widget that
+      // did not exist. A fight with nothing in it walks straight out the
+      // winning side — and if that isn't set either, the transition goes
+      // nowhere on purpose rather than looping back into this same room.
+      const winner = fight.win_node_id ? graph.nodes.get(fight.win_node_id) : null
+      widgets.push({
+        name: `${slug}_reset`,
+        type: 'set-variables',
+        nodeId: node.id,
+        note:
+          rounds.length > 0
+            ? 'Clear the silence counters, so re-entering this fight starts fresh.'
+            : 'This fight has no rounds, so it is walked straight through.',
+        variables: rounds.map((_, i) => ({ key: `${slug}_r${i + 1}_silence`, value: '0' })),
+        transitions: [
+          {
+            event: 'next',
+            next:
+              rounds.length > 0
+                ? roundEntry(slug, rounds, 0)
+                : winner
+                  ? entryName(winner)
+                  : null,
+          },
+        ],
+      })
 
       for (const problem of fightProblems(view)) {
         warnings.push(`${slug}: ${problem}`)

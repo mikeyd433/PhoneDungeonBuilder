@@ -12,7 +12,7 @@ import {
 import { audioPath, downloadAudio, publicAudioUrl, removeAudio, uploadAudio } from './storage'
 import Waveform from './Waveform'
 import { nextStatus } from './status'
-import { playsLineByLine } from '@/features/cast/dialogue'
+import { isFullyRecorded, playsLineByLine } from '@/features/cast/dialogue'
 
 export default function AudioPanel({ nodeId }: { nodeId: string }) {
   const graph = useDelve((s) => s.graph)
@@ -182,7 +182,7 @@ export default function AudioPanel({ nodeId }: { nodeId: string }) {
 
       {/* F3.5 — approved is deliberately separate from recorded: a scratch take
           is "recorded", but only a person can say it is the take. */}
-      {node.audio_path && canWrite(role) && (
+      {graph && isFullyRecorded(graph, nodeId) && canWrite(role) && (
         <label className="flex items-center gap-2 text-sm">
           <input
             type="checkbox"

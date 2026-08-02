@@ -1,6 +1,7 @@
 import type { Choice, DerivedGraph, GraphEdge, StoryGraph } from '@/types/domain'
 import { DIGITS } from '@/types/domain'
 import { graphEdges } from './edges'
+import { isFullyRecorded } from '@/features/cast/dialogue'
 
 const digitOrder = new Map(DIGITS.map((d, i) => [d as string, i]))
 
@@ -113,11 +114,15 @@ export function unwrittenBranches(graph: StoryGraph): Choice[] {
   return [...graph.choices.values()].filter((c) => c.to_node_id === null)
 }
 
-/** Nodes with no audio, shallowest first, so you record from the entrance
- *  outward (F4.5). Unreachable nodes sort last. */
+/** Nodes still missing audio, shallowest first, so you record from the entrance
+ *  outward (F4.5). Unreachable nodes sort last.
+ *
+ *  "Missing audio" means the same thing here as it does to the torch: a room
+ *  assembled from line takes is done when every line has one, not when the room
+ *  itself has a file it never plays. */
 export function darkRooms(graph: StoryGraph, derived: DerivedGraph) {
   return [...graph.nodes.values()]
-    .filter((n) => !n.audio_path)
+    .filter((n) => !isFullyRecorded(graph, n.id))
     .sort(
       (a, b) =>
         (derived.depth.get(a.id) ?? Infinity) - (derived.depth.get(b.id) ?? Infinity) ||
