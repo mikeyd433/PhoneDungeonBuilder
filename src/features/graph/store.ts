@@ -16,6 +16,7 @@ import { deriveGraph } from './derived'
 import * as api from '@/lib/api'
 import { uniqueSlug } from '@/lib/slug'
 import { enqueue, isOffline } from '@/lib/offlineQueue'
+import { buildDemoStory, DEMO_STORY_ID } from '@/features/demo/demoStory'
 
 /** F2.10 — undo stack, last 20 actions. */
 const UNDO_LIMIT = 20
@@ -44,6 +45,8 @@ interface DelveState {
   undoStack: UndoEntry[]
   loading: boolean
   error: string | null
+  /** The in-memory walkthrough story. Nothing here touches the database. */
+  demo: boolean
 
   loadStory: (storyId: string) => Promise<void>
   walkTo: (nodeId: string) => void
@@ -123,6 +126,20 @@ export const useDelve = create<DelveState>((set, get) => {
   }
 
   /**
+   * True when the store is showing the walkthrough story.
+   *
+   * Every write returns here rather than calling the API. Letting them through
+   * would fire requests at a story id no database has, and the walkthrough
+   * would fill with red errors the moment anyone touched a field — which is
+   * exactly the opposite of what it is for.
+   */
+  const readOnly = () => {
+    if (!get().demo) return false
+    set({ error: 'This is the walkthrough story — it lives in memory, so nothing here is saved.' })
+    return true
+  }
+
+  /**
    * Cast and fight edits go through one path: run the write, then drop the
    * returned row into its map.
    *
@@ -184,11 +201,30 @@ export const useDelve = create<DelveState>((set, get) => {
     undoStack: [],
     loading: false,
     error: null,
+    demo: false,
 
     clearError: () => set({ error: null }),
     canUndo: () => get().undoStack.length > 0,
 
     async loadStory(storyId) {
+      // The walkthrough story is built in memory. No account, no network, and
+      // therefore no writes — see `readOnly` below.
+      if (storyId === DEMO_STORY_ID) {
+        const graph = buildDemoStory()
+        set({
+          graph,
+          derived: deriveGraph(graph),
+          role: 'owner',
+          currentNodeId: graph.story.root_node_id,
+          trail: graph.story.root_node_id ? [graph.story.root_node_id] : [],
+          undoStack: [],
+          loading: false,
+          error: null,
+          demo: true,
+        })
+        return
+      }
+
       set({ loading: true, error: null })
       try {
         const [graph, role] = await Promise.all([api.loadStoryGraph(storyId), api.myRole(storyId)])
@@ -231,6 +267,7 @@ export const useDelve = create<DelveState>((set, get) => {
     /** F1.3 — tap a bricked arch to chisel through it: creates the node, wires
      *  the choice to it, and walks you in. */
     async createChildNode(fromChoiceId, title) {
+      if (readOnly()) return null
       const { graph } = get()
       if (!graph) return null
       const choice = graph.choices.get(fromChoiceId)
@@ -270,6 +307,7 @@ export const useDelve = create<DelveState>((set, get) => {
     },
 
     async addChoice(fromNodeId, digit, label = '') {
+      if (readOnly()) return
       const { graph } = get()
       if (!graph) return
       try {
@@ -290,6 +328,7 @@ export const useDelve = create<DelveState>((set, get) => {
     },
 
     async updateNode(id, rawPatch) {
+      if (readOnly()) return
       const { graph } = get()
       if (!graph) return
       const before = graph.nodes.get(id)
@@ -351,6 +390,7 @@ export const useDelve = create<DelveState>((set, get) => {
     },
 
     async updateChoice(id, patch) {
+      if (readOnly()) return
       const { graph } = get()
       if (!graph) return
       const before = graph.choices.get(id)
@@ -389,6 +429,7 @@ export const useDelve = create<DelveState>((set, get) => {
     },
 
     async deleteChoice(id) {
+      if (readOnly()) return
       const { graph } = get()
       if (!graph) return
       const before = graph.choices.get(id)
@@ -423,14 +464,17 @@ export const useDelve = create<DelveState>((set, get) => {
     // ------------------------------------------------------------ cast
 
     async addCharacter(patch) {
+      if (readOnly()) return
       await write<'characters'>('characters', (g) => api.createCharacter(g.story.id, patch))
     },
 
     async editCharacter(id, patch) {
+      if (readOnly()) return
       await write<'characters'>('characters', () => api.updateCharacter(id, patch))
     },
 
     async removeCharacter(id) {
+      if (readOnly()) return
       // Deleting a character nulls the character_id on every line they spoke
       // (the FK is ON DELETE SET NULL), so the lines that survive have to be
       // re-read rather than guessed at.
@@ -468,6 +512,7 @@ export const useDelve = create<DelveState>((set, get) => {
     },
 
     async saveDialogue(nodeId, lines) {
+      if (readOnly()) return
       const { graph } = get()
       if (!graph) return
       const node = graph.nodes.get(nodeId)
@@ -502,20 +547,24 @@ export const useDelve = create<DelveState>((set, get) => {
     // ------------------------------------------------------------ fights
 
     async setLineAudio(id, path, durationMs) {
+      if (readOnly()) return
       await write<'dialogue'>('dialogue', () =>
         api.updateDialogueLine(id, { audio_path: path, audio_duration_ms: durationMs }),
       )
     },
 
     async addFight(nodeId) {
+      if (readOnly()) return
       await write<'fights'>('fights', (g) => api.createFight(g.story.id, { node_id: nodeId }))
     },
 
     async editFight(id, patch) {
+      if (readOnly()) return
       await write<'fights'>('fights', () => api.updateFight(id, patch))
     },
 
     async removeFight(id) {
+      if (readOnly()) return
       const { graph } = get()
       const before = graph?.fights.get(id)
       if (!graph || !before) return
@@ -581,6 +630,7 @@ export const useDelve = create<DelveState>((set, get) => {
     },
 
     async addFightMove(fightId, slug) {
+      if (readOnly()) return
       const existing = [...(get().graph?.fightMoves.values() ?? [])].filter(
         (m) => m.fight_id === fightId,
       )
@@ -595,10 +645,12 @@ export const useDelve = create<DelveState>((set, get) => {
     },
 
     async editFightMove(id, patch) {
+      if (readOnly()) return
       await write<'fightMoves'>('fightMoves', () => api.updateFightMove(id, patch))
     },
 
     async removeFightMove(id) {
+      if (readOnly()) return
       const before = get().graph?.fightMoves.get(id)
       if (!before) return
       await wipe('fightMoves', id, () => api.deleteFightMove(id), `remove ${before.slug}`, async () => {
@@ -613,6 +665,7 @@ export const useDelve = create<DelveState>((set, get) => {
     },
 
     async addFightRound(fightId) {
+      if (readOnly()) return
       const existing = [...(get().graph?.fightRounds.values() ?? [])].filter(
         (r) => r.fight_id === fightId,
       )
@@ -622,10 +675,12 @@ export const useDelve = create<DelveState>((set, get) => {
     },
 
     async editFightRound(id, patch) {
+      if (readOnly()) return
       await write<'fightRounds'>('fightRounds', () => api.updateFightRound(id, patch))
     },
 
     async removeFightRound(id) {
+      if (readOnly()) return
       const before = get().graph?.fightRounds.get(id)
       if (!before) return
       await wipe(
@@ -645,6 +700,7 @@ export const useDelve = create<DelveState>((set, get) => {
     },
 
     async setFightOutcome(roundId, moveId, to) {
+      if (readOnly()) return
       const { graph } = get()
       if (!graph) return
 
@@ -672,8 +728,8 @@ export const useDelve = create<DelveState>((set, get) => {
     },
 
     async refresh() {
-      const { graph, currentNodeId } = get()
-      if (!graph) return
+      const { graph, currentNodeId, demo } = get()
+      if (!graph || demo) return
       await get().loadStory(graph.story.id)
       set((s) => {
         if (currentNodeId && s.graph?.nodes.has(currentNodeId)) {

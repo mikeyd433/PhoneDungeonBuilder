@@ -48,8 +48,22 @@ export default function Automap({ layout, currentId, onTeleport, thumbnail }: Pr
 
   const [box, setBox] = useState<Box>(fitted)
   const svgRef = useRef<SVGSVGElement | null>(null)
-  const drag = useRef<{ x: number; y: number; box: Box } | null>(null)
+  const drag = useRef<{ x: number; y: number; box: Box; moved: boolean } | null>(null)
   const pinch = useRef<number | null>(null)
+
+  /**
+   * Pointer capture starts only once a drag really starts — never on
+   * pointer-down.
+   *
+   * Capturing immediately retargets the subsequent `click` to the <svg>, so it
+   * never reaches the room group underneath and F4.3's tap-to-teleport silently
+   * did nothing with a mouse. (Keyboard activation still worked, which is what
+   * made it look like the handler was fine.) Waiting for real movement leaves an
+   * ordinary click on an ordinary target, and a click that ends a pan is
+   * swallowed by the capture — which is exactly the behaviour you want from
+   * both.
+   */
+  const DRAG_THRESHOLD = 4
 
   // Refit whenever the dungeon's extent changes. Fitting the whole map beats
   // centring on one room: you open the map to see the shape of the thing, and a
@@ -93,20 +107,25 @@ export default function Automap({ layout, currentId, onTeleport, thumbnail }: Pr
         aria-label="Automap"
         onPointerDown={(e) => {
           if (!interactive) return
-          drag.current = { x: e.clientX, y: e.clientY, box }
-          e.currentTarget.setPointerCapture(e.pointerId)
+          drag.current = { x: e.clientX, y: e.clientY, box, moved: false }
         }}
         onPointerMove={(e) => {
           const d = drag.current
           if (!interactive || !d || e.buttons === 0) return
+          const dx = e.clientX - d.x
+          const dy = e.clientY - d.y
+          if (!d.moved) {
+            if (Math.abs(dx) < DRAG_THRESHOLD && Math.abs(dy) < DRAG_THRESHOLD) return
+            d.moved = true
+            e.currentTarget.setPointerCapture(e.pointerId)
+          }
           const k = perPixel()
-          setBox({
-            ...d.box,
-            x: d.box.x - (e.clientX - d.x) * k,
-            y: d.box.y - (e.clientY - d.y) * k,
-          })
+          setBox({ ...d.box, x: d.box.x - dx * k, y: d.box.y - dy * k })
         }}
-        onPointerUp={() => (drag.current = null)}
+        onPointerUp={(e) => {
+          if (drag.current?.moved) e.currentTarget.releasePointerCapture(e.pointerId)
+          drag.current = null
+        }}
         onPointerCancel={() => (drag.current = null)}
         onWheel={(e) => {
           if (!interactive) return

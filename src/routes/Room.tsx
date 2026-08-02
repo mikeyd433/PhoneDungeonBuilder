@@ -35,9 +35,16 @@ export default function Room() {
   const peers = usePresence(storyId, currentNodeId)
   const { queued, syncing } = useOfflineSync()
 
+  // Load only when this is a story we don't already have.
+  //
+  // Reloading unconditionally meant every arrival at this screen reset
+  // `currentNodeId` to the entrance — so F4.3's tap-a-room-to-teleport walked
+  // you back to the front door a moment after it put you where you asked for,
+  // and so did every trip out to the map, the ledger or the cast and back.
+  // Comparing ids still reloads properly when you switch stories.
   useEffect(() => {
-    if (storyId) void loadStory(storyId)
-  }, [storyId, loadStory])
+    if (storyId && graph?.story.id !== storyId) void loadStory(storyId)
+  }, [storyId, graph?.story.id, loadStory])
 
   if (loading) return <p className="p-6 text-mortar">Lighting a torch…</p>
   if (!graph || !derived || !currentNodeId) {
@@ -126,6 +133,13 @@ export default function Room() {
           </Link>
         </nav>
       </header>
+
+      {useDelve.getState().demo && (
+        <p className="border-b border-torch/40 bg-torch/10 px-4 py-2 text-xs">
+          Walkthrough story — it lives in memory, so nothing you change here is saved. Every screen
+          is the real one.
+        </p>
+      )}
 
       {queued > 0 && (
         <p className="border-b border-cold/50 bg-cold/10 px-4 py-2 text-xs">

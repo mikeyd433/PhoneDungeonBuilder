@@ -14,15 +14,18 @@ import Cast from '@/routes/Cast'
 export default function App() {
   const { session, ready } = useSession()
 
-  // The room-art bench needs no data and no account, so it stays reachable
-  // without a session — it is how the dressing gets reviewed.
-  if (window.location.pathname.endsWith('/preview')) {
+  // Two routes need neither data nor an account, so they stay reachable without
+  // a session: the room-art bench, and the walkthrough story, which is built in
+  // memory and never touches the database.
+  const path = window.location.pathname
+  if (path.endsWith('/preview')) {
     return (
       <Routes>
         <Route path="/preview" element={<Preview />} />
       </Routes>
     )
   }
+  if (path.includes('/story/demo')) return <StoryRoutes />
 
   if (!ready) return <p className="p-6 text-mortar">…</p>
   if (!session) return <Login />
@@ -31,6 +34,16 @@ export default function App() {
     <Routes>
       <Route path="/" element={<Stories />} />
       <Route path="/import" element={<Import />} />
+      <Route path="*" element={<StoryRoutes />} />
+    </Routes>
+  )
+}
+
+/** Every screen that hangs off one story. Shared so the walkthrough gets the
+ *  real routes rather than a parallel set that could drift from them. */
+function StoryRoutes() {
+  return (
+    <Routes>
       <Route path="/story/:storyId" element={<Room />} />
       <Route path="/story/:storyId/map" element={<MapScreen />} />
       <Route path="/story/:storyId/cast" element={<Cast />} />
