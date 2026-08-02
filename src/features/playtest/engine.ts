@@ -50,6 +50,9 @@ export interface PlaytestState {
   finished: boolean
   /** Which round of the fight the caller is in, or null when this isn't one. */
   fightRound: number | null
+  /** Consecutive silences in the current round. Resets on any keypress and on
+   *  entering a new round, exactly as the exported counter does. */
+  fightSilences: number
 }
 
 /** One move the caller can answer a round with, as the keypad hint shows it. */
@@ -82,6 +85,7 @@ export class PlaytestEngine {
         failedAttempts: 0,
         finished: true,
         fightRound: null,
+        fightSilences: 0,
       }
     }
     return {
@@ -91,6 +95,7 @@ export class PlaytestEngine {
       failedAttempts: 0,
       finished: node.node_type === 'ending',
       fightRound: this.openingRound(rootId),
+      fightSilences: 0,
     }
   }
 
@@ -259,7 +264,7 @@ export class PlaytestEngine {
     if (outcome.via === 'advance' && outcome.nextRound !== null) {
       const upcoming = view.rounds[outcome.nextRound]
       return {
-        next: { ...state, fightRound: outcome.nextRound, failedAttempts: 0 },
+        next: { ...state, fightRound: outcome.nextRound, failedAttempts: 0, fightSilences: 0 },
         spoken: upcoming.narration || `${view.fight.opponent_name}: ${upcoming.opponent_move}`,
       }
     }
@@ -287,7 +292,12 @@ export class PlaytestEngine {
 
     if (!target || !this.graph.nodes.has(target)) {
       return {
-        next: { ...state, fightRound: null, failedAttempts: state.failedAttempts + 1 },
+        next: {
+          ...state,
+          fightRound: null,
+          fightSilences: 0,
+          failedAttempts: state.failedAttempts + 1,
+        },
         spoken: `${spoken ?? 'That answer'} (Nowhere is set for this answer — the branch is unwritten.)`,
       }
     }
@@ -296,12 +306,23 @@ export class PlaytestEngine {
 
   /** F5.4 — the caller said nothing in time. */
   timeout(state: PlaytestState): { next: PlaytestState; spoken: string | null } {
-    // Hesitating in a fight is an answer. The exporter routes a round's timeout
-    // to the losing room for the same reason — otherwise a caller could wait
-    // out any round they couldn't solve — and the two must not disagree.
+    // Silence in a fight repeats the round a few times before the fight is
+    // called. Callers hesitate and mishear, and a round that killed you on the
+    // first pause would be unplayable — but a round that repeated forever could
+    // be waited out, so the patience is finite. The exporter counts the same
+    // way, with a flow variable and a split, and the two must not disagree.
     if (state.fightRound !== null) {
       const view = this.fightAt(state)
-      if (view) return this.leaveFight(state, view, resolveMiss(view), 'miss')
+      if (view) {
+        const silences = state.fightSilences + 1
+        if (silences < view.fight.silence_patience) {
+          return {
+            next: { ...state, fightSilences: silences, failedAttempts: state.failedAttempts + 1 },
+            spoken: this.roundPrompt(state),
+          }
+        }
+        return this.leaveFight(state, view, resolveMiss(view), 'miss')
+      }
     }
 
     const node = this.graph.nodes.get(state.nodeId)
@@ -323,6 +344,7 @@ export class PlaytestEngine {
         failedAttempts: 0,
         finished: node.node_type === 'ending',
         fightRound: this.openingRound(nodeId),
+        fightSilences: 0,
       },
       spoken: null,
     }

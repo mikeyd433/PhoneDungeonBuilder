@@ -29,10 +29,19 @@ describe('compiling a fight', () => {
     expect(names).not.toContain('SHARKS_gather')
   })
 
-  it('hands off from the room narration into round one', () => {
+  it('hands off from the room narration into round one, via the counter reset', () => {
     const { widgets } = compileStory(sharkGraph(), 'https://audio/')
     const play = widgets.find((w) => w.name === 'SHARKS_play')!
-    expect(play.transitions[0].next).toBe('SHARKS_r1_play')
+    // The reset zeroes the silence counters, so a fight re-entered by a loop
+    // doesn't start already out of patience.
+    expect(play.transitions[0].next).toBe('SHARKS_reset')
+    const reset = widgets.find((w) => w.name === 'SHARKS_reset')!
+    expect(reset.variables?.map((v) => v.key)).toEqual([
+      'SHARKS_r1_silence',
+      'SHARKS_r2_silence',
+      'SHARKS_r3_silence',
+    ])
+    expect(reset.transitions[0].next).toBe('SHARKS_r1_play')
   })
 
   it('gives every move its own transition', () => {
@@ -45,9 +54,38 @@ describe('compiling a fight', () => {
       { event: 'keypress', condition: 'Digits equals 2', next: 'DROWNED_play' },
       { event: 'keypress', condition: 'Digits equals 3', next: 'DROWNED_play' },
       { event: 'noMatch', next: 'DROWNED_play' },
-      // Silence loses too — the playtest engine agrees, and they must not differ.
-      { event: 'timeout', next: 'DROWNED_play' },
+      // Silence is counted rather than punished — see the patience test below.
+      { event: 'timeout', next: 'SHARKS_r1_waited' },
     ])
+  })
+
+  it('repeats a round on silence, then calls the fight', () => {
+    const { widgets } = compileStory(sharkGraph(), 'https://audio/')
+    const waited = widgets.find((w) => w.name === 'SHARKS_r1_waited')!
+    expect(waited.variables).toEqual([
+      { key: 'SHARKS_r1_silence', value: '{{ flow.variables.SHARKS_r1_silence | default: 0 | plus: 1 }}' },
+    ])
+    const patience = widgets.find((w) => w.name === 'SHARKS_r1_patience')!
+    expect(patience.transitions).toEqual([
+      { event: 'match', condition: 'Less than 3', next: 'SHARKS_r1_play' },
+      { event: 'noMatch', next: 'DROWNED_play' },
+    ])
+  })
+
+  it('honours a fight’s own patience', () => {
+    const g = makeGraph(['SHARKS', 'SHORE', 'DROWNED'], [], { endings: ['DROWNED'] })
+    addFight(g, 'SHARKS', {
+      moves: ['PUNCH beats Kick'],
+      rounds: ['Kick'],
+      win: 'SHORE',
+      lose: 'DROWNED',
+      patience: 1,
+    })
+    const patience = compileStory(g, 'https://audio/').widgets.find(
+      (w) => w.name === 'SHARKS_r1_patience',
+    )!
+    // Patience of 1 means the first silence calls it.
+    expect(patience.transitions[0].condition).toBe('Less than 1')
   })
 
   it('sends the last round’s countering digit to the winning room', () => {
@@ -81,7 +119,11 @@ describe('compiling a fight', () => {
     // Emitted anyway, pointing back at the room, so the flow stays connected
     // and the warning is what tells the author it needs finishing.
     const gather = widgets.find((w) => w.name === 'A_r1_gather')!
-    expect(gather.transitions.every((t) => t.next === 'A_play')).toBe(true)
+    // Every digit, and an unmapped one, point back at the room; only the
+    // silence counter goes anywhere else.
+    expect(
+      gather.transitions.filter((t) => t.event !== 'timeout').every((t) => t.next === 'A_play'),
+    ).toBe(true)
   })
 
   it('does not complain about several moves countering the same announcement', () => {

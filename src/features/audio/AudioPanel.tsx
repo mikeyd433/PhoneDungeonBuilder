@@ -12,6 +12,7 @@ import {
 import { audioPath, downloadAudio, publicAudioUrl, removeAudio, uploadAudio } from './storage'
 import Waveform from './Waveform'
 import { nextStatus } from './status'
+import { playsLineByLine } from '@/features/cast/dialogue'
 
 export default function AudioPanel({ nodeId }: { nodeId: string }) {
   const graph = useDelve((s) => s.graph)
@@ -127,6 +128,16 @@ export default function AudioPanel({ nodeId }: { nodeId: string }) {
           {node.audio_duration_ms ? ` · ${formatDuration(node.audio_duration_ms)}` : ''}
         </span>
       </div>
+
+      {/* A room assembled from line takes does not play this file at all, and a
+          recorder that stayed silent about that would have somebody re-record a
+          scene that was already finished. */}
+      {graph && playsLineByLine(graph, nodeId) && (
+        <p className="rounded border border-torch/40 bg-torch/10 p-2 text-xs">
+          This room plays line by line — its takes are on the lines below, in the editor. This file
+          is a spare and is not what the caller hears.
+        </p>
+      )}
 
       {url && <Waveform peaks={peaks} src={url} />}
 

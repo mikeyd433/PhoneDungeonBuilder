@@ -33,9 +33,9 @@ Two rules from §0 that everything else follows from:
 | Flat vs subflows | Stay flat. The widget budget meter says when to revisit (§11.2). |
 | Default gate fail | `refuse` — it teaches the player the item exists (§11.3). |
 | Counter clamp | 10, per story, configurable. The solver needs a ceiling or it never terminates (§11.5). |
-| Dialogue | Narration splits into attributed lines. **Audio is still one file per room** — lines exist for the script, not the flow. |
+| Dialogue | Narration splits into attributed lines. A room is one recording by default; record a line and the room switches to playing its lines in order, then offering its exits. That's what lets two separately-booked actors share a scene. |
 | Characters | A cast list with voice-actor assignment. No effect on the compiled flow. |
-| Fights | A first-class kind of room (a `fights` row hung off a node, not a `node_type`). **Functionally a room where you pick an exit**: each round names where every digit goes, and several may go to the same place. The counter rule (matching move advances, everything else loses) is only the default when a round doesn't name one. Unmapped digits and silence always take the losing route. |
+| Fights | A first-class kind of room (a `fights` row hung off a node, not a `node_type`). **Functionally a room where you pick an exit**: each round names where every digit goes, and several may go to the same place. The counter rule (matching move advances, everything else loses) is only the default when a round doesn't name one. An unmapped digit loses; silence repeats the round `silence_patience` times first. |
 
 ## Spec gaps resolved in code
 
@@ -79,6 +79,8 @@ capture. pnpm. Target device order: **tablet portrait, then phone, then desktop.
    `splitNarration` and `composeNarration` are inverses, and every line edit
    rewrites `nodes.narration` from the lines. Two independently-edited copies of
    the script would drift, and the recorded one is the one that ships.
+   What a room *plays* is `playbackFor` — one file, or a line take each. The
+   torch is lit only when every part has audio.
 9. **Playtest and export must agree about fights.** Both ask
    `resolveMove` (`src/features/fight/model.ts`) where a digit goes — neither
    decides for itself. Silence loses in both. A rule added to one and not the

@@ -9,10 +9,10 @@ import { canWrite } from '@/types/domain'
 /**
  * The cast list.
  *
- * Who speaks, who records them, and what each voice actor still owes. It has no
- * effect on the compiled flow — audio is one file per room whatever the cast
- * says — so everything here is production bookkeeping, and it is deliberately
- * kept off the room screen where it would compete with the story.
+ * Who speaks, who records them, and what each voice actor still owes. It does
+ * not change the SHAPE of the compiled flow — no extra gathers, no branching —
+ * so everything here is production bookkeeping, and it is deliberately kept off
+ * the room screen where it would compete with the story.
  */
 export default function Cast() {
   const { storyId } = useParams<{ storyId: string }>()
@@ -186,15 +186,17 @@ export default function Cast() {
         </section>
       )}
 
-      {/* What each actor still owes. Rooms, not lines — see `workloads`. */}
+      {/* What each actor still owes. The unit depends on how the room records;
+          `workloads` is where that rule lives. */}
       {queues.length > 0 && (
         <section>
           <h2 className="mb-1 font-carved uppercase tracking-[0.12em] text-torch">
             Recording queue
           </h2>
           <p className="mb-3 text-xs text-cold">
-            A room is one file, so a room is done when everyone in it is done. These are the rooms
-            each actor appears in that are still dark.
+            A room recorded as one file is booked for everyone in it, so it stays outstanding until
+            that single take exists. A room recorded line by line is outstanding only for whoever
+            is still missing their own lines.
           </p>
           <ul className="flex flex-col gap-3">
             {queues.map((q) => (
@@ -208,10 +210,12 @@ export default function Cast() {
                   </span>
                 </div>
                 {q.unrecordedSlugs.length === 0 ? (
-                  <p className="text-xs text-torch">Every room they appear in is recorded.</p>
+                  <p className="text-xs text-torch">Nothing outstanding.</p>
                 ) : (
                   <p className="text-xs text-mortar">
-                    {q.unrecordedSlugs.length} room(s) left: {q.unrecordedSlugs.slice(0, 12).join(', ')}
+                    {q.unrecordedSlugs.length} room(s) left
+                    {q.unrecordedLines > 0 && `, ${q.unrecordedLines} of them line takes`}:{' '}
+                    {q.unrecordedSlugs.slice(0, 12).join(', ')}
                     {q.unrecordedSlugs.length > 12 && ` … and ${q.unrecordedSlugs.length - 12} more`}
                   </p>
                 )}

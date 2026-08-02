@@ -74,6 +74,26 @@ export default function FightSection({ nodeId }: { nodeId: string }) {
         />
       </label>
 
+      <label className="flex flex-col gap-1">
+        <span className="text-xs text-mortar">Patience with silence</span>
+        <span className="text-xs text-cold">
+          How many times a round repeats before the fight is called. Callers hesitate; one is
+          brutal. Capped at 8, because Studio hangs up on a widget that runs ten times over.
+        </span>
+        <input
+          type="number"
+          min={1}
+          max={8}
+          disabled={!editable}
+          className={field}
+          defaultValue={fight.silence_patience}
+          onBlur={(e) => {
+            const n = Math.max(1, Math.min(8, Number(e.target.value) || 3))
+            if (n !== fight.silence_patience) void editFight(fight.id, { silence_patience: n })
+          }}
+        />
+      </label>
+
       {/* Moves. The digit is the row's position, so reordering is renaming. */}
       <div className="flex flex-col gap-2">
         <span className="text-xs text-mortar">Moves — the digit is the row number</span>

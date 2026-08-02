@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useDelve } from '@/features/graph/store'
 import { slugify, uniqueSlug } from '@/lib/slug'
-import { castList, matchCharacter, splitNarration } from './dialogue'
+import { castList, matchCharacter, playsLineByLine, splitNarration } from './dialogue'
 import { speakerHex, SPEAKER_COLORS } from './colors'
+import LineRecorder from './LineRecorder'
 import { canWrite } from '@/types/domain'
 
 /**
@@ -29,9 +30,25 @@ export default function DialogueSection({ nodeId }: { nodeId: string }) {
     .filter((l) => l.node_id === nodeId)
     .sort((a, b) => a.sort_order - b.sort_order)
 
-  const asPatch = () => lines.map((l) => ({ character_id: l.character_id, text: l.text }))
+  // Audio is carried explicitly: saving replaces the rows, so a line's take
+  // would be lost on every text edit if the patch didn't say which recording
+  // belongs to which line.
+  const asPatch = () =>
+    lines.map((l) => ({
+      character_id: l.character_id,
+      text: l.text,
+      audio_path: l.audio_path,
+      audio_duration_ms: l.audio_duration_ms,
+    }))
 
-  const save = async (next: Array<{ character_id: string | null; text: string }>) => {
+  const save = async (
+    next: Array<{
+      character_id: string | null
+      text: string
+      audio_path?: string | null
+      audio_duration_ms?: number | null
+    }>,
+  ) => {
     setBusy(true)
     await saveDialogue(nodeId, next)
     setBusy(false)
@@ -71,6 +88,8 @@ export default function DialogueSection({ nodeId }: { nodeId: string }) {
     setBusy(false)
   }
 
+  const splitAudio = playsLineByLine(graph, nodeId)
+
   const field =
     'w-full rounded border border-mortar/60 bg-stone px-3 py-2 outline-none focus:border-torch disabled:opacity-60'
 
@@ -83,8 +102,9 @@ export default function DialogueSection({ nodeId }: { nodeId: string }) {
       {lines.length === 0 ? (
         <>
           <p className="text-xs text-cold">
-            Not split. The room is still recorded as one file either way — splitting only says who
-            says what, so a voice actor can be handed their own lines.
+            Not split. The room is one recording, and stays that way unless you record a line of
+            its own — splitting says who says what, so a voice actor can be handed their own lines
+            and a scene can be assembled from two separate sessions.
           </p>
           <button
             disabled={!editable || busy || !node.narration.trim()}
@@ -97,7 +117,8 @@ export default function DialogueSection({ nodeId }: { nodeId: string }) {
       ) : (
         <>
           {lines.map((line, i) => (
-            <div key={line.id} className="flex items-start gap-2">
+            <div key={line.id} className="flex flex-col gap-1">
+              <div className="flex items-start gap-2">
               <select
                 disabled={!editable || busy}
                 value={line.character_id ?? ''}
@@ -150,6 +171,11 @@ export default function DialogueSection({ nodeId }: { nodeId: string }) {
                   ✕
                 </button>
               </div>
+              </div>
+              {/* A line only needs its own take when the scene is split between
+                  actors who record apart. Recording one is what switches this
+                  room from a single file to a line-by-line conversation. */}
+              <LineRecorder lineId={line.id} />
             </div>
           ))}
 
@@ -175,6 +201,19 @@ export default function DialogueSection({ nodeId }: { nodeId: string }) {
             The narration above is rebuilt from these lines every time you change one, so what gets
             recorded and what the script says can&apos;t drift apart.
           </p>
+
+          {splitAudio ? (
+            <p className="text-xs text-torch">
+              This room plays line by line: each take above is played in order, and only then are
+              the exits offered. Lines with no take will be read by Studio&apos;s voice.
+            </p>
+          ) : (
+            <p className="text-xs text-cold">
+              This room is still one recording — the file on the room itself. Record a line above
+              and it switches to playing line by line, which is how a scene split between two
+              separately-booked actors gets assembled.
+            </p>
+          )}
         </>
       )}
 

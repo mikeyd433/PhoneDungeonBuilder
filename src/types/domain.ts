@@ -123,9 +123,11 @@ export interface Membership {
 // ------------------------------------------------------------ cast & dialogue
 
 /**
- * Somebody who speaks. Cast entries are a production concern only — they group
- * lines by who says them and by who records them, and have no effect at all on
- * the compiled flow, because audio is still one file per room.
+ * Somebody who speaks. Cast entries group lines by who says them and by who
+ * records them. They have no effect on the compiled flow's SHAPE — no extra
+ * gathers, no branching — but a line with its own recording does become its own
+ * Play widget, so a conversation voiced by two people costs a widget per line
+ * rather than one for the room.
  */
 export interface Character {
   id: string
@@ -150,6 +152,11 @@ export interface DialogueLine {
   character_id: string | null
   text: string
   sort_order: number
+  /** A line may carry its own recording, so a conversation between two
+   *  separately-booked actors can be assembled from their two sessions. Null
+   *  means this line has no take of its own and the room's file covers it. */
+  audio_path: string | null
+  audio_duration_ms: number | null
   created_at: string
   updated_at: string
 }
@@ -175,6 +182,10 @@ export interface Fight {
   opponent_name: string
   win_node_id: string | null
   lose_node_id: string | null
+  /** How many times a round repeats on silence before the fight is called.
+   *  Capped at 8 by the database: Studio ends an execution when one widget
+   *  runs ten times in a row, so more patience than that is a hangup. */
+  silence_patience: number
   created_at: string
   updated_at: string
 }

@@ -124,6 +124,7 @@ export function addFight(
     win?: string
     lose?: string
     opponent?: string
+    patience?: number
   },
 ): Fight {
   const nodeId = idOf(graph, atSlug)
@@ -134,6 +135,7 @@ export function addFight(
     opponent_name: opts.opponent ?? 'The shark',
     win_node_id: opts.win ? idOf(graph, opts.win) : null,
     lose_node_id: opts.lose ? idOf(graph, opts.lose) : null,
+    silence_patience: opts.patience ?? 3,
     created_at: STAMP,
     updated_at: STAMP,
   }
@@ -224,9 +226,17 @@ export function addCharacter(
   return character
 }
 
-/** Attach lines to a room. `"CARTER|line text"` attributes; plain text doesn't. */
-export function addLines(graph: StoryGraph, atSlug: string, lines: string[]): DialogueLine[] {
+/** Attach lines to a room. `"CARTER|line text"` attributes; plain text doesn't.
+ *  `recorded` gives every line its own take, which is what turns a room into a
+ *  line-by-line conversation rather than one file. */
+export function addLines(
+  graph: StoryGraph,
+  atSlug: string,
+  lines: string[],
+  opts: { recorded?: boolean } = {},
+): DialogueLine[] {
   const nodeId = idOf(graph, atSlug)
+  const recorded = opts.recorded ?? false
   return lines.map((spec, i) => {
     const [maybeSlug, ...rest] = spec.split('|')
     const attributed = rest.length > 0
@@ -240,6 +250,8 @@ export function addLines(graph: StoryGraph, atSlug: string, lines: string[]): Di
       character_id: character?.id ?? null,
       text: attributed ? rest.join('|') : spec,
       sort_order: i,
+      audio_path: recorded ? `audio/line-${atSlug}-${i}.mp3` : null,
+      audio_duration_ms: recorded ? 2000 : null,
       created_at: STAMP,
       updated_at: STAMP,
     }

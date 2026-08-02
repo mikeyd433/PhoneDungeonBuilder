@@ -1,5 +1,6 @@
 import type { StoryGraph } from '@/types/domain'
 import { graphEdges } from '@/features/graph/edges'
+import { playbackFor } from '@/features/cast/dialogue'
 import {
   fightProblems,
   fightsByNode,
@@ -224,36 +225,65 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
     const hideGated = outgoing.filter(
       (c) => gateByChoice.get(c.id)?.fail_behavior === 'hide',
     )
-    let say = node.narration
-    if (hideGated.length > 0) {
-      // §6.3: a hidden choice simply isn't spoken. Wrapping each hidden line in
-      // a Liquid conditional costs no extra widget.
-      const lines = hideGated
-        .map(
-          (c) =>
-            `{% if flow.variables.${gateVarName(slug, c.digit)} == "pass" %} Press ${c.digit} to ${c.label}.{% endif %}`,
-        )
-        .join('')
-      say = `${node.narration}${lines}`
-    }
+    // §6.3: a hidden choice simply isn't spoken. Wrapping each hidden line in
+    // a Liquid conditional costs no extra widget.
+    const hiddenLines = hideGated
+      .map(
+        (c) =>
+          `{% if flow.variables.${gateVarName(slug, c.digit)} == "pass" %} Press ${c.digit} to ${c.label}.{% endif %}`,
+      )
+      .join('')
 
     // Where the room's narration hands off. A fight room's narration is the
     // lead-in, so it hands off to round one rather than to a gather.
     const roomExit = () => {
       if (node.node_type === 'ending') return wname(slug, 'hangup')
       if (!fight) return wname(slug, 'gather')
-      return rounds.length > 0 ? roundName(slug, 0, 'play') : fightOutcome(fight.win_node_id, slug)
+      return rounds.length > 0 ? `${slug}_reset` : fightOutcome(fight.win_node_id, slug)
     }
 
-    widgets.push({
-      name: playName(slug),
-      type: 'say-play',
-      nodeId: node.id,
-      note: node.audio_path ? 'Play the recorded audio.' : 'No audio yet — Studio will speak this.',
-      say: node.audio_path ? undefined : say,
-      playUrl: node.audio_path ? `${audioBaseUrl}${node.audio_path}` : undefined,
-      transitions: [{ event: 'audioComplete', next: roomExit() }],
+    // The room's audio. Usually one widget; a conversation assembled from
+    // separately-booked actors is one widget per line, played back to back and
+    // landing on the same exit — which is what makes "hold the conversation,
+    // then offer the choice" a single room rather than a chain of them.
+    const parts = playbackFor(graph, node.id)
+    const partName = (i: number) => (i === 0 ? playName(slug) : `${slug}_line${i + 1}`)
+
+    parts.forEach((part, i) => {
+      const last = i === parts.length - 1
+      // Hidden choices are appended to whatever is read last, so the Liquid
+      // conditional still runs immediately before the gather.
+      const text = last ? `${part.say}${hiddenLines}` : part.say
+      widgets.push({
+        name: partName(i),
+        type: 'say-play',
+        nodeId: node.id,
+        note: part.audioPath
+          ? `Play the recorded audio.${part.speaker ? ` — ${part.speaker}` : ''}`
+          : `No audio yet — Studio will speak this.${part.speaker ? ` — ${part.speaker}` : ''}`,
+        say: part.audioPath ? undefined : text,
+        playUrl: part.audioPath ? `${audioBaseUrl}${part.audioPath}` : undefined,
+        transitions: [{ event: 'audioComplete', next: last ? roomExit() : partName(i + 1) }],
+      })
     })
+
+    if (parts.length > 1) {
+      // A hidden choice is spoken by a Liquid conditional inside a Say widget,
+      // and a Play widget has no text to hide it in. Silently dropping the line
+      // would make the door invisible on the phone but present in the editor.
+      const lastPart = parts[parts.length - 1]
+      if (hiddenLines && lastPart.audioPath) {
+        warnings.push(
+          `${slug} hides ${hideGated.length} choice(s) behind a gate, but its last line is recorded audio — a hidden choice can only be spoken by a Say widget, so it will never be offered.`,
+        )
+      }
+      const unrecorded = parts.filter((p) => !p.audioPath).length
+      if (unrecorded > 0) {
+        warnings.push(
+          `${slug} plays line by line but ${unrecorded} of its ${parts.length} lines have no take — those will be read by Studio's voice in the middle of the scene.`,
+        )
+      }
+    }
 
     if (node.node_type === 'ending') {
       widgets.push({
@@ -302,11 +332,14 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
           legend.push(`${m + 1}=${move.slug}`)
         })
 
-        // Silence and unmapped digits take the miss route. Routing timeout back
-        // to the round would let a caller wait out any round they couldn't
-        // solve, and the playtest engine loses on silence for the same reason.
+        // An unmapped digit is an answer, and it is the wrong one.
         roundTransitions.push({ event: 'noMatch', next: missNext })
-        roundTransitions.push({ event: 'timeout', next: missNext })
+        // Silence is not. Callers hesitate, mishear, or are still working out
+        // which digit is which, so the round repeats a few times before the
+        // fight is called — through a counter, because routing timeout straight
+        // back at the round would run one widget in a loop and Studio ends an
+        // execution after ten consecutive runs of the same widget (§6.0).
+        roundTransitions.push({ event: 'timeout', next: `${slug}_r${i + 1}_waited` })
 
         widgets.push({
           name: roundName(slug, i, 'gather'),
@@ -318,7 +351,51 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
               : 'This round has no moves — every answer takes the losing route.',
           transitions: roundTransitions,
         })
+
+        // Silence handling: count it, then either repeat the round or call it.
+        const silenceVar = `${slug}_r${i + 1}_silence`
+        widgets.push({
+          name: `${slug}_r${i + 1}_waited`,
+          type: 'set-variables',
+          nodeId: node.id,
+          note: 'The caller said nothing. Count it.',
+          variables: [
+            {
+              key: silenceVar,
+              value: `{{ flow.variables.${silenceVar} | default: 0 | plus: 1 }}`,
+            },
+          ],
+          transitions: [{ event: 'next', next: `${slug}_r${i + 1}_patience` }],
+        })
+        widgets.push({
+          name: `${slug}_r${i + 1}_patience`,
+          type: 'split-based-on',
+          nodeId: node.id,
+          note: `Repeat the round up to ${fight.silence_patience} times, then the fight is called.`,
+          splitOn: `{{flow.variables.${silenceVar}}}`,
+          transitions: [
+            {
+              event: 'match',
+              condition: `Less than ${fight.silence_patience}`,
+              next: roundName(slug, i, 'play'),
+            },
+            { event: 'noMatch', next: missNext },
+          ],
+        })
       })
+
+      // The counters live for the whole call, so a fight re-entered by a loop
+      // would start already out of patience. Zero them on the way in.
+      if (rounds.length > 0) {
+        widgets.push({
+          name: `${slug}_reset`,
+          type: 'set-variables',
+          nodeId: node.id,
+          note: 'Clear the silence counters, so re-entering this fight starts fresh.',
+          variables: rounds.map((_, i) => ({ key: `${slug}_r${i + 1}_silence`, value: '0' })),
+          transitions: [{ event: 'next', next: roundName(slug, 0, 'play') }],
+        })
+      }
 
       for (const problem of fightProblems(view)) {
         warnings.push(`${slug}: ${problem}`)

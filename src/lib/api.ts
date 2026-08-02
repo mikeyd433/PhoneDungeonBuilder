@@ -317,7 +317,15 @@ export const deleteDialogueLine = (id: string) => deleteRow('dialogue_lines', id
 export async function replaceDialogue(
   storyId: string,
   nodeId: string,
-  lines: Array<{ character_id: string | null; text: string }>,
+  lines: Array<{
+    character_id: string | null
+    text: string
+    /* Carried through explicitly. These rows are deleted and re-inserted, so a
+       line's take would be lost on every text edit if the caller didn't say
+       which recording belongs to which line. */
+    audio_path?: string | null
+    audio_duration_ms?: number | null
+  }>,
 ): Promise<DialogueLine[]> {
   const { error } = await supabase.from('dialogue_lines').delete().eq('node_id', nodeId)
   if (error) throw error

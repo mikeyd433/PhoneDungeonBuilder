@@ -4,6 +4,7 @@ import { useDelve } from '@/features/graph/store'
 import { PlaytestEngine, type PlaytestState } from '@/features/playtest/engine'
 import { publicAudioUrl } from '@/features/audio/storage'
 import { DIGITS } from '@/types/domain'
+import { playbackFor } from '@/features/cast/dialogue'
 
 interface Line {
   who: 'story' | 'caller'
@@ -45,39 +46,79 @@ export default function Playtest() {
     [ttsOn],
   )
 
+  /**
+   * What a room reads out, as transcript lines.
+   *
+   * A room recorded as one file is one line, as it always was. A room whose
+   * lines carry their own takes reads them one after another, with the speaker
+   * named — the conversation plays out, and only then are the exits offered.
+   */
+  const roomLines = useCallback(
+    (nodeId: string, slug: string): Line[] => {
+      if (!graph) return []
+      const parts = playbackFor(graph, nodeId)
+      const written = parts.filter((p) => p.say.trim())
+      if (written.length === 0) return [{ who: 'story', text: `(${slug} has no script yet)` }]
+      return written.map((p) => ({
+        who: 'story',
+        text: p.speaker ? `${p.speaker}: ${p.say}` : p.say,
+      }))
+    },
+    [graph],
+  )
+
   const begin = useCallback(() => {
     if (!engine || !graph) return
     speechSynthesis?.cancel?.()
     const start = engine.start()
     setState(start)
     const first = graph.nodes.get(start.nodeId)
-    const opening: Line[] = first
-      ? [{ who: 'story', text: first.narration || `(${first.slug} has no script yet)` }]
-      : []
+    const opening: Line[] = first ? roomLines(first.id, first.slug) : []
     // A fight room reads its lead-in, then the first round.
     const round = engine.roundPrompt(start)
     if (round) opening.push({ who: 'story', text: round })
     setLines(opening)
-  }, [engine, graph])
+  }, [engine, graph, roomLines])
 
   useEffect(() => {
     if (engine && !state) begin()
   }, [engine, state, begin])
 
-  // Play the room: real audio where it exists, TTS where it doesn't.
+  // Play the room: real audio where it exists, TTS where it doesn't. A room
+  // recorded line by line plays its takes back to back, so a conversation
+  // between two separately-booked actors sounds on the playtest the way it will
+  // sound on the phone rather than as one voice reading both parts.
   useEffect(() => {
-    if (!node) return
-    if (node.audio_path) {
-      speechSynthesis?.cancel?.()
-      const el = audioRef.current
-      if (el) {
-        el.src = publicAudioUrl(node.audio_path)
-        void el.play().catch(() => speak(node.narration))
+    if (!node || !graph) return
+    const parts = playbackFor(graph, node.id)
+    let cancelled = false
+    let index = 0
+
+    const el = audioRef.current
+    const playNext = () => {
+      if (cancelled || index >= parts.length) return
+      const part = parts[index++]
+      if (part.audioPath && el) {
+        speechSynthesis?.cancel?.()
+        el.src = publicAudioUrl(part.audioPath)
+        void el.play().catch(() => speak(part.say))
+        return
       }
-    } else {
-      speak(node.narration)
+      speak(part.say)
+      // An unrecorded line in the middle of a recorded scene: TTS doesn't
+      // report completion through the audio element, so move on immediately
+      // rather than stalling the rest of the conversation.
+      playNext()
     }
-  }, [node, speak])
+
+    if (el) el.onended = playNext
+    playNext()
+
+    return () => {
+      cancelled = true
+      if (el) el.onended = null
+    }
+  }, [node, graph, speak])
 
   // F5.4 — the timeout branch fires if the caller says nothing in time.
   useEffect(() => {
@@ -110,7 +151,7 @@ export default function Playtest() {
     if (spoken) added.push({ who: 'story', text: spoken })
     const movedTo = next.nodeId !== state?.nodeId ? graph.nodes.get(next.nodeId) : null
     if (movedTo) {
-      added.push({ who: 'story', text: movedTo.narration || `(${movedTo.slug} has no script yet)` })
+      added.push(...roomLines(movedTo.id, movedTo.slug))
       // Walking into a fight: its first round follows the room's lead-in.
       const opening = engine?.roundPrompt(next)
       if (opening) added.push({ who: 'story', text: opening })

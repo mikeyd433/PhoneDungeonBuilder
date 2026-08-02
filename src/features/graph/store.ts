@@ -64,8 +64,16 @@ interface DelveState {
    *  so the recorded text and the script can never disagree. */
   saveDialogue: (
     nodeId: string,
-    lines: Array<{ character_id: string | null; text: string }>,
+    lines: Array<{
+      character_id: string | null
+      text: string
+      audio_path?: string | null
+      audio_duration_ms?: number | null
+    }>,
   ) => Promise<void>
+  /** Attach a take to one line. Separate from saveDialogue because the `voice`
+   *  role may do this and may not touch anything else on the row. */
+  setLineAudio: (id: string, path: string, durationMs: number) => Promise<void>
 
   addFight: (nodeId: string) => Promise<void>
   editFight: (id: string, patch: Partial<Fight>) => Promise<void>
@@ -469,6 +477,12 @@ export const useDelve = create<DelveState>((set, get) => {
     },
 
     // ------------------------------------------------------------ fights
+
+    async setLineAudio(id, path, durationMs) {
+      await write<'dialogue'>('dialogue', () =>
+        api.updateDialogueLine(id, { audio_path: path, audio_duration_ms: durationMs }),
+      )
+    },
 
     async addFight(nodeId) {
       await write<'fights'>('fights', (g) => api.createFight(g.story.id, { node_id: nodeId }))

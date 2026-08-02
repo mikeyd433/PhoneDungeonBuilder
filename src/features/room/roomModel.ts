@@ -9,7 +9,7 @@ import type {
 } from '@/types/domain'
 import { WALL_EXITS } from '@/types/domain'
 import { buildFightView, type FightView } from '@/features/fight/model'
-import { linesFor } from '@/features/cast/dialogue'
+import { isFullyRecorded, linesFor } from '@/features/cast/dialogue'
 
 /**
  * What one room shows, derived from a single node's record.
@@ -61,7 +61,8 @@ export interface RoomView {
    *  this room. Swiping the floor plaque cycles them, so a whole choice set can
    *  be reviewed without walking back up. */
   siblings: string[]
-  /** F1.5 — lit when audio exists. Unfinished territory is literally dark. */
+  /** F1.5 — lit when the room's audio is complete. Unfinished territory is
+   *  literally dark. For a room recorded line by line, that means every line. */
   torchLit: boolean
   /** Which of the ten room designs this room is dressed in. */
   design: string
@@ -214,7 +215,11 @@ export function buildRoomView(
     overflowExits,
     retreats,
     siblings,
-    torchLit: Boolean(node.audio_path),
+    // F1.5 — the torch means "there is audio for this room", and for a room
+    // assembled line by line that is only true once every line has a take. One
+    // recorded line out of four is a scene with three silences in it, and
+    // lighting it would be exactly the atmosphere-over-data §0 forbids.
+    torchLit: isFullyRecorded(graph, nodeId),
     design: node.room_design || 'stone',
     isEnding,
     depth: derived.depth.get(nodeId) ?? null,

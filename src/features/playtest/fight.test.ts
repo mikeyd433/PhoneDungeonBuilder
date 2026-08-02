@@ -71,8 +71,44 @@ describe('playtesting a fight', () => {
     expect(engine.press(atTheFight(engine), '9').next.nodeId).toBe(idOf(g, 'DROWNED'))
   })
 
-  it('loses on silence, the same as the exported flow does', () => {
+  it('repeats the round on silence before calling the fight', () => {
+    // Callers hesitate. Three strikes by default, and the exported flow counts
+    // the same way — a caller who never answers still loses eventually, so the
+    // round cannot be waited out.
     const g = sharkGraph()
+    const engine = new PlaytestEngine(g)
+    let state = atTheFight(engine)
+
+    const first = engine.timeout(state)
+    expect(first.next.nodeId).toBe(idOf(g, 'SHARKS'))
+    expect(first.spoken).toContain('Kick')
+    state = first.next
+
+    state = engine.timeout(state).next
+    expect(state.nodeId).toBe(idOf(g, 'SHARKS'))
+
+    expect(engine.timeout(state).next.nodeId).toBe(idOf(g, 'DROWNED'))
+  })
+
+  it('forgives the silences once the caller answers', () => {
+    const g = sharkGraph()
+    const engine = new PlaytestEngine(g)
+    const waited = engine.timeout(engine.timeout(atTheFight(engine)).next).next
+    expect(waited.fightSilences).toBe(2)
+    // Answering round one correctly moves on with a clean slate.
+    expect(engine.press(waited, '1').next.fightSilences).toBe(0)
+  })
+
+  it('respects a fight that gives only one chance', () => {
+    const g = makeGraph(['ENTRANCE', 'SHARKS', 'DROWNED'], ['ENTRANCE>SHARKS'], {
+      endings: ['DROWNED'],
+    })
+    addFight(g, 'SHARKS', {
+      moves: ['PUNCH beats Kick'],
+      rounds: ['Kick'],
+      lose: 'DROWNED',
+      patience: 1,
+    })
     const engine = new PlaytestEngine(g)
     expect(engine.timeout(atTheFight(engine)).next.nodeId).toBe(idOf(g, 'DROWNED'))
   })

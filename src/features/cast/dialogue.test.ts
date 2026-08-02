@@ -119,6 +119,33 @@ describe('cast helpers', () => {
     expect(sam.unrecordedSlugs).toEqual(['A'])
   })
 
+  it('counts a one-file room as outstanding for everyone in it', () => {
+    // Nobody can book their half of a scene that records as a single take.
+    const g = makeGraph(['A'], [])
+    addCharacter(g, 'CARTER', { name: 'Carter', voice_actor: 'Sam' })
+    addCharacter(g, 'MIKE', { name: 'Mike', voice_actor: 'Alex' })
+    addLines(g, 'A', ['CARTER|one', 'MIKE|two'])
+
+    for (const q of workloads(g)) {
+      expect(q.unrecordedSlugs).toEqual(['A'])
+      expect(q.unrecordedLines).toBe(0)
+    }
+  })
+
+  it('counts a line-by-line room only for the actors still missing takes', () => {
+    const g = makeGraph(['A'], [])
+    addCharacter(g, 'CARTER', { name: 'Carter', voice_actor: 'Sam' })
+    addCharacter(g, 'MIKE', { name: 'Mike', voice_actor: 'Alex' })
+    const [carters] = addLines(g, 'A', ['CARTER|one', 'MIKE|two'], { recorded: true })
+    // Alex's line has a take; Sam's is pulled, so only Sam owes anything.
+    g.dialogue.set(carters.id, { ...carters, audio_path: null, audio_duration_ms: null })
+
+    const byActor = new Map(workloads(g).map((q) => [q.actor, q]))
+    expect(byActor.get('Sam')!.unrecordedSlugs).toEqual(['A'])
+    expect(byActor.get('Sam')!.unrecordedLines).toBe(1)
+    expect(byActor.get('Alex')!.unrecordedSlugs).toEqual([])
+  })
+
   it('groups lines with no voice actor separately, and last', () => {
     const g = makeGraph(['A'], [])
     addCharacter(g, 'CARTER', { name: 'Carter', voice_actor: 'Sam' })
