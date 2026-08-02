@@ -19,6 +19,12 @@ export function buildSheet(
 ): string {
   const out: string[] = []
   const byNode = new Map<string, Widget[]>()
+  // Seeded with every room, not just the ones that compiled to something. An
+  // unrecorded ending emits no widgets at all — it is silence and then the call
+  // ends — and grouping purely by widget made those rooms vanish out of the
+  // sheet, which is exactly where somebody looks to find what still needs
+  // recording.
+  for (const node of graph.nodes.values()) byNode.set(node.id, [])
   for (const w of compiled.widgets) {
     const key = w.nodeId ?? '—'
     if (!byNode.has(key)) byNode.set(key, [])
@@ -117,8 +123,6 @@ function widgetLabel(type: Widget['type']): string {
       return 'Set Variables'
     case 'split-based-on':
       return 'Split Based On'
-    case 'hangup':
-      return 'Hangup'
   }
 }
 

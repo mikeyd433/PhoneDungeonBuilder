@@ -42,7 +42,6 @@ export type WidgetType =
   | 'gather-input-on-call'
   | 'set-variables'
   | 'split-based-on'
-  | 'hangup'
 
 export interface Transition {
   event: string
@@ -100,7 +99,12 @@ export interface CompileResult {
 }
 
 /** §6.0 — 2,000 widgets across the parent flow and all linked subflows. */
-export const WIDGET_LIMIT = 2000
+/**
+ * Studio's own ceiling: the flow-definition schema caps `states` at 1000.
+ * This said 2000, so the meter would have reported a comfortable margin on a
+ * flow the API refuses outright.
+ */
+export const WIDGET_LIMIT = 1000
 /** §6.0 — an execution ends after 1,000 steps. */
 export const STEP_LIMIT = 1000
 /**
@@ -130,9 +134,7 @@ export function gatherProperties(timeoutSeconds: number): Record<string, unknown
     number_of_digits: 1,
     stop_gather: true,
     timeout: timeoutSeconds,
-    finish_on_key: '',
-    speech_timeout: 'auto',
-    gather_language: 'en-US',
+    gather_language: 'en',
   }
 }
 
@@ -201,7 +203,7 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
   const inventory = planInventory(graph)
   const collidingRooms = new Set(keyCollisions(graph))
   /** Every room that can jump to the readback, and where it comes back to. */
-  const returnsTo: Array<{ slug: string; next: string }> = []
+  const returnsTo: Array<{ slug: string; next: string | null }> = []
 
   const playName = (slug: string) => wname(slug, 'play')
 
@@ -219,8 +221,12 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
    *
    * Only local names, so this can never recurse into another node.
    */
-  const afterAudioName = (n: StoryNode): string => {
-    if (n.node_type === 'ending') return wname(n.slug, 'hangup')
+  const afterAudioName = (n: StoryNode): string | null => {
+    // Studio has no hangup widget — it is not in the flow schema's list of
+    // types at all, and emitting one made the whole import fail validation.
+    // A call ends when execution reaches a transition with no target, so an
+    // ending simply leads nowhere.
+    if (n.node_type === 'ending') return null
     if (fights.has(n.id)) return `${n.slug}_reset`
     return wname(n.slug, 'gather')
   }
@@ -228,7 +234,7 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
   /** Replaying a room: its audio again if it has any, else its choices. Used by
    *  the timeout and wrong-keypress defaults, which must NOT re-run arrival
    *  effects — granting the same item twice for hesitating would be a gift. */
-  const replayName = (n: StoryNode): string =>
+  const replayName = (n: StoryNode): string | null =>
     playbackFor(graph, n.id).some((p) => p.audioPath) ? playName(n.slug) : afterAudioName(n)
 
   /**
@@ -240,7 +246,7 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
    * never granted and a gate was tested against a variable nothing had set.
    * It also breaks outright now that an unrecorded room has no play widget.
    */
-  const entryName = (n: StoryNode): string => {
+  const entryName = (n: StoryNode): string | null => {
     if (effectsFor((e) => e.node_id === n.id).length > 0) return wname(n.slug, 'fx')
     if (choicesFrom(n.id).some((c) => gateByChoice.has(c.id))) return wname(n.slug, 'gates')
     return replayName(n)
@@ -320,10 +326,7 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
 
     // Where the room's narration hands off. A fight room's narration is the
     // lead-in, so it hands off to round one rather than to a gather.
-    const roomExit = () => {
-      if (node.node_type === 'ending') return wname(slug, 'hangup')
-      return afterAudioName(node)
-    }
+    const roomExit = () => afterAudioName(node)
 
     // The room's audio. Usually one widget; a conversation assembled from
     // separately-booked actors is one widget per line, played back to back and
@@ -371,16 +374,9 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
       )
     }
 
-    if (node.node_type === 'ending') {
-      widgets.push({
-        name: wname(slug, 'hangup'),
-        type: 'hangup',
-        nodeId: node.id,
-        note: 'The way ends here.',
-        transitions: [],
-      })
-      continue
-    }
+    // An ending needs no widget of its own: its recording (if any) was emitted
+    // above and leads nowhere, which is how a Studio call hangs up.
+    if (node.node_type === 'ending') continue
 
     // ---- a fight: two widgets per round, and no gather for the room itself
     if (fight) {
@@ -421,7 +417,7 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
               ? roundEntry(slug, rounds, outcome.nextRound)
               : fightOutcome(outcome.nodeId, node)
           roundTransitions.push({
-            event: 'keypress',
+            event: 'match',
             condition: `Digits equals ${m + 1}`,
             match: { type: 'equal_to', value: String(m + 1) },
             next,
@@ -431,13 +427,9 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
 
         // An unmapped digit is an answer, and it is the wrong one.
         roundTransitions.push({ event: 'noMatch', next: missNext })
-        // Silence is not. Callers hesitate, mishear, or are still working out
-        // which digit is which, so the round repeats a few times before the
-        // fight is called — through a counter, because routing timeout straight
-        // back at the round would run one widget in a loop and Studio ends an
-        // execution after ten consecutive runs of the same widget (§6.0).
-        roundTransitions.push({ event: 'timeout', next: `${slug}_r${i + 1}_waited` })
 
+        // Same split as a room's keypad, and for the same reason: a gather
+        // takes keypress, speech and timeout, and carries no conditions.
         widgets.push({
           name: roundName(slug, i, 'gather'),
           type: 'gather-input-on-call',
@@ -447,6 +439,24 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
               ? `${legend.join(', ')}. Any other digit, and silence, takes the losing route.`
               : 'This round has no moves — every answer takes the losing route.',
           properties: gatherProperties(node.timeout_seconds),
+          transitions: [
+            { event: 'keypress', next: `${slug}_r${i + 1}_keys` },
+            { event: 'speech', next: `${slug}_r${i + 1}_keys` },
+            // Silence is not a wrong answer. Callers hesitate, mishear, or are
+            // still working out which digit is which, so the round repeats a
+            // few times before the fight is called — through a counter, because
+            // routing timeout straight back at the round would run one widget
+            // in a loop and Studio ends an execution after ten consecutive runs
+            // of the same widget (§6.0).
+            { event: 'timeout', next: `${slug}_r${i + 1}_waited` },
+          ],
+        })
+        widgets.push({
+          name: `${slug}_r${i + 1}_keys`,
+          type: 'split-based-on',
+          nodeId: node.id,
+          note: 'Which move the caller answered with.',
+          splitOn: `{{widgets.${roundName(slug, i, 'gather')}.Digits}}`,
           transitions: roundTransitions,
         })
 
@@ -526,7 +536,8 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
     }
 
     // ---- gather
-    const transitions: Transition[] = []
+    /** One per digit, for the split that follows the gather. */
+    const keyTransitions: Transition[] = []
     for (const choice of outgoing) {
       const gate = gateByChoice.get(choice.id)
       const fx = effectsFor((e) => e.choice_id === choice.id)
@@ -558,13 +569,16 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
 
       if (gate && gate.fail_behavior !== 'hide') {
         const splitName = `${slug}_d${digitToken(choice.digit)}_gate`
-        const failNext =
+        // Named separately from `failNext`, which may be null when a divert
+        // lands on an unrecorded ending — a widget's own name never can be.
+        const refuseName = `${slug}_d${digitToken(choice.digit)}_refuse`
+        const failNext: string | null =
           gate.fail_behavior === 'divert'
             ? gate.fail_node_id
               ? entryName(graph.nodes.get(gate.fail_node_id) ?? node)
               : wname(slug, 'gather')
             : gate.fail_audio_path
-              ? `${slug}_d${digitToken(choice.digit)}_refuse`
+              ? refuseName
               : wname(slug, 'gather')
 
         widgets.push({
@@ -590,7 +604,7 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
           // experience but not a robot voice mid-scene.
           if (gate.fail_audio_path) {
             widgets.push({
-              name: failNext,
+              name: refuseName,
               type: 'say-play',
               nodeId: node.id,
               note:
@@ -608,8 +622,8 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
         dest = splitName
       }
 
-      transitions.push({
-        event: 'keypress',
+      keyTransitions.push({
+        event: 'match',
         condition: `Digits equals ${choice.digit}`,
         match: { type: 'equal_to', value: choice.digit },
         next: dest,
@@ -630,8 +644,8 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
     // that records WHICH room to come back to — Studio has no return, so the
     // room has to leave itself a note on the way out.
     if (inventory && !collidingRooms.has(slug)) {
-      transitions.push({
-        event: 'keypress',
+      keyTransitions.push({
+        event: 'match',
         condition: `Digits equals ${inventory.key}`,
         match: { type: 'equal_to', value: inventory.key },
         next: invRetName(slug),
@@ -647,16 +661,29 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
       returnsTo.push({ slug, next: replayName(node) })
     }
 
-    transitions.push({ event: 'timeout', next: timeoutTarget })
-    transitions.push({ event: 'noMatch', next: invalidTarget })
-
+    // Studio's shape, not ours: a gather collects and hands off, and a split
+    // decides. A gather-input-on-call accepts only keypress, speech and
+    // timeout, and none of them may carry conditions — putting the per-digit
+    // tests on the gather made the whole flow fail schema validation on import.
     widgets.push({
       name: wname(slug, 'gather'),
       type: 'gather-input-on-call',
       nodeId: node.id,
       note: `Stop gathering after 1 digit; ${node.timeout_seconds}s timeout.`,
       properties: gatherProperties(node.timeout_seconds),
-      transitions,
+      transitions: [
+        { event: 'keypress', next: wname(slug, 'keys') },
+        { event: 'speech', next: wname(slug, 'keys') },
+        { event: 'timeout', next: timeoutTarget },
+      ],
+    })
+    widgets.push({
+      name: wname(slug, 'keys'),
+      type: 'split-based-on',
+      nodeId: node.id,
+      note: 'Which key was pressed. Anything unlisted is a wrong keypress.',
+      splitOn: `{{widgets.${wname(slug, 'gather')}.Digits}}`,
+      transitions: [...keyTransitions, { event: 'noMatch', next: invalidTarget }],
     })
 
     if (outgoing.length === 0) {

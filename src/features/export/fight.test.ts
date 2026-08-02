@@ -48,32 +48,33 @@ describe('compiling a fight', () => {
 
   it('gives every move its own transition', () => {
     const { widgets } = compileStory(sharkGraph(), 'https://audio/')
-    const gather = widgets.find((w) => w.name === 'SHARKS_r1_gather')!
+    const gather = widgets.find((w) => w.name === 'SHARKS_r1_keys')!
     // Round one announces Kick, which PUNCH counters, and PUNCH is digit 1.
     // The other two digits are answers too — they just take the losing route.
     // `match` is what Studio evaluates; `condition` is the label beside it.
+    // Branching lives on the split that reads the gather's digits: a Studio
+    // gather takes only keypress, speech and timeout, and carries no
+    // conditions at all.
     expect(gather.transitions).toEqual([
       {
-        event: 'keypress',
+        event: 'match',
         condition: 'Digits equals 1',
         match: { type: 'equal_to', value: '1' },
         next: 'SHARKS_r2_play',
       },
       {
-        event: 'keypress',
+        event: 'match',
         condition: 'Digits equals 2',
         match: { type: 'equal_to', value: '2' },
         next: 'DROWNED_play',
       },
       {
-        event: 'keypress',
+        event: 'match',
         condition: 'Digits equals 3',
         match: { type: 'equal_to', value: '3' },
         next: 'DROWNED_play',
       },
       { event: 'noMatch', next: 'DROWNED_play' },
-      // Silence is counted rather than punished — see the patience test below.
-      { event: 'timeout', next: 'SHARKS_r1_waited' },
     ])
   })
 
@@ -115,7 +116,7 @@ describe('compiling a fight', () => {
 
   it('sends the last round’s countering digit to the winning room', () => {
     const { widgets } = compileStory(sharkGraph(), 'https://audio/')
-    const last = widgets.find((w) => w.name === 'SHARKS_r3_gather')!
+    const last = widgets.find((w) => w.name === 'SHARKS_r3_keys')!
     // Round three announces Punch, which BLOCK counters, and BLOCK is digit 3.
     expect(last.transitions.find((t) => t.condition === 'Digits equals 3')!.next).toBe('SHORE_play')
     expect(last.transitions.find((t) => t.condition === 'Digits equals 1')!.next).toBe(
@@ -129,9 +130,9 @@ describe('compiling a fight', () => {
     const g = sharkGraph()
     for (const move of [0, 1, 2]) setOutcome(g, 'SHARKS', 0, move, 'SHORE')
     const gather = compileStory(g, 'https://audio/').widgets.find(
-      (w) => w.name === 'SHARKS_r1_gather',
+      (w) => w.name === 'SHARKS_r1_keys',
     )!
-    const keypresses = gather.transitions.filter((t) => t.event === 'keypress')
+    const keypresses = gather.transitions.filter((t) => t.event === 'match')
     expect(keypresses).toHaveLength(3)
     expect(keypresses.every((t) => t.next === 'SHORE_play')).toBe(true)
   })
@@ -148,7 +149,7 @@ describe('compiling a fight', () => {
     expect(warnings.join(' ')).toContain('nothing gets past this')
     // Emitted anyway, pointing back at the room, so the flow stays connected
     // and the warning is what tells the author it needs finishing.
-    const gather = widgets.find((w) => w.name === 'A_r1_gather')!
+    const gather = widgets.find((w) => w.name === 'A_r1_keys')!
     // Every digit, and an unmapped one, point back at the room; only the
     // silence counter goes anywhere else.
     expect(
@@ -187,7 +188,7 @@ describe('compiling a fight', () => {
     })
     const { warnings, widgets } = compileStory(g, 'https://audio/')
     expect(warnings.filter((w) => w.startsWith('A:'))).toEqual([])
-    const gather = widgets.find((w) => w.name === 'A_r1_gather')!
+    const gather = widgets.find((w) => w.name === 'A_r1_keys')!
     expect(gather.transitions.filter((t) => t.next === 'WIN_play')).toHaveLength(2)
   })
 

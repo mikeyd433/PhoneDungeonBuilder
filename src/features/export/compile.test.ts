@@ -85,11 +85,12 @@ describe('compile — widget shapes (§6.7)', () => {
     expect(byName(r, 'A_gather')?.type).toBe('gather-input-on-call')
   })
 
-  it('ends a story with play then hangup', () => {
+  it('ends a story by leading nowhere, because Studio has no hangup widget', () => {
     const g = recordedGraph(['A', 'FIN'], ['A>FIN'], { endings: ['FIN'] })
     const r = compileStory(g, BASE)
-    expect(byName(r, 'FIN_hangup')?.type).toBe('hangup')
-    expect(byName(r, 'FIN_play')?.transitions[0].next).toBe('FIN_hangup')
+    expect(byName(r, 'FIN_hangup')).toBeUndefined()
+    // Reaching a transition with no target is what ends the call.
+    expect(byName(r, 'FIN_play')?.transitions[0].next).toBeNull()
     expect(byName(r, 'FIN_gather')).toBeUndefined()
   })
 
@@ -107,7 +108,7 @@ describe('compile — widget shapes (§6.7)', () => {
 
   it('routes an unrecorded room straight to its choices, not through a missing widget', () => {
     const g = makeGraph(['A', 'B'], ['A>B'], { recorded: ['A'] })
-    const gather = byName(compileStory(g, BASE), 'A_gather')!
+    const gather = byName(compileStory(g, BASE), 'A_keys')!
     expect(gather.transitions.find((t) => t.condition?.includes('1'))?.next).toBe('B_gather')
   })
 
@@ -127,7 +128,7 @@ describe('compile — widget shapes (§6.7)', () => {
     const g = recordedGraph(['A', 'B'], ['A>B'])
     const r = compileStory(g, BASE)
     // The gather transition wires straight to the target's play widget.
-    const gather = byName(r, 'A_gather')!
+    const gather = byName(r, 'A_keys')!
     expect(gather.transitions.find((t) => t.condition?.includes('1'))?.next).toBe('B_play')
     expect(r.widgets.some((w) => w.name.includes('_fx'))).toBe(false)
   })
@@ -137,7 +138,7 @@ describe('compile — widget shapes (§6.7)', () => {
     const v = addItem(g, 'HARPOON')
     addEffect(g, { choice_id: choiceFrom(g, 'A', '1').id }, v.id)
     const r = compileStory(g, BASE)
-    const gather = byName(r, 'A_gather')!
+    const gather = byName(r, 'A_keys')!
     expect(gather.transitions.find((t) => t.condition?.includes('1'))?.next).toBe('A_d1_fx')
     expect(byName(r, 'A_d1_fx')?.transitions[0].next).toBe('B_play')
   })
@@ -156,7 +157,7 @@ describe('compile — widget shapes (§6.7)', () => {
     const g = recordedGraph(['A', 'B'], ['A>B'])
     const v = addItem(g, 'LANTERN')
     addEffect(g, { node_id: idOf(g, 'B') }, v.id)
-    const gather = byName(compileStory(g, BASE), 'A_gather')!
+    const gather = byName(compileStory(g, BASE), 'A_keys')!
     expect(gather.transitions.find((t) => t.condition?.includes('1'))?.next).toBe('B_fx')
   })
 
@@ -195,7 +196,8 @@ describe('compile — gates (§6.3)', () => {
     expect(gateWidgets).toHaveLength(1)
     // One batched eval + one split per gated choice, not two evals.
     expect(gateWidgets[0].variables).toHaveLength(2)
-    expect(r.widgets.filter((w) => w.type === 'split-based-on')).toHaveLength(2)
+    // Gate splits only — every room also has a keypad split now.
+    expect(r.widgets.filter((w) => w.name.endsWith('_gate'))).toHaveLength(2)
   })
 
   it('evaluates gates BEFORE the room plays, and costs no split', () => {
@@ -204,7 +206,9 @@ describe('compile — gates (§6.3)', () => {
     addGate(g, choiceFrom(g, 'A', '1').id, { fail_behavior: 'hide' })
     const r = compileStory(g, BASE)
     expect(byName(r, 'A_gates')?.transitions[0].next).toBe('A_play')
-    expect(r.widgets.some((w) => w.type === 'split-based-on')).toBe(false)
+    // A hidden choice costs no split of its OWN — the only one here is the
+    // keypad split every room has.
+    expect(r.widgets.filter((w) => w.name.endsWith('_gate'))).toHaveLength(0)
     // Recorded audio has no text to hide a Liquid conditional in, so the door
     // works but is never announced. Said out loud rather than left to surprise.
     expect(r.warnings.some((w) => w.includes('nothing announces them'))).toBe(true)
@@ -250,7 +254,7 @@ describe('compile — gates (§6.3)', () => {
       fail_node_id: idOf(g, 'PIT'),
     })
     const r = compileStory(g, BASE)
-    const split = r.widgets.find((w) => w.type === 'split-based-on')!
+    const split = r.widgets.find((w) => w.name.endsWith('_gate'))!
     expect(split.transitions.find((t) => t.event === 'noMatch')?.next).toBe('PIT_play')
   })
 
@@ -261,9 +265,9 @@ describe('compile — gates (§6.3)', () => {
     addEffect(g, { choice_id: choiceFrom(g, 'A', '1').id }, v.id)
     addGate(g, choiceFrom(g, 'A', '1').id, {})
     const r = compileStory(g, BASE)
-    const gather = byName(r, 'A_gather')!
-    // Gather -> split -> effects -> target.
-    expect(gather.transitions.find((t) => t.condition?.includes('1'))?.next).toBe('A_d1_gate')
+    const keys = byName(r, 'A_keys')!
+    // Gather -> keypad split -> gate split -> effects -> target.
+    expect(keys.transitions.find((t) => t.condition?.includes('1'))?.next).toBe('A_d1_gate')
     const split = byName(r, 'A_d1_gate')!
     expect(split.transitions.find((t) => t.event === 'match')?.next).toBe('A_d1_fx')
   })
@@ -272,9 +276,12 @@ describe('compile — gates (§6.3)', () => {
 describe('compile — timeout, invalid and warnings', () => {
   it('repeats the room when no timeout or invalid target is set', () => {
     const g = recordedGraph(['A', 'B'], ['A>B'])
-    const gather = byName(compileStory(g, BASE), 'A_gather')!
+    const r = compileStory(g, BASE)
+    const gather = byName(r, 'A_gather')!
     expect(gather.transitions.find((t) => t.event === 'timeout')?.next).toBe('A_play')
-    expect(gather.transitions.find((t) => t.event === 'noMatch')?.next).toBe('A_play')
+    // A wrong keypress is the keypad split's business: a gather has no noMatch.
+    const keys = byName(r, 'A_keys')!
+    expect(keys.transitions.find((t) => t.event === 'noMatch')?.next).toBe('A_play')
   })
 
   it('follows explicit timeout and invalid targets', () => {
@@ -289,7 +296,7 @@ describe('compile — timeout, invalid and warnings', () => {
     const g = makeGraph(['A'], ['A>'])
     const r = compileStory(g, BASE)
     expect(r.warnings.some((w) => w.includes('unwritten branch'))).toBe(true)
-    const gather = byName(r, 'A_gather')!
+    const gather = byName(r, 'A_keys')!
     expect(gather.transitions.find((t) => t.condition?.includes('1'))?.next).toBe('A_gather')
   })
 
@@ -301,9 +308,11 @@ describe('compile — timeout, invalid and warnings', () => {
 })
 
 describe('compile — budget (§6.5)', () => {
-  it('counts two widgets per plain room', () => {
+  it('counts three widgets per plain room: audio, keypad, and the split that reads it', () => {
     const g = recordedGraph(['A', 'B', 'FIN'], ['A>B', 'B>FIN'], { endings: ['FIN'] })
-    expect(compileStory(g, BASE).budget.total).toBe(6)
+    // A and B: audio, keypad, keypad split. FIN is an ending — its recording
+    // plays and leads nowhere, and it needs no widget beyond that.
+    expect(compileStory(g, BASE).budget.total).toBe(7)
   })
 
   it('lands a moderate story comfortably under the ceiling', () => {

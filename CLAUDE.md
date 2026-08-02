@@ -28,7 +28,7 @@ Two rules from §0 that everything else follows from:
 | Art direction | Flat vector, behind a renderer seam so a sprite pack can drop in later (§11.4). |
 | Audio hosting | Supabase Storage public bucket. The exporter emits those URLs into Twilio Play widgets. |
 | Text-to-speech | **Never in the exported flow.** Anything without a recording is not emitted at all — a room, line, fight round or refusal with no take is silence on the phone, and the export says so. The playtest still speaks unrecorded lines; that's a rehearsal aid, clearly labelled. |
-| Twilio export | Build sheet (§6.6 path B) first, then flow-definition JSON (path A). **No REST push, no writes to the Twilio account.** |
+| Twilio export | Build sheet (§6.6 path B) first, then flow-definition JSON (path A). **No REST push, no writes to the Twilio account.** The JSON must satisfy Twilio's published schema (`twilio.com/docs/studio/rest-api/v2/schemas`), and `src/features/export/schema.test.ts` is what holds it there: a gather takes only `keypress`/`speech`/`timeout` and carries NO conditions, only a split may; there is no `hangup` widget (a call ends by reaching a transition with no target); `states` caps at **1000**. Getting any of these wrong fails validation with nothing but "Something went wrong". |
 | `node_type` | `room \| ending`. `hub` was cut — the spec listed it but never defined its behaviour. |
 | Exits per room | 3 on the walls; digits 4–9 render as a stacked list (F1.13). |
 | Flat vs subflows | Stay flat. The widget budget meter says when to revisit (§11.2). |

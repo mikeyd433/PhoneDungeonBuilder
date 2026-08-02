@@ -41,10 +41,21 @@ describe('the Studio flow definition', () => {
     }
   })
 
-  it('compares a keypress against the digits that gather collected', () => {
+  it('compares a keypress against the digits its own gather collected', () => {
     const graph = makeGraph(['HALL', 'A', 'B'], ['HALL>A', 'HALL>B'])
-    const gather = byName(parse(graph), 'HALL_gather')
-    const one = gather.transitions.find((t) => t.conditions?.[0].value === '1')!
+    const states = parse(graph)
+    // The gather hands off; the split decides. Studio allows no conditions on
+    // a gather at all.
+    const gather = byName(states, 'HALL_gather')
+    expect(gather.transitions.map((t) => t.event).sort()).toEqual([
+      'keypress',
+      'speech',
+      'timeout',
+    ])
+    expect(gather.transitions.every((t) => !t.conditions)).toBe(true)
+
+    const keys = byName(states, 'HALL_keys')
+    const one = keys.transitions.find((t) => t.conditions?.[0].value === '1')!
     expect(one.conditions![0]).toMatchObject({
       arguments: ['{{widgets.HALL_gather.Digits}}'],
       type: 'equal_to',

@@ -153,8 +153,8 @@ describe('inventory readback', () => {
     expect(names(r).has(invRetName('CAVE'))).toBe(true)
     expect(r.warnings.some((w) => w.includes('HALL') && w.includes('already uses *'))).toBe(true)
 
-    const gather = r.widgets.find((w) => w.name === 'HALL_gather')!
-    const starred = gather.transitions.filter((t) => t.condition === 'Digits equals *')
+    const keys = r.widgets.find((w) => w.name === 'HALL_keys')!
+    const starred = keys.transitions.filter((t) => t.condition === 'Digits equals *')
     expect(starred).toHaveLength(1)
     expect(starred[0].next).not.toBe(invRetName('HALL'))
   })
