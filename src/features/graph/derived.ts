@@ -5,9 +5,22 @@ import { isFullyRecorded } from '@/features/cast/dialogue'
 
 const digitOrder = new Map(DIGITS.map((d, i) => [d as string, i]))
 
+/**
+ * Exits are ordered by the key the caller presses. Nothing else.
+ *
+ * This compared `sort_order` first, which meant the wall position was fixed at
+ * import and never moved again: changing a door's digit from 2 to 1 renumbered
+ * the lintel and left the door where it was, so a room could read 2 · 1 · 3.
+ * There is no separate ordering to preserve — this app has no dragging, and on
+ * a phone the digit *is* the order.
+ *
+ * `sort_order` still breaks ties, which is what keeps fight edges in place:
+ * they carry no digit, so they all fall to the 99 bucket, behind every real
+ * key, and 100/101/102 orders win before lose before the named move outcomes.
+ */
 function byDigit(a: { digit: string | null; sort_order: number }, b: { digit: string | null; sort_order: number }): number {
-  if (a.sort_order !== b.sort_order) return a.sort_order - b.sort_order
-  return (digitOrder.get(a.digit ?? '') ?? 99) - (digitOrder.get(b.digit ?? '') ?? 99)
+  const byKey = (digitOrder.get(a.digit ?? '') ?? 99) - (digitOrder.get(b.digit ?? '') ?? 99)
+  return byKey !== 0 ? byKey : a.sort_order - b.sort_order
 }
 
 /**
