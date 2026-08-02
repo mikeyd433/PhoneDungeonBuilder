@@ -3,6 +3,7 @@ import { useDelve } from '@/features/graph/store'
 import { estimateSeconds, isLongNarration, LONG_NARRATION_SECONDS } from '@/lib/speech'
 import { slugify } from '@/lib/slug'
 import { nextFreeDigit } from './roomModel'
+import { isPlainRoom, roomKinds, type RoomKinds } from './roomKinds'
 import AudioPanel from '@/features/audio/AudioPanel'
 import ItemsSection from '@/features/state/ItemsSection'
 import CollabPanel from '@/features/collab/CollabPanel'
@@ -10,6 +11,155 @@ import DialogueSection from '@/features/cast/DialogueSection'
 import FightSection from '@/features/fight/FightSection'
 import { ROOM_DESIGNS } from './vector/designs'
 import { DIGITS, canWrite, type Digit, type StoryNode } from '@/types/domain'
+
+/**
+ * What this room does, as three boxes.
+ *
+ * They are not exclusive — a fight can grant an item — so "just doors" is the
+ * state of having none of them ticked rather than a fourth box that would have
+ * to fight the other three.
+ *
+ * Ticking reveals the section for that kind, and creates the row where there is
+ * one row to create: a fight. Dialogue is revealed but never split
+ * automatically, because the parser guesses and a wrong guess is much harder to
+ * undo than to avoid. Unticking never quietly destroys work: a fight and a
+ * split script are removable with a confirmation that says what is lost, and
+ * items — which are spread across arrival effects, per-door effects and gates —
+ * can only be hidden once you have cleared them yourself.
+ */
+function WhatHappensHere({
+  kinds,
+  shown,
+  onChange,
+  nodeId,
+  slug,
+}: {
+  kinds: RoomKinds | null
+  shown: RoomKinds
+  onChange: (next: RoomKinds) => void
+  nodeId: string
+  slug: string
+}) {
+  const graph = useDelve((s) => s.graph)
+  const addFight = useDelve((s) => s.addFight)
+  const removeFight = useDelve((s) => s.removeFight)
+  const saveDialogue = useDelve((s) => s.saveDialogue)
+  if (!graph || !kinds) return null
+
+  const fight = [...graph.fights.values()].find((f) => f.node_id === nodeId)
+  const lineCount = [...graph.dialogue.values()].filter((l) => l.node_id === nodeId).length
+
+  const set = (key: keyof RoomKinds, on: boolean) => onChange({ ...shown, [key]: on })
+
+  const toggleDialogue = async (on: boolean) => {
+    if (on) return set('dialogue', true)
+    if (lineCount > 0) {
+      const takes = [...graph.dialogue.values()].filter(
+        (l) => l.node_id === nodeId && l.audio_path,
+      ).length
+      const ok = window.confirm(
+        `Collapse ${lineCount} line${lineCount === 1 ? '' : 's'} back into one block of narration?` +
+          `\n\nThe script itself is kept.` +
+          (takes > 0
+            ? `\n${takes} recorded line take${takes === 1 ? '' : 's'} will be lost.`
+            : ''),
+      )
+      if (!ok) return
+      await saveDialogue(nodeId, [])
+    }
+    set('dialogue', false)
+  }
+
+  const toggleFight = async (on: boolean) => {
+    if (on) {
+      if (!fight) await addFight(nodeId)
+      return set('fight', true)
+    }
+    if (fight) {
+      const rounds = [...graph.fightRounds.values()].filter((r) => r.fight_id === fight.id).length
+      const ok = window.confirm(
+        `Delete the fight in ${slug}?` +
+          `\n\nIts ${rounds} round${rounds === 1 ? '' : 's'}, its moves and everything they point at go with it.` +
+          `\nRooms only reachable by winning or losing will be left sealed.`,
+      )
+      if (!ok) return
+      await removeFight(fight.id)
+    }
+    set('fight', false)
+  }
+
+  const boxes: Array<{
+    key: keyof RoomKinds
+    label: string
+    hint: string
+    on: boolean
+    /** Content exists, so it cannot simply be hidden. */
+    locked: boolean
+    lockedWhy?: string
+    toggle: (on: boolean) => void
+  }> = [
+    {
+      key: 'dialogue',
+      label: '🗣 Someone speaks',
+      hint: 'Split the narration by who says it, so two actors can share the scene.',
+      on: shown.dialogue || kinds.dialogue,
+      locked: false,
+      toggle: (on) => void toggleDialogue(on),
+    },
+    {
+      key: 'items',
+      label: '🎒 An item changes hands',
+      hint: 'Give or take something on arrival or at a door, or lock a door behind one.',
+      on: shown.items || kinds.items,
+      locked: kinds.items,
+      lockedWhy: 'This room already gives, takes or checks something. Clear it below to hide this.',
+      toggle: (on) => set('items', on),
+    },
+    {
+      key: 'fight',
+      // Variation selector: the bare codepoint renders as a monochrome glyph that
+      // reads as a ✕, i.e. "remove", next to a checkbox.
+      label: '⚔️ There is a fight',
+      hint: 'Rounds of keypresses instead of doors. Each round says where every key goes.',
+      on: shown.fight || kinds.fight,
+      locked: false,
+      toggle: (on) => void toggleFight(on),
+    },
+  ]
+
+  return (
+    <div className="flex flex-col gap-2 rounded border border-mortar/40 p-3">
+      <span className="text-xs uppercase tracking-wider text-mortar">What happens here</span>
+      {boxes.map((b) => (
+        <label key={b.key} className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={b.on}
+            disabled={b.locked && b.on}
+            title={b.locked && b.on ? b.lockedWhy : undefined}
+            onChange={(e) => b.toggle(e.target.checked)}
+            className="mt-1 shrink-0 accent-torch"
+          />
+          <span className="min-w-0">
+            <span className={b.on ? 'text-parchment' : 'text-mortar'}>{b.label}</span>
+            <span className="block text-xs text-cold">
+              {b.locked && b.on ? b.lockedWhy : b.hint}
+            </span>
+          </span>
+        </label>
+      ))}
+      {isPlainRoom({
+        dialogue: shown.dialogue || kinds.dialogue,
+        items: shown.items || kinds.items,
+        fight: shown.fight || kinds.fight,
+      }) && (
+        <p className="text-xs text-cold">
+          Nothing ticked: the caller hears this room read out, then picks a door.
+        </p>
+      )}
+    </div>
+  )
+}
 
 /**
  * §4.2 — slides up over the room, ~70% height. Autosave on blur (F2.2); there is
@@ -45,6 +195,22 @@ export default function EditorSheet({ nodeId, onClose }: { nodeId: string; onClo
     () => (derived && node ? (derived.children.get(node.id) ?? []) : []),
     [derived, node],
   )
+
+  // What this room already does, read off the graph rather than off a stored
+  // flag. `shown` starts from that and is what the checkboxes drive: a room can
+  // be opted into dialogue or items before it has any, and a kind that already
+  // has content can't be hidden without deleting the content first.
+  const kinds = useMemo(
+    () => (graph && derived && node ? roomKinds(graph, derived, node.id) : null),
+    [graph, derived, node],
+  )
+  const [shown, setShown] = useState<RoomKinds>({ dialogue: false, items: false, fight: false })
+  useEffect(() => {
+    if (kinds) setShown(kinds)
+    // Re-read when you walk to another room, not on every graph tick — otherwise
+    // a box you just ticked would snap back the moment anything else saved.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nodeId])
 
   const slugTaken = useMemo(() => {
     if (!graph || !node) return false
@@ -89,11 +255,25 @@ export default function EditorSheet({ nodeId, onClose }: { nodeId: string; onClo
           <span className="text-xs uppercase tracking-wider text-mortar">Title</span>
           <input
             className={field}
+            placeholder={node.slug}
             value={String(value('title') ?? '')}
             onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))}
             onBlur={() => commit('title')}
           />
+          <span className="text-xs text-cold">
+            Carved on the wall here, and shown on every door that leads to this room. Short names
+            read best — a long one gets trimmed on the doors. You can also tap the name in the
+            header to rename without opening this.
+          </span>
         </label>
+
+        <WhatHappensHere
+          kinds={kinds}
+          shown={shown}
+          onChange={setShown}
+          nodeId={nodeId}
+          slug={node.slug}
+        />
 
         <label className="flex flex-col gap-1">
           <span className="flex items-center justify-between text-xs uppercase tracking-wider text-mortar">
@@ -113,7 +293,7 @@ export default function EditorSheet({ nodeId, onClose }: { nodeId: string; onClo
           />
         </label>
 
-        <DialogueSection nodeId={nodeId} />
+        {(shown.dialogue || kinds?.dialogue) && <DialogueSection nodeId={nodeId} />}
 
         <div className="flex flex-col gap-2">
           <span className="text-xs uppercase tracking-wider text-mortar">Exits</span>
@@ -182,9 +362,9 @@ export default function EditorSheet({ nodeId, onClose }: { nodeId: string; onClo
           </button>
         </div>
 
-        <FightSection nodeId={nodeId} />
+        {(shown.fight || kinds?.fight) && <FightSection nodeId={nodeId} />}
 
-        <ItemsSection nodeId={nodeId} />
+        {(shown.items || kinds?.items) && <ItemsSection nodeId={nodeId} />}
 
         <div className="flex flex-col gap-2">
           <span className="text-xs uppercase tracking-wider text-mortar">Room design</span>

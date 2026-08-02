@@ -23,12 +23,14 @@ export default function Room() {
     walkTo,
     retreat,
     createChildNode,
+    updateNode,
     undo,
     clearError,
   } = useDelve()
   const undoStack = useDelve((s) => s.undoStack)
   const trailLength = useDelve((s) => s.trail.length)
   const [editing, setEditing] = useState(false)
+  const [renaming, setRenaming] = useState(false)
   const [choosingRetreat, setChoosingRetreat] = useState(false)
   const { layout } = useAutomapLayout()
   const { result: solverResult, solving } = useSolver()
@@ -107,7 +109,40 @@ export default function Room() {
         <Link to="/" className="shrink-0 text-mortar underline">
           Stories
         </Link>
-        <span className="min-w-0 truncate font-paper text-torch">{view.node.slug}</span>
+        {/* Tap to rename. The title is what the door plates show, so needing to
+            open the editor and scroll to reach it made the one field you most
+            want to fix the hardest to get at. Falls back to the slug when the
+            room is untitled, which is what the walls do too. */}
+        {renaming ? (
+          <input
+            autoFocus
+            defaultValue={view.node.title ?? ''}
+            placeholder={view.node.slug}
+            aria-label={`Rename ${view.node.slug}`}
+            onBlur={(e) => {
+              const title = e.target.value.trim()
+              if (title !== (view.node.title ?? '')) void updateNode(view.node.id, { title })
+              setRenaming(false)
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') e.currentTarget.blur()
+              // Escape abandons the edit: blur without the change reaching the store.
+              if (e.key === 'Escape') {
+                e.currentTarget.value = view.node.title ?? ''
+                e.currentTarget.blur()
+              }
+            }}
+            className="min-w-0 flex-1 rounded border border-torch bg-stone px-2 py-1 font-paper text-torch outline-none"
+          />
+        ) : (
+          <button
+            onClick={() => setRenaming(true)}
+            title="Rename this room"
+            className="min-w-0 truncate font-paper text-torch underline decoration-dotted underline-offset-4"
+          >
+            {view.node.title || view.node.slug}
+          </button>
+        )}
         <nav className="flex w-full shrink-0 gap-3 overflow-x-auto sm:ml-auto sm:w-auto">
           <button
             onClick={() => void undo()}
