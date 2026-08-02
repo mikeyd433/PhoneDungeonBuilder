@@ -257,8 +257,13 @@ export const useDelve = create<DelveState>((set, get) => {
       // No trail to walk back (deep-linked, or teleported in from the automap):
       // fall back to the graph's own inbound edges. F1.12's multi-parent chooser
       // is the UI for picking when there is more than one; this takes the first.
+      //
+      // `edgesTo`, not `parents` — principle 7. `parents` only holds edges that
+      // carry a choice, so a room you reach by winning a fight had no way back
+      // at all: retreating from it silently did nothing. The room view has
+      // always listed that fight as a retreat, because it reads `edgesTo`.
       if (!derived || !currentNodeId) return
-      const inbound = derived.parents.get(currentNodeId) ?? []
+      const inbound = derived.edgesTo.get(currentNodeId) ?? []
       if (inbound.length > 0) {
         set({ currentNodeId: inbound[0].from_node_id, trail: [inbound[0].from_node_id] })
       }

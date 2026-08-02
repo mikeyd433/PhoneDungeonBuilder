@@ -27,6 +27,7 @@ export default function Room() {
     clearError,
   } = useDelve()
   const undoStack = useDelve((s) => s.undoStack)
+  const trailLength = useDelve((s) => s.trail.length)
   const [editing, setEditing] = useState(false)
   const [choosingRetreat, setChoosingRetreat] = useState(false)
   const { layout } = useAutomapLayout()
@@ -80,6 +81,9 @@ export default function Room() {
     }
     retreat()
   }
+  // Either there is a trail to walk back down, or the graph itself has a way in.
+  const canRetreat = trailLength > 1 || view.retreats.length > 0
+
   const onChisel = async (exit: ExitView) => {
     if (exit.choiceId) {
       await createChildNode(exit.choiceId)
@@ -94,12 +98,17 @@ export default function Room() {
 
   return (
     <main className="flex min-h-full flex-col">
-      <header className="flex items-center gap-3 border-b border-mortar/40 px-4 py-3 text-sm">
+      {/* Wraps on a phone: seven links and a room name do not fit on one 390px
+          row, and the thing that lost was the room name — squeezed to a single
+          letter. The nav takes its own line there and sits inline from sm up. */}
+      <header className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-mortar/40 px-4 py-3 text-sm">
+        {/* Named, now that the footer also has a back button: this one leaves
+            the story, that one walks back a room. */}
         <Link to="/" className="shrink-0 text-mortar underline">
-          ◄
+          Stories
         </Link>
         <span className="min-w-0 truncate font-paper text-torch">{view.node.slug}</span>
-        <nav className="ml-auto flex shrink-0 gap-3 overflow-x-auto">
+        <nav className="flex w-full shrink-0 gap-3 overflow-x-auto sm:ml-auto sm:w-auto">
           <button
             onClick={() => void undo()}
             disabled={undoStack.length === 0}
@@ -210,6 +219,19 @@ export default function Room() {
       )}
 
       <footer className="flex items-center gap-3 border-t border-mortar/40 p-4">
+        {/* F1.4's retreat was swipe-right and nothing else, which is unusable
+            with a mouse and undiscoverable on a phone. The swipe still works. */}
+        <button
+          onClick={onRetreat}
+          disabled={!canRetreat}
+          title={
+            canRetreat ? 'Back to the room you came from' : 'Nothing leads here to go back to'
+          }
+          className="shrink-0 rounded border border-mortar/60 px-4 py-3 font-carved uppercase tracking-[0.12em] text-mortar disabled:opacity-40"
+        >
+          ◄ Back
+        </button>
+
         <button
           onClick={() => setEditing((v) => !v)}
           className="flex-1 rounded bg-torch px-4 py-3 font-carved uppercase tracking-[0.12em] text-depth"
