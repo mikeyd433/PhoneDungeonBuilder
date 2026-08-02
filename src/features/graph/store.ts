@@ -51,6 +51,8 @@ interface DelveState {
   deleteChoice: (id: string) => Promise<void>
   undo: () => Promise<void>
   canUndo: () => boolean
+  /** Re-read the story after a write this store doesn't model (items, gates). */
+  refresh: () => Promise<void>
 }
 
 export const useDelve = create<DelveState>((set, get) => {
@@ -291,6 +293,18 @@ export const useDelve = create<DelveState>((set, get) => {
       } catch (e) {
         fail(e)
       }
+    },
+
+    async refresh() {
+      const { graph, currentNodeId } = get()
+      if (!graph) return
+      await get().loadStory(graph.story.id)
+      set((s) => {
+        if (currentNodeId && s.graph?.nodes.has(currentNodeId)) {
+          return { ...s, currentNodeId, trail: [currentNodeId] }
+        }
+        return s
+      })
     },
 
     /** F2.10. Replays the inverse against the database, then reloads so local

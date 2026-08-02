@@ -184,3 +184,41 @@ export async function deleteEffect(id: string): Promise<void> {
   const { error } = await supabase.from('effects').delete().eq('id', id)
   if (error) throw error
 }
+
+// ------------------------------------------------------------ state & gates
+
+export async function updateStateVar(id: string, patch: Partial<StateVar>): Promise<StateVar> {
+  const { data, error } = await supabase
+    .from('state_vars')
+    .update(patch)
+    .eq('id', id)
+    .select()
+    .single()
+  if (error) throw error
+  return data as StateVar
+}
+
+export async function deleteStateVar(id: string): Promise<void> {
+  const { error } = await supabase.from('state_vars').delete().eq('id', id)
+  if (error) throw error
+}
+
+/** One gate per choice, so this upserts on the choice rather than the gate id. */
+export async function upsertGate(
+  storyId: string,
+  choiceId: string,
+  patch: Partial<Gate>,
+): Promise<Gate> {
+  const { data, error } = await supabase
+    .from('gates')
+    .upsert({ story_id: storyId, choice_id: choiceId, ...patch }, { onConflict: 'choice_id' })
+    .select()
+    .single()
+  if (error) throw error
+  return data as Gate
+}
+
+export async function deleteGate(choiceId: string): Promise<void> {
+  const { error } = await supabase.from('gates').delete().eq('choice_id', choiceId)
+  if (error) throw error
+}

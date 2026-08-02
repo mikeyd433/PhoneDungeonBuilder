@@ -4,6 +4,7 @@ import { estimateSeconds, isLongNarration, LONG_NARRATION_SECONDS } from '@/lib/
 import { slugify } from '@/lib/slug'
 import { nextFreeDigit } from './roomModel'
 import AudioPanel from '@/features/audio/AudioPanel'
+import ItemsSection from '@/features/state/ItemsSection'
 import { DIGITS, canWrite, type Digit, type StoryNode } from '@/types/domain'
 
 /**
@@ -170,6 +171,8 @@ export default function EditorSheet({ nodeId, onClose }: { nodeId: string; onClo
             + Add exit
           </button>
         </div>
+
+        <ItemsSection nodeId={nodeId} />
 
         <label className="flex flex-col gap-1">
           <span className="text-xs uppercase tracking-wider text-mortar">Node type</span>

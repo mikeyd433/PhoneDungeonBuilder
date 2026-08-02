@@ -6,6 +6,8 @@ import RoomStage from '@/features/room/RoomStage'
 import EditorSheet from '@/features/room/EditorSheet'
 import Automap from '@/features/automap/Automap'
 import { useAutomapLayout } from '@/features/automap/useAutomapLayout'
+import SatchelPanel from '@/features/state/SatchelPanel'
+import { useSolver } from '@/features/state/useSolver'
 
 export default function Room() {
   const { storyId } = useParams<{ storyId: string }>()
@@ -26,6 +28,8 @@ export default function Room() {
   const [editing, setEditing] = useState(false)
   const [choosingRetreat, setChoosingRetreat] = useState(false)
   const { layout } = useAutomapLayout()
+  const { result: solverResult, solving } = useSolver()
+  const [satchelOpen, setSatchelOpen] = useState(false)
 
   useEffect(() => {
     if (storyId) void loadStory(storyId)
@@ -92,6 +96,14 @@ export default function Room() {
             className="text-mortar underline disabled:opacity-40"
           >
             Undo
+          </button>
+          <button
+            onClick={() => setSatchelOpen(true)}
+            title="What the caller could be carrying here"
+            aria-label="Open the satchel"
+            className="text-mortar"
+          >
+            🎒
           </button>
           <Link to={`/story/${storyId}/map`} className="text-mortar underline">
             Map
@@ -177,6 +189,15 @@ export default function Room() {
             </button>
           </div>
         </div>
+      )}
+
+      {satchelOpen && (
+        <SatchelPanel
+          nodeId={currentNodeId}
+          result={solverResult}
+          solving={solving}
+          onClose={() => setSatchelOpen(false)}
+        />
       )}
 
       {editing && <EditorSheet nodeId={currentNodeId} onClose={() => setEditing(false)} />}
