@@ -5,6 +5,7 @@ import { slugify } from '@/lib/slug'
 import { nextFreeDigit } from './roomModel'
 import { isPlainRoom, roomKinds, type RoomKinds } from './roomKinds'
 import { describeCollapse, planCollapse } from './collapse'
+import { isPromptLine, promptsFor, withPrompts, type Joiner } from './prompts'
 import AudioPanel from '@/features/audio/AudioPanel'
 import ItemsSection from '@/features/state/ItemsSection'
 import CollabPanel from '@/features/collab/CollabPanel'
@@ -228,6 +229,7 @@ export default function EditorSheet({ nodeId, onClose }: { nodeId: string; onClo
   const addChoice = useDelve((s) => s.addChoice)
   const deleteChoice = useDelve((s) => s.deleteChoice)
   const insertRoomOnChoice = useDelve((s) => s.insertRoomOnChoice)
+  const saveDialogue = useDelve((s) => s.saveDialogue)
 
   const node = graph?.nodes.get(nodeId)
   const editable = canWrite(role)
@@ -256,6 +258,62 @@ export default function EditorSheet({ nodeId, onClose }: { nodeId: string; onClo
   // and the header rename one tap away.
   const insert = async (choiceId: string) => {
     await insertRoomOnChoice(choiceId)
+  }
+
+  const [announcing, setAnnouncing] = useState(false)
+  const prompts = useMemo(
+    () => (graph && derived && node ? promptsFor(graph, derived, node.id, 'for') : []),
+    [graph, derived, node],
+  )
+  // A labelled door with nowhere to go still gets announced — the author asked
+  // for it by writing a label, and dropping it silently would hide the work.
+  // Saying so is the honest middle: on the phone that key does nothing yet.
+  const announcedButUnwired = outgoing.filter((c) => !c.to_node_id && c.label.trim()).length
+
+  /**
+   * Write the door prompts into the room's text.
+   *
+   * A room split into lines keeps its narration composed FROM those lines
+   * (principle 8), so writing to `narration` there would be undone by the next
+   * line edit. One prompt per line is also the faithful shape: composeNarration
+   * joins on newlines, so a single multi-line entry would not survive the
+   * round-trip — and this way each prompt can carry its own take.
+   */
+  const announce = async (joiner: Joiner) => {
+    if (!graph || !derived || !node) return
+    const next = promptsFor(graph, derived, node.id, joiner)
+    setAnnouncing(true)
+    const lines = [...graph.dialogue.values()]
+      .filter((l) => l.node_id === node.id)
+      .sort((a, b) => a.sort_order - b.sort_order)
+
+    if (lines.length > 0) {
+      const kept = [...lines]
+      while (kept.length > 0) {
+        const last = kept[kept.length - 1]
+        if (last.character_id === null && isPromptLine(last.text)) kept.pop()
+        else break
+      }
+      await saveDialogue(node.id, [
+        ...kept.map((l) => ({
+          character_id: l.character_id,
+          text: l.text,
+          audio_path: l.audio_path,
+          audio_duration_ms: l.audio_duration_ms,
+        })),
+        ...next.map((text) => ({
+          character_id: null,
+          text,
+          audio_path: null,
+          audio_duration_ms: null,
+        })),
+      ])
+    } else {
+      const text = withPrompts(String(value('narration') ?? ''), next)
+      setDraft((d) => ({ ...d, narration: text }))
+      await updateNode(node.id, { narration: text })
+    }
+    setAnnouncing(false)
   }
 
   // What this room already does, read off the graph rather than off a stored
@@ -354,6 +412,39 @@ export default function EditorSheet({ nodeId, onClose }: { nodeId: string; onClo
             onBlur={() => commit('narration')}
           />
         </label>
+
+        {/* The doors, as the words that offer them. Press it again after editing
+            a label: it replaces the block it wrote rather than stacking a
+            second copy, so the script never drifts from the graph. */}
+        <div className="flex flex-col gap-2 rounded border border-mortar/40 p-3">
+          <span className="text-xs uppercase tracking-wider text-mortar">Announce the doors</span>
+          <p className="text-xs text-cold">
+            {prompts.length === 0
+              ? 'No doors to announce — label this room’s exits first.'
+              : `Adds ${prompts.length} line${prompts.length === 1 ? '' : 's'} to the end of the text. Press again after changing a label and it rewrites them.${
+                  announcedButUnwired > 0
+                    ? ` ${announcedButUnwired} of them lead${announcedButUnwired === 1 ? 's' : ''} nowhere yet, so that key does nothing on the phone until you build it.`
+                    : ''
+                }`}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {(['for', 'to'] as const).map((joiner) => (
+              <button
+                key={joiner}
+                type="button"
+                disabled={prompts.length === 0 || announcing}
+                onClick={() => void announce(joiner)}
+                // The button *is* the preview: which preposition suits depends
+                // on whether the labels are nouns or verbs, and only the author
+                // knows that.
+                title={promptsFor(graph, derived, nodeId, joiner)[0]}
+                className="rounded border border-mortar px-3 py-2 text-xs hover:border-torch disabled:opacity-40"
+              >
+                {promptsFor(graph, derived, nodeId, joiner)[0] ?? `Press 1 ${joiner} …`}
+              </button>
+            ))}
+          </div>
+        </div>
 
         {(shown.dialogue || kinds?.dialogue) && <DialogueSection nodeId={nodeId} />}
 
