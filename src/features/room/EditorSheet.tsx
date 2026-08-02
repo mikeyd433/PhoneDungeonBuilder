@@ -227,6 +227,7 @@ export default function EditorSheet({ nodeId, onClose }: { nodeId: string; onClo
   const updateChoice = useDelve((s) => s.updateChoice)
   const addChoice = useDelve((s) => s.addChoice)
   const deleteChoice = useDelve((s) => s.deleteChoice)
+  const insertRoomOnChoice = useDelve((s) => s.insertRoomOnChoice)
 
   const node = graph?.nodes.get(nodeId)
   const editable = canWrite(role)
@@ -249,6 +250,13 @@ export default function EditorSheet({ nodeId, onClose }: { nodeId: string; onClo
     () => (derived && node ? (derived.children.get(node.id) ?? []) : []),
     [derived, node],
   )
+
+  // Inserting walks you into the new room. The sheet is keyed on the store's
+  // current node, so it follows automatically — you land with the editor open
+  // and the header rename one tap away.
+  const insert = async (choiceId: string) => {
+    await insertRoomOnChoice(choiceId)
+  }
 
   // What this room already does, read off the graph rather than off a stored
   // flag. `shown` starts from that and is what the checkboxes drive: a room can
@@ -351,6 +359,10 @@ export default function EditorSheet({ nodeId, onClose }: { nodeId: string; onClo
 
         <div className="flex flex-col gap-2">
           <span className="text-xs uppercase tracking-wider text-mortar">Exits</span>
+          <p className="text-xs text-cold">
+            ⤵ puts a new room on a door, between here and where it goes. The door keeps its label,
+            the new room gets the way onward, and you land in it ready to write.
+          </p>
           {outgoing.length === 0 && <p className="text-xs text-cold">No exits yet.</p>}
           {outgoing.map((choice) => (
             <div key={choice.id} className="flex items-center gap-2">
@@ -396,6 +408,23 @@ export default function EditorSheet({ nodeId, onClose }: { nodeId: string; onClo
                     </option>
                   ))}
               </select>
+              {/* The inverse of collapse, on the door it applies to: put a room
+                  between here and wherever this goes. Disabled on an unwired
+                  door, where the operation is a chisel and already exists. */}
+              <button
+                onClick={() => void insert(choice.id)}
+                disabled={!choice.to_node_id}
+                title={
+                  choice.to_node_id
+                    ? `Insert a room between ${node.slug} and ${
+                        graph.nodes.get(choice.to_node_id)?.slug ?? 'there'
+                      }`
+                    : 'This door leads nowhere yet — chisel through it from the room instead'
+                }
+                className="px-2 text-mortar disabled:opacity-30"
+              >
+                ⤵
+              </button>
               <button
                 onClick={() => void deleteChoice(choice.id)}
                 title="Remove exit"

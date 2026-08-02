@@ -58,6 +58,9 @@ interface DelveState {
   /** Splice a room out, joining what led to it to whatever it led to.
    *  Returns false and sets `error` when the room can't be collapsed. */
   collapseRoom: (nodeId: string) => Promise<boolean>
+  /** The inverse: put a new room on an existing door, so A -> B becomes
+   *  A -> new -> B. Walks into the new room. */
+  insertRoomOnChoice: (choiceId: string, title?: string) => Promise<string | null>
   addChoice: (fromNodeId: string, digit: Digit, label?: string) => Promise<void>
   updateNode: (id: string, patch: Partial<StoryNode>) => Promise<void>
   updateChoice: (id: string, patch: Partial<Choice>) => Promise<void>
@@ -305,6 +308,73 @@ export const useDelve = create<DelveState>((set, get) => {
             // Unwire first so the choice survives the node delete as a bricked
             // archway, which is what it was before.
             await api.updateChoice(fromChoiceId, { to_node_id: null })
+            await api.deleteNode(node.id)
+          },
+        })
+        return node.id
+      } catch (e) {
+        fail(e)
+        return null
+      }
+    },
+
+    /**
+     * Put a room on an existing door: A -> B becomes A -> new -> B.
+     *
+     * The exact inverse of collapse, and the thing you reach for when a beat is
+     * missing between two rooms that are already joined.
+     *
+     * Built forwards — new room, then its way onward, and only then repoint the
+     * original door. Repointing first would leave a dead end if either create
+     * failed; this order's worst case is a stray orphan room, which the ledger
+     * already reports and you can delete.
+     */
+    async insertRoomOnChoice(choiceId, title) {
+      if (readOnly()) return null
+      const { graph } = get()
+      if (!graph) return null
+      const choice = graph.choices.get(choiceId)
+      if (!choice) return null
+      // A door with nowhere to go is a chisel, not an insert — there is no
+      // second room to reconnect to.
+      const onward = choice.to_node_id
+      if (!onward) {
+        set({ error: 'That door leads nowhere yet. Chisel through it instead.' })
+        return null
+      }
+
+      const name = title?.trim() || 'New room'
+      const slug = uniqueSlug(
+        name,
+        [...graph.nodes.values()].map((n) => n.slug),
+      )
+
+      try {
+        const node = await api.createNode(graph.story.id, { slug, title: name })
+        const bridge = await api.createChoice(graph.story.id, {
+          from_node_id: node.id,
+          digit: '1',
+          label: '',
+          to_node_id: onward,
+          sort_order: 1,
+        })
+        const rewired = await api.updateChoice(choiceId, { to_node_id: node.id })
+
+        patchGraph((g) => ({
+          ...g,
+          nodes: new Map(g.nodes).set(node.id, node),
+          choices: new Map(g.choices).set(bridge.id, bridge).set(rewired.id, rewired),
+        }))
+        // Walk in, the way chiselling does: you made it to write it, and the
+        // header rename is right there.
+        set((s) => ({ ...s, currentNodeId: node.id, trail: [...s.trail, node.id] }))
+
+        pushUndo({
+          label: `insert ${slug}`,
+          invert: async () => {
+            // Reconnect the original door first, so the graph is never missing
+            // the link even for the moment the delete takes.
+            await api.updateChoice(choiceId, { to_node_id: onward })
             await api.deleteNode(node.id)
           },
         })
