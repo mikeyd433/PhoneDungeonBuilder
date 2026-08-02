@@ -154,6 +154,24 @@ export default function RoomStage({
                   }
                   className="min-w-0 flex-1 basis-40 rounded border border-mortar/60 bg-stone px-2 py-1.5 text-sm outline-none focus:border-torch disabled:opacity-60"
                 />
+                {/* Named here too: the whole reason the plate names them is
+                    that doors granting different items often go to the same
+                    room, and this list has the same job. Read-only — the items
+                    themselves are wired in the editor. */}
+                {(exit.grants.length > 0 || exit.revokes.length > 0) && (
+                  <span className="flex shrink-0 flex-wrap gap-1 text-xs">
+                    {exit.grants.map((slug) => (
+                      <span key={`g:${slug}`} className="rounded bg-torch/15 px-1.5 py-0.5 text-torch">
+                        +{slug}
+                      </span>
+                    ))}
+                    {exit.revokes.map((slug) => (
+                      <span key={`r:${slug}`} className="rounded bg-grave/20 px-1.5 py-0.5 text-grave">
+                        −{slug}
+                      </span>
+                    ))}
+                  </span>
+                )}
                 {target ? (
                   <input
                     key={`title:${target}:${exit.targetTitle ?? ''}`}
@@ -263,6 +281,20 @@ export default function RoomStage({
               >
                 <span className="font-carved">{exit.digit}</span>
                 <span className="min-w-0 truncate">{exit.label || 'unwritten'}</span>
+                {(exit.grants.length > 0 || exit.revokes.length > 0) && (
+                  <span className="flex shrink-0 gap-1 text-xs">
+                    {exit.grants.map((slug) => (
+                      <span key={`g:${slug}`} className="text-torch">
+                        +{slug}
+                      </span>
+                    ))}
+                    {exit.revokes.map((slug) => (
+                      <span key={`r:${slug}`} className="text-grave">
+                        −{slug}
+                      </span>
+                    ))}
+                  </span>
+                )}
                 {peek && exit.kind !== 'bricked' && (
                   <span className="ml-auto flex min-w-0 items-baseline gap-1 text-xs">
                     <span aria-hidden className="text-mortar">
@@ -273,7 +305,7 @@ export default function RoomStage({
                     </span>
                   </span>
                 )}
-                {exit.grants.length > 0 && <span className={peek ? '' : 'ml-auto'}>🎁</span>}
+
               </button>
             </li>
           ))}

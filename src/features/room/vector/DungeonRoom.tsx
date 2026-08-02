@@ -44,15 +44,50 @@ function Nameplate({ exit, lit }: { exit: ExitView; lit: boolean }) {
   const unwritten = exit.kind === 'bricked'
   const emptySlot = unwritten && !exit.choiceId
 
-  // Budgets differ because the faces do: the destination is set in Cinzel, whose
-  // small caps run about half again as wide as the body face.
-  const said = emptySlot || !exit.label ? [] : wrapToPlate(exit.label, 17, 1)
-  const leadsTo = unwritten
+  const PALE = lit ? '#8FB0C2' : '#6B5A47'
+  const rows: Array<{ text: string; size: number; family?: string; fill: string }> = []
+
+  // What the caller hears. Budgets differ per row because the faces do: the
+  // destination is set in Cinzel, whose small caps run about half again as wide
+  // as the body face.
+  if (!emptySlot && exit.label) {
+    for (const line of wrapToPlate(exit.label, 17, 1)) {
+      rows.push({ text: line, size: 8, fill: PALE })
+    }
+  }
+
+  // What it puts in the satchel, named rather than merely hinted at.
+  //
+  // The chest glyph on the arch says "something changes hands here", which is
+  // enough when the doors go different ways. It is not enough when they don't:
+  // three doors to the same cave, one rope, one lantern, one nothing, all read
+  // identically without this. The item IS the difference.
+  for (const slug of exit.grants) {
+    for (const line of wrapToPlate(`+${slug}`, 15, 1)) {
+      rows.push({ text: line, size: 8, fill: '#E8A33D' })
+    }
+  }
+  for (const slug of exit.revokes) {
+    for (const line of wrapToPlate(`-${slug}`, 15, 1)) {
+      rows.push({ text: line, size: 8, fill: '#8C2F22' })
+    }
+  }
+
+  // Where it lands them.
+  const destination = unwritten
     ? [emptySlot ? 'no door yet' : 'unwritten']
     : wrapToPlate(exit.targetTitle ?? 'nowhere', 12, 2)
-
-  const rows = said.length + leadsTo.length
-  const height = 6 + rows * 11
+  for (const line of destination) {
+    rows.push({
+      text: line,
+      size: 9,
+      family: unwritten ? undefined : 'Cinzel, Georgia, serif',
+      /* Red only for a door that claims a destination and hasn't got one — a
+         dangling reference, which is broken rather than merely unfinished.
+         Unwritten branches stay the same cold blue as their brickwork. */
+      fill: unwritten ? '#41525C' : exit.targetTitle ? (lit ? '#E4D9BE' : '#8FB0C2') : '#8C2F22',
+    })
+  }
 
   return (
     <g>
@@ -60,39 +95,24 @@ function Nameplate({ exit, lit }: { exit: ExitView; lit: boolean }) {
         x={x + 1}
         y={top}
         width={ARCH.w - 2}
-        height={height}
+        height={6 + rows.length * 11}
         rx={2}
         fill="#141010"
         fillOpacity={0.88}
         stroke={unwritten ? '#41525C' : lit ? '#6B5A47' : '#41525C'}
         strokeWidth={1}
       />
-      {said.map((line, i) => (
+      {rows.map((row, i) => (
         <text
-          key={`said-${i}`}
+          key={i}
           x={mid}
           y={top + 11 + i * 11}
           textAnchor="middle"
-          fontSize={8}
-          fill={lit ? '#8FB0C2' : '#6B5A47'}
+          fontSize={row.size}
+          fontFamily={row.family}
+          fill={row.fill}
         >
-          {line}
-        </text>
-      ))}
-      {leadsTo.map((line, i) => (
-        <text
-          key={`to-${i}`}
-          x={mid}
-          y={top + 11 + (said.length + i) * 11}
-          textAnchor="middle"
-          fontSize={9}
-          fontFamily={unwritten ? undefined : 'Cinzel, Georgia, serif'}
-          /* Red only for a door that claims a destination and hasn't got one —
-             a dangling reference, which is broken rather than merely unfinished.
-             Unwritten branches stay the same cold blue as their brickwork. */
-          fill={unwritten ? '#41525C' : exit.targetTitle ? (lit ? '#E4D9BE' : '#8FB0C2') : '#8C2F22'}
-        >
-          {line}
+          {row.text}
         </text>
       ))}
     </g>
