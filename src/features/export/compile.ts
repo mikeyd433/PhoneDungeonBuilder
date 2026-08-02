@@ -46,8 +46,18 @@ export type WidgetType =
 
 export interface Transition {
   event: string
-  /** Condition label for split/gather transitions. */
+  /** Human label, for the build sheet. */
   condition?: string
+  /**
+   * What Studio actually evaluates.
+   *
+   * `condition` alone is prose. A flow whose transitions carry only a
+   * friendly_name imports without complaint and then never matches anything —
+   * every call falls straight through to noMatch. The subject being compared
+   * comes from the widget (a split's input, a gather's digits), so only the
+   * test and the value live here.
+   */
+  match?: { type: 'equal_to' | 'contains' | 'less_than'; value: string }
   next: string | null
 }
 
@@ -63,6 +73,9 @@ export interface Widget {
   variables?: Array<{ key: string; value: string }>
   /** For split-based-on. */
   splitOn?: string
+  /** Widget-type settings Studio needs and cannot infer — a gather's digit
+   *  count and timeout were described in the note and nowhere else. */
+  properties?: Record<string, unknown>
   transitions: Transition[]
   /** Source node, for grouping and layout. */
   nodeId?: string
@@ -110,6 +123,18 @@ import {
   planInventory,
   RET_VAR,
 } from './inventory'
+
+/** One digit, no speech, and the room's own patience. */
+export function gatherProperties(timeoutSeconds: number): Record<string, unknown> {
+  return {
+    number_of_digits: 1,
+    stop_gather: true,
+    timeout: timeoutSeconds,
+    finish_on_key: '',
+    speech_timeout: 'auto',
+    gather_language: 'en-US',
+  }
+}
 
 const wname = (slug: string, suffix: string) => `${slug}_${suffix}`
 
@@ -398,6 +423,7 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
           roundTransitions.push({
             event: 'keypress',
             condition: `Digits equals ${m + 1}`,
+            match: { type: 'equal_to', value: String(m + 1) },
             next,
           })
           legend.push(`${m + 1}=${move.slug}`)
@@ -420,6 +446,7 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
             legend.length > 0
               ? `${legend.join(', ')}. Any other digit, and silence, takes the losing route.`
               : 'This round has no moves — every answer takes the losing route.',
+          properties: gatherProperties(node.timeout_seconds),
           transitions: roundTransitions,
         })
 
@@ -448,6 +475,7 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
             {
               event: 'match',
               condition: `Less than ${fight.silence_patience}`,
+              match: { type: 'less_than', value: String(fight.silence_patience) },
               next: roundEntry(slug, rounds, i),
             },
             { event: 'noMatch', next: missNext },
@@ -546,7 +574,12 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
           note: `Gate on digit ${choice.digit}; the boolean was computed in ${gateWidget}.`,
           splitOn: `{{flow.variables.${gateVarName(slug, choice.digit)}}}`,
           transitions: [
-            { event: 'match', condition: 'Equal To pass', next: dest },
+            {
+              event: 'match',
+              condition: 'Equal To pass',
+              match: { type: 'equal_to', value: 'pass' },
+              next: dest,
+            },
             { event: 'noMatch', next: failNext },
           ],
         })
@@ -575,7 +608,12 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
         dest = splitName
       }
 
-      transitions.push({ event: 'keypress', condition: `Digits equals ${choice.digit}`, next: dest })
+      transitions.push({
+        event: 'keypress',
+        condition: `Digits equals ${choice.digit}`,
+        match: { type: 'equal_to', value: choice.digit },
+        next: dest,
+      })
     }
 
     // An explicit target is a room the caller ENTERS; the default is this room
@@ -595,6 +633,7 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
       transitions.push({
         event: 'keypress',
         condition: `Digits equals ${inventory.key}`,
+        match: { type: 'equal_to', value: inventory.key },
         next: invRetName(slug),
       })
       widgets.push({
@@ -616,6 +655,7 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
       type: 'gather-input-on-call',
       nodeId: node.id,
       note: `Stop gathering after 1 digit; ${node.timeout_seconds}s timeout.`,
+      properties: gatherProperties(node.timeout_seconds),
       transitions,
     })
 
@@ -668,7 +708,12 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
       note: 'Empty hands get their own line rather than a lead-in and then nothing.',
       splitOn: emptyHandedCondition(),
       transitions: [
-        { event: 'match', condition: 'equal_to |', next: whenEmpty },
+        {
+          event: 'match',
+          condition: 'equal_to |',
+          match: { type: 'equal_to', value: '|' },
+          next: whenEmpty,
+        },
         { event: 'noMatch', next: afterIntro },
       ],
     })
@@ -702,7 +747,12 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
         note: `Is the caller holding ${item.name || item.slug}?`,
         splitOn: `{{ flow.variables.${INV_VAR} | default: "|" }}`,
         transitions: [
-          { event: 'match', condition: `contains |${item.slug}|`, next: invItemPlay(item.slug) },
+          {
+            event: 'match',
+            condition: `contains |${item.slug}|`,
+            match: { type: 'contains', value: `|${item.slug}|` },
+            next: invItemPlay(item.slug),
+          },
           { event: 'noMatch', next: after },
         ],
       })
@@ -726,6 +776,7 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
         ...returnsTo.map((r) => ({
           event: 'match' as const,
           condition: `equal_to ${r.slug}`,
+          match: { type: 'equal_to' as const, value: r.slug },
           next: r.next,
         })),
         // Only reachable if `ret` was never set, which cannot happen by any

@@ -127,6 +127,18 @@ function widgetLabel(type: Widget['type']): string {
  * that drives the automap so an imported flow lands readable instead of piled
  * in a corner.
  */
+/**
+ * What a transition's condition is testing.
+ *
+ * Studio puts the subject on every condition rather than on the widget, so it
+ * has to be recovered here: a split compares the input it declared, a gather
+ * compares the digits it just collected.
+ */
+function conditionSubject(w: Widget): string {
+  if (w.type === 'gather-input-on-call') return `{{widgets.${w.name}.Digits}}`
+  return w.splitOn ?? ''
+}
+
 export function studioFlowJson(
   graph: StoryGraph,
   compiled: CompileResult,
@@ -142,13 +154,27 @@ export function studioFlowJson(
       properties: {
         offset: { x: Math.round(at.x), y: Math.round(at.y) },
         ...(w.say ? { say: w.say } : {}),
-        ...(w.playUrl ? { play: w.playUrl } : {}),
+        ...(w.playUrl ? { play: w.playUrl, loop: 1 } : {}),
         ...(w.splitOn ? { input: w.splitOn } : {}),
         ...(w.variables ? { variables: w.variables } : {}),
+        ...(w.properties ?? {}),
       },
       transitions: w.transitions.map((t) => ({
         event: t.event,
-        ...(t.condition ? { conditions: [{ friendly_name: t.condition }] } : {}),
+        ...(t.match
+          ? {
+              conditions: [
+                {
+                  friendly_name: t.condition ?? t.match.value,
+                  // What is being compared belongs to the WIDGET: a split
+                  // declares its input, a gather compares its own digits.
+                  arguments: [conditionSubject(w)],
+                  type: t.match.type,
+                  value: t.match.value,
+                },
+              ],
+            }
+          : {}),
         next: t.next ?? undefined,
       })),
     }

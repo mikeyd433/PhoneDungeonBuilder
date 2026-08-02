@@ -51,10 +51,26 @@ describe('compiling a fight', () => {
     const gather = widgets.find((w) => w.name === 'SHARKS_r1_gather')!
     // Round one announces Kick, which PUNCH counters, and PUNCH is digit 1.
     // The other two digits are answers too — they just take the losing route.
+    // `match` is what Studio evaluates; `condition` is the label beside it.
     expect(gather.transitions).toEqual([
-      { event: 'keypress', condition: 'Digits equals 1', next: 'SHARKS_r2_play' },
-      { event: 'keypress', condition: 'Digits equals 2', next: 'DROWNED_play' },
-      { event: 'keypress', condition: 'Digits equals 3', next: 'DROWNED_play' },
+      {
+        event: 'keypress',
+        condition: 'Digits equals 1',
+        match: { type: 'equal_to', value: '1' },
+        next: 'SHARKS_r2_play',
+      },
+      {
+        event: 'keypress',
+        condition: 'Digits equals 2',
+        match: { type: 'equal_to', value: '2' },
+        next: 'DROWNED_play',
+      },
+      {
+        event: 'keypress',
+        condition: 'Digits equals 3',
+        match: { type: 'equal_to', value: '3' },
+        next: 'DROWNED_play',
+      },
       { event: 'noMatch', next: 'DROWNED_play' },
       // Silence is counted rather than punished — see the patience test below.
       { event: 'timeout', next: 'SHARKS_r1_waited' },
@@ -69,7 +85,12 @@ describe('compiling a fight', () => {
     ])
     const patience = widgets.find((w) => w.name === 'SHARKS_r1_patience')!
     expect(patience.transitions).toEqual([
-      { event: 'match', condition: 'Less than 3', next: 'SHARKS_r1_play' },
+      {
+        event: 'match',
+        condition: 'Less than 3',
+        match: { type: 'less_than', value: '3' },
+        next: 'SHARKS_r1_play',
+      },
       { event: 'noMatch', next: 'DROWNED_play' },
     ])
   })
