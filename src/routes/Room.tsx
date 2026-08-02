@@ -116,6 +116,9 @@ export default function Room() {
           <Link to={`/story/${storyId}/ledger`} className="text-mortar underline">
             Ledger
           </Link>
+          <Link to={`/story/${storyId}/export`} className="text-mortar underline">
+            Export
+          </Link>
         </nav>
       </header>
 
