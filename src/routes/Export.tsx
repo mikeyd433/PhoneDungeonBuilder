@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import InventoryPanel from '@/features/state/InventoryPanel'
 import { useDelve } from '@/features/graph/store'
 import { useAutomapLayout } from '@/features/automap/useAutomapLayout'
 import { compileStory } from '@/features/export/compile'
@@ -70,6 +71,10 @@ export default function Export() {
 
       {/* §6.5 — the widget budget meter, so you know where you stand while
           writing rather than at export time. */}
+      <div className="mb-6">
+        <InventoryPanel />
+      </div>
+
       <section className="mb-6 rounded border border-mortar/50 p-4">
         <div className="mb-2 flex items-center justify-between text-sm">
           <span>Widget budget</span>

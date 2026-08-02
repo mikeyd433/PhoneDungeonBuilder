@@ -97,6 +97,20 @@ export const STEP_LIMIT = 1000
  */
 export const PATIENCE_VALVE_AT = 8
 
+import {
+  emptyHandedCondition,
+  INV_NONE,
+  INV_INTRO,
+  INV_RETURN,
+  INV_START,
+  invItemCheck,
+  invItemPlay,
+  invRetName,
+  keyCollisions,
+  planInventory,
+  RET_VAR,
+} from './inventory'
+
 const wname = (slug: string, suffix: string) => `${slug}_${suffix}`
 
 function digitToken(digit: string): string {
@@ -158,6 +172,11 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
     }
     return vars
   }
+
+  const inventory = planInventory(graph)
+  const collidingRooms = new Set(keyCollisions(graph))
+  /** Every room that can jump to the readback, and where it comes back to. */
+  const returnsTo: Array<{ slug: string; next: string }> = []
 
   const playName = (slug: string) => wname(slug, 'play')
 
@@ -569,6 +588,26 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
       ? entryName(nodeAt(node.invalid_target_id)!)
       : replayName(node)
 
+    // The reserved key, if this story has one. It goes to a one-line widget
+    // that records WHICH room to come back to — Studio has no return, so the
+    // room has to leave itself a note on the way out.
+    if (inventory && !collidingRooms.has(slug)) {
+      transitions.push({
+        event: 'keypress',
+        condition: `Digits equals ${inventory.key}`,
+        next: invRetName(slug),
+      })
+      widgets.push({
+        name: invRetName(slug),
+        type: 'set-variables',
+        nodeId: node.id,
+        note: `Remember where to come back to, then read the satchel back.`,
+        variables: [{ key: RET_VAR, value: slug }],
+        transitions: [{ event: 'next', next: INV_START }],
+      })
+      returnsTo.push({ slug, next: replayName(node) })
+    }
+
     transitions.push({ event: 'timeout', next: timeoutTarget })
     transitions.push({ event: 'noMatch', next: invalidTarget })
 
@@ -587,11 +626,118 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
     }
   }
 
+  const root = graph.story.root_node_id ? graph.nodes.get(graph.story.root_node_id) : null
+
+  // ---- the shared inventory readback (emitted once, not per room)
+  if (inventory) {
+    for (const room of collidingRooms) {
+      warnings.push(
+        `${room} already uses ${inventory.key} for a door, so the caller cannot check their satchel there. Move that door to another key, or change the readback key.`,
+      )
+    }
+    for (const item of inventory.silent) {
+      warnings.push(
+        `${item.name || item.slug} has no recording of its name, so a caller holding it hears nothing for it in the readback.`,
+      )
+    }
+    if (!inventory.introRecorded) {
+      warnings.push(
+        'The inventory lead-in has no recording, so the readback starts straight in on the items.',
+      )
+    }
+    if (!inventory.emptyRecorded) {
+      warnings.push(
+        'There is no recording for empty hands, so a caller carrying nothing hears silence and is returned to the room.',
+      )
+    }
+    if (returnsTo.length === 0) {
+      warnings.push(
+        `No room can reach the inventory readback on ${inventory.key}, so it is unreachable.`,
+      )
+    }
+
+    // Where the items begin: the lead-in if it was recorded, otherwise the
+    // first thing there is to say.
+    const firstItem = inventory.spoken.length > 0 ? invItemCheck(inventory.spoken[0].slug) : INV_RETURN
+    const afterIntro = inventory.introRecorded ? INV_INTRO : firstItem
+    const whenEmpty = inventory.emptyRecorded ? INV_NONE : INV_RETURN
+
+    widgets.push({
+      name: INV_START,
+      type: 'split-based-on',
+      note: 'Empty hands get their own line rather than a lead-in and then nothing.',
+      splitOn: emptyHandedCondition(),
+      transitions: [
+        { event: 'match', condition: 'equal_to |', next: whenEmpty },
+        { event: 'noMatch', next: afterIntro },
+      ],
+    })
+
+    if (inventory.emptyRecorded) {
+      widgets.push({
+        name: INV_NONE,
+        type: 'say-play',
+        note: 'Carrying nothing.',
+        playUrl: `${audioBaseUrl}${graph.story.inventory_empty_audio_path}`,
+        transitions: [{ event: 'audioComplete', next: INV_RETURN }],
+      })
+    }
+    if (inventory.introRecorded) {
+      widgets.push({
+        name: INV_INTRO,
+        type: 'say-play',
+        note: 'The lead-in: "you are carrying…".',
+        playUrl: `${audioBaseUrl}${graph.story.inventory_intro_audio_path}`,
+        transitions: [{ event: 'audioComplete', next: firstItem }],
+      })
+    }
+
+    // One test and one line per recorded item, chained. An item nobody recorded
+    // gets no widgets at all rather than a gap in the middle of the sentence.
+    inventory.spoken.forEach((item, i) => {
+      const after = inventory.spoken[i + 1] ? invItemCheck(inventory.spoken[i + 1].slug) : INV_RETURN
+      widgets.push({
+        name: invItemCheck(item.slug),
+        type: 'split-based-on',
+        note: `Is the caller holding ${item.name || item.slug}?`,
+        splitOn: `{{ flow.variables.${INV_VAR} | default: "|" }}`,
+        transitions: [
+          { event: 'match', condition: `contains |${item.slug}|`, next: invItemPlay(item.slug) },
+          { event: 'noMatch', next: after },
+        ],
+      })
+      widgets.push({
+        name: invItemPlay(item.slug),
+        type: 'say-play',
+        note: `"${item.name || item.slug}"`,
+        playUrl: `${audioBaseUrl}${item.audio_path}`,
+        transitions: [{ event: 'audioComplete', next: after }],
+      })
+    })
+
+    // Back where they were standing. The REPLAY, never the entry: re-running
+    // arrival effects would grant the room's item again for looking in a bag.
+    widgets.push({
+      name: INV_RETURN,
+      type: 'split-based-on',
+      note: 'Back to the room the caller pressed the key in.',
+      splitOn: `{{ flow.variables.${RET_VAR} }}`,
+      transitions: [
+        ...returnsTo.map((r) => ({
+          event: 'match' as const,
+          condition: `equal_to ${r.slug}`,
+          next: r.next,
+        })),
+        // Only reachable if `ret` was never set, which cannot happen by any
+        // route the exporter builds — but Studio needs somewhere to go.
+        { event: 'noMatch', next: returnsTo[0]?.next ?? (root ? entryName(root) : '') },
+      ],
+    })
+  }
+
   // ---- budget (§6.5)
   const total = widgets.length
   const longestPathSteps = estimateLongestPath(graph)
-
-  const root = graph.story.root_node_id ? graph.nodes.get(graph.story.root_node_id) : null
 
   return {
     widgets,

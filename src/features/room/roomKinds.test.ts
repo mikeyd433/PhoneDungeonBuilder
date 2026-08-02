@@ -19,6 +19,8 @@ function addVar(graph: StoryGraph, slug: string): string {
     kind: 'item',
     description: null,
     is_consumable: false,
+    audio_path: null,
+    audio_duration_ms: null,
     created_at: STAMP,
     updated_at: STAMP,
   })

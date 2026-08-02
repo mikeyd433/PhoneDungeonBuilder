@@ -8,6 +8,7 @@ import type {
   FightMove,
   FightRound,
   MembershipRole,
+  Story,
   StoryGraph,
   StoryNode,
 } from '@/types/domain'
@@ -58,6 +59,9 @@ interface DelveState {
   /** Splice a room out, joining what led to it to whatever it led to.
    *  Returns false and sets `error` when the room can't be collapsed. */
   collapseRoom: (nodeId: string) => Promise<boolean>
+  /** Story-level settings: the inventory readback's key and its two takes. */
+  updateStory: (patch: Partial<Story>) => Promise<void>
+  setItemAudio: (id: string, path: string, durationMs: number) => Promise<void>
   /** The inverse: put a new room on an existing door, so A -> B becomes
    *  A -> new -> B. Walks into the new room. */
   insertRoomOnChoice: (choiceId: string, title?: string) => Promise<string | null>
@@ -394,6 +398,43 @@ export const useDelve = create<DelveState>((set, get) => {
      * than a hand-written patch, because a collapse can touch choices, fights,
      * outcomes and nodes in one go and this is a once-per-room operation.
      */
+    async updateStory(patch) {
+      if (readOnly()) return
+      const { graph } = get()
+      if (!graph) return
+      const before = graph.story
+      patchGraph((g) => ({ ...g, story: { ...g.story, ...patch } }))
+      try {
+        const saved = await api.updateStory(before.id, patch)
+        patchGraph((g) => ({ ...g, story: saved }))
+        const inverse: Partial<Story> = {}
+        for (const key of Object.keys(patch) as Array<keyof Story>) {
+          inverse[key] = before[key] as never
+        }
+        pushUndo({ label: 'story settings', invert: () => api.updateStory(before.id, inverse).then(() => {}) })
+      } catch (e) {
+        // Roll the optimistic write back: the sheet must never claim a save
+        // that the database refused.
+        patchGraph((g) => ({ ...g, story: before }))
+        fail(e)
+      }
+    },
+
+    async setItemAudio(id, path, durationMs) {
+      if (readOnly()) return
+      const { graph } = get()
+      if (!graph) return
+      try {
+        const saved = await api.updateStateVar(id, {
+          audio_path: path,
+          audio_duration_ms: durationMs,
+        })
+        patchGraph((g) => ({ ...g, stateVars: new Map(g.stateVars).set(saved.id, saved) }))
+      } catch (e) {
+        fail(e)
+      }
+    },
+
     async collapseRoom(nodeId) {
       if (readOnly()) return false
       const { graph, derived } = get()

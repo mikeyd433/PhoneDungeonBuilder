@@ -151,6 +151,12 @@ export async function createStory(title: string, seedEntrance = true): Promise<S
   return updated as Story
 }
 
+export async function updateStory(id: string, patch: Partial<Story>): Promise<Story> {
+  const { data, error } = await supabase.from('stories').update(patch).eq('id', id).select().single()
+  if (error) throw error
+  return data as Story
+}
+
 export async function createNode(
   storyId: string,
   patch: Partial<StoryNode> & { slug: string },

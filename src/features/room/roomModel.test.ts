@@ -117,6 +117,8 @@ describe('items on a door', () => {
       kind: 'item',
       description: null,
       is_consumable: false,
+      audio_path: null,
+      audio_duration_ms: null,
       created_at: '2026-01-01T00:00:00Z',
       updated_at: '2026-01-01T00:00:00Z',
     })
@@ -145,6 +147,8 @@ describe('items on a door', () => {
       kind: 'item',
       description: null,
       is_consumable: false,
+      audio_path: null,
+      audio_duration_ms: null,
       created_at: '2026-01-01T00:00:00Z',
       updated_at: '2026-01-01T00:00:00Z',
     })

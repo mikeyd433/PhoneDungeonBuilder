@@ -332,9 +332,20 @@ export default function Playtest() {
               const { next, spoken } = engine.press(state, d)
               pushTurn(`pressed ${d}`, next, spoken)
             }}
-            className="bg-black py-4 font-carved text-lg text-parchment active:bg-stone disabled:opacity-30"
+            title={
+              graph.story.inventory_key === d
+                ? 'Hear what you are carrying, then carry on'
+                : undefined
+            }
+            className={[
+              'bg-black py-4 font-carved text-lg active:bg-stone disabled:opacity-30',
+              // The reserved key does the same thing in every room, so it is
+              // marked rather than left to be discovered.
+              graph.story.inventory_key === d ? 'text-torch' : 'text-parchment',
+            ].join(' ')}
           >
             {d}
+            {graph.story.inventory_key === d && <span className="ml-1 text-xs">🎒</span>}
           </button>
         ))}
       </div>

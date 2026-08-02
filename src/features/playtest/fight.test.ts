@@ -140,3 +140,61 @@ describe('playtesting a fight', () => {
     expect(next.nodeId).toBe(idOf(g, 'B'))
   })
 })
+
+describe('the reserved inventory key', () => {
+  const withKey = (g: ReturnType<typeof makeGraph>) => {
+    g.story.inventory_key = '*'
+    g.story.inventory_intro_audio_path = 'takes/carrying.mp3'
+    g.story.inventory_empty_audio_path = 'takes/nothing.mp3'
+    return g
+  }
+  const rope = (g: ReturnType<typeof makeGraph>, recorded: boolean) => {
+    g.stateVars.set('v1', {
+      id: 'v1',
+      story_id: g.story.id,
+      slug: 'ROPE',
+      name: 'a coil of rope',
+      kind: 'item',
+      description: null,
+      is_consumable: false,
+      audio_path: recorded ? 'takes/rope.mp3' : null,
+      audio_duration_ms: null,
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
+    })
+  }
+
+  it('reads back without moving the caller', () => {
+    const g = withKey(makeGraph(['HALL', 'CAVE'], ['HALL>CAVE']))
+    rope(g, true)
+    const engine = new PlaytestEngine(g)
+    const start = engine.start()
+    const { next, spoken } = engine.press(start, '*')
+    expect(next.nodeId).toBe(start.nodeId)
+    expect(spoken).toMatch(/carrying nothing/i)
+  })
+
+  it('warns that an unrecorded item is silence on the phone', () => {
+    const g = withKey(makeGraph(['HALL', 'CAVE'], ['HALL>CAVE']))
+    rope(g, false)
+    const engine = new PlaytestEngine(g)
+    const state = engine.start()
+    // Force the item into the satchel rather than walking a route to it.
+    const carrying = { ...state, caller: { ...state.caller, mask: 1 } }
+    const { spoken } = engine.press(carrying, '*')
+    expect(spoken).toMatch(/a coil of rope/)
+    expect(spoken).toMatch(/no recording/i)
+  })
+
+  it('leaves the key alone when a room uses it for a door', () => {
+    const g = withKey(makeGraph(['HALL', 'CAVE'], ['HALL>CAVE']))
+    const id = [...g.choices.values()][0].id
+    g.choices.set(id, { ...g.choices.get(id)!, digit: '*' })
+    rope(g, true)
+    const engine = new PlaytestEngine(g)
+    const start = engine.start()
+    const { next } = engine.press(start, '*')
+    // The door wins: pressing * walks through it, exactly as the export does.
+    expect(next.nodeId).not.toBe(start.nodeId)
+  })
+})

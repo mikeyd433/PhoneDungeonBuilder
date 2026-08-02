@@ -188,6 +188,18 @@ export class PlaytestEngine {
    * way — a refusal has narration of its own before they land back here.
    */
   press(state: PlaytestState, digit: string): { next: PlaytestState; spoken: string | null } {
+    // The reserved key, before anything else — except mid-fight, where the
+    // exported flow doesn't offer it either. A round's keypad belongs to the
+    // round, and there is no way back into the middle of one.
+    if (
+      state.fightRound === null &&
+      this.graph.story.inventory_key &&
+      digit === this.graph.story.inventory_key &&
+      !this.offered(state).some((o) => o.choice.digit === digit)
+    ) {
+      return { next: state, spoken: this.readback(state) }
+    }
+
     if (state.fightRound !== null) return this.pressInFight(state, digit)
 
     const offer = this.offered(state).find((o) => o.choice.digit === digit)
@@ -351,6 +363,35 @@ export class PlaytestEngine {
   }
 
   /** Slugs the caller is currently holding, for the live inventory row (F5.3). */
+  /**
+   * What the caller would actually HEAR on pressing the reserved key.
+   *
+   * Not the same list as `held`: the phone can only say what somebody
+   * recorded, so an item with no take is silence there. Saying so here is the
+   * point — it is cheaper to notice in the playtest than on the phone.
+   */
+  readback(state: PlaytestState): string {
+    const items = [...this.graph.stateVars.values()].filter((v) => v.kind === 'item')
+    const carried = items.filter((v) => {
+      const bit = this.index.bit.get(v.slug)
+      return bit !== undefined && (state.caller.mask & (1 << bit)) !== 0
+    })
+    if (carried.length === 0) {
+      return this.graph.story.inventory_empty_audio_path
+        ? 'You are carrying nothing.'
+        : '(Carrying nothing — and there is no recording for that, so the phone says nothing at all.)'
+    }
+    const spoken = carried.map((v) =>
+      v.audio_path
+        ? v.name || v.slug
+        : `${v.name || v.slug} (no recording — silence on the phone)`,
+    )
+    const lead = this.graph.story.inventory_intro_audio_path
+      ? 'You are carrying:'
+      : '(No lead-in recorded.)'
+    return `${lead} ${spoken.join(', ')}.`
+  }
+
   held(state: PlaytestState): string[] {
     const out: string[] = []
     for (const v of this.graph.stateVars.values()) {

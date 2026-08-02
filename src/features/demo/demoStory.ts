@@ -45,6 +45,11 @@ export function buildDemoStory(): StoryGraph {
     owner_id: 'demo-owner',
     counter_clamp: 10,
     default_fail_behavior: 'refuse',
+    inventory_key: null,
+    inventory_intro_audio_path: null,
+    inventory_intro_audio_duration_ms: null,
+    inventory_empty_audio_path: null,
+    inventory_empty_audio_duration_ms: null,
     created_at: STAMP,
     updated_at: STAMP,
   }
@@ -166,6 +171,8 @@ export function buildDemoStory(): StoryGraph {
     kind: 'item',
     description: 'Floats past in the hold.',
     is_consumable: false,
+    audio_path: null,
+    audio_duration_ms: null,
     created_at: STAMP,
     updated_at: STAMP,
   }

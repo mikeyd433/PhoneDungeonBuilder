@@ -12,6 +12,8 @@ function withItem(graph: StoryGraph, slug: string, consumable = false): StateVar
     kind: 'item',
     description: null,
     is_consumable: consumable,
+    audio_path: null,
+    audio_duration_ms: null,
     created_at: '',
     updated_at: '',
   }

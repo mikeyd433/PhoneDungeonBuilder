@@ -23,9 +23,25 @@ export interface Story {
   owner_id: string
   counter_clamp: number
   default_fail_behavior: GateFailBehavior
+  /**
+   * The key a caller presses in any room to hear what they are carrying.
+   *
+   * Null means the story has no readback, which is the default — a story that
+   * never grants anything should not spend a key on it. Only `*` or `#`: every
+   * other key is a door somewhere.
+   */
+  inventory_key: InventoryKey | null
+  inventory_intro_audio_path: string | null
+  inventory_intro_audio_duration_ms: number | null
+  inventory_empty_audio_path: string | null
+  inventory_empty_audio_duration_ms: number | null
   created_at: string
   updated_at: string
 }
+
+/** The only two keys that are never a door. */
+export const INVENTORY_KEYS = ['*', '#'] as const
+export type InventoryKey = (typeof INVENTORY_KEYS)[number]
 
 export interface StoryNode {
   id: string
@@ -68,6 +84,9 @@ export interface StateVar {
   kind: StateVarKind
   description: string | null
   is_consumable: boolean
+  /** A take of the item's name, for the readback. Unrecorded is silence. */
+  audio_path: string | null
+  audio_duration_ms: number | null
   created_at: string
   updated_at: string
 }

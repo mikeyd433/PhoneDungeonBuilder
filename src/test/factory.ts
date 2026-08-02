@@ -37,6 +37,11 @@ export function makeGraph(
     owner_id: 'user-1',
     counter_clamp: 10,
     default_fail_behavior: 'refuse',
+    inventory_key: null,
+    inventory_intro_audio_path: null,
+    inventory_intro_audio_duration_ms: null,
+    inventory_empty_audio_path: null,
+    inventory_empty_audio_duration_ms: null,
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',
   }

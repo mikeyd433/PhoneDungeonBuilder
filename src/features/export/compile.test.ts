@@ -14,6 +14,8 @@ function addItem(g: StoryGraph, slug: string): StateVar {
     kind: 'item',
     description: null,
     is_consumable: false,
+    audio_path: null,
+    audio_duration_ms: null,
     created_at: '',
     updated_at: '',
   }
