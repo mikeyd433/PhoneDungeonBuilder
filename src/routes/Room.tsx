@@ -8,6 +8,7 @@ import Automap from '@/features/automap/Automap'
 import { useAutomapLayout } from '@/features/automap/useAutomapLayout'
 import SatchelPanel from '@/features/state/SatchelPanel'
 import { useSolver } from '@/features/state/useSolver'
+import { usePresence } from '@/features/collab/usePresence'
 
 export default function Room() {
   const { storyId } = useParams<{ storyId: string }>()
@@ -30,6 +31,7 @@ export default function Room() {
   const { layout } = useAutomapLayout()
   const { result: solverResult, solving } = useSolver()
   const [satchelOpen, setSatchelOpen] = useState(false)
+  const peers = usePresence(storyId, currentNodeId)
 
   useEffect(() => {
     if (storyId) void loadStory(storyId)
@@ -116,6 +118,18 @@ export default function Room() {
           </Link>
         </nav>
       </header>
+
+      {/* F9.5 — a soft lock: it tells you someone is here, it doesn't stop you. */}
+      {peers.some((p) => p.nodeId === currentNodeId) && (
+        <p className="border-b border-torch/40 bg-torch/10 px-4 py-2 text-xs">
+          {peers
+            .filter((p) => p.nodeId === currentNodeId)
+            .map((p) => p.email)
+            .join(', ')}{' '}
+          {peers.filter((p) => p.nodeId === currentNodeId).length === 1 ? 'is' : 'are'} in this room
+          too.
+        </p>
+      )}
 
       {(view.isOrphan || view.isUnreachable || view.endingWithExits) && (
         <p className="border-b border-grave/40 bg-grave/10 px-4 py-2 text-xs">

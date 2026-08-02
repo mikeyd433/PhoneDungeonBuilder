@@ -5,6 +5,7 @@ import { slugify } from '@/lib/slug'
 import { nextFreeDigit } from './roomModel'
 import AudioPanel from '@/features/audio/AudioPanel'
 import ItemsSection from '@/features/state/ItemsSection'
+import CollabPanel from '@/features/collab/CollabPanel'
 import { DIGITS, canWrite, type Digit, type StoryNode } from '@/types/domain'
 
 /**
@@ -68,6 +69,10 @@ export default function EditorSheet({ nodeId, onClose }: { nodeId: string; onClo
       {/* Audio sits outside the disabled fieldset: the `voice` role can record
           even though every story field below is read-only for them. */}
       <AudioPanel nodeId={nodeId} />
+
+      {/* Also outside the fieldset: `voice` and `viewer` may leave notes, and a
+          voice actor claiming a room to record is exactly the point of F9.4. */}
+      <CollabPanel nodeId={nodeId} />
 
       {!editable && (
         <p className="mb-4 rounded border border-cold/60 bg-cold/10 p-3 text-xs">
