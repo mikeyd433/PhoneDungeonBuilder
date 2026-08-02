@@ -19,6 +19,11 @@ on:
       - '.gitignore'
   workflow_dispatch: # deploy by hand from the Actions tab
 
+# Checkout reads the tree and nothing writes back, so the default token needs no
+# more than that. The deploy job overrides this to nothing at all.
+permissions:
+  contents: read
+
 # One deploy at a time. Two pushes in quick succession should produce one build
 # of the later commit, not a race between two builds of different trees.
 concurrency:
@@ -54,6 +59,7 @@ jobs:
     name: Trigger the Netlify build
     needs: verify
     runs-on: ubuntu-latest
+    permissions: {} # nothing here touches GitHub — it only calls out to Netlify
     steps:
       # Netlify's build hook URL is a credential: anyone holding it can start a
       # build on the site. It lives in repo secrets and is never printed —
