@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { useDelve } from '@/features/graph/store'
 import TakeRecorder from '@/features/audio/TakeRecorder'
+import DialogueSection from '@/features/cast/DialogueSection'
+import { splitsByLine } from '@/features/cast/dialogue'
 import { estimateSeconds } from '@/lib/speech'
 import { canWrite } from '@/types/domain'
 
@@ -29,6 +31,7 @@ export default function ReactionSheet({
   const from = graph.nodes.get(choice.from_node_id)
   const to = choice.to_node_id ? graph.nodes.get(choice.to_node_id) : null
   const text = draft ?? choice.reaction_narration ?? ''
+  const splitAudio = splitsByLine(graph, { choiceId: choice.id })
 
   const commit = () => {
     if (draft === null || draft === (choice.reaction_narration ?? '')) return
@@ -75,21 +78,31 @@ export default function ReactionSheet({
         </label>
 
         {/* The take. Named for the door so the bucket stays legible, and the
-            same name the audio manifest asks an actor for. */}
-        <TakeRecorder
-          name={`${from?.slug ?? 'room'}__d${choice.digit}__react`}
-          path={choice.audio_path}
-          durationMs={choice.audio_duration_ms}
-          onSaved={(path, ms) =>
-            updateChoice(choice.id, { audio_path: path, audio_duration_ms: ms })
-          }
-        />
+            same name the audio manifest asks an actor for. Hidden once the
+            reaction plays line by line: the file on the door is not what is
+            heard then, and offering it would invite a take nothing plays. */}
+        {!splitAudio && (
+          <TakeRecorder
+            name={`${from?.slug ?? 'room'}__d${choice.digit}__react`}
+            path={choice.audio_path}
+            durationMs={choice.audio_duration_ms}
+            onSaved={(path, ms) =>
+              updateChoice(choice.id, { audio_path: path, audio_duration_ms: ms })
+            }
+          />
+        )}
 
-        {text.trim() && !choice.audio_path && (
+        {text.trim() && !splitAudio && !choice.audio_path && (
           <p className="mt-3 text-xs text-grave">
             Written but not recorded — the caller hears nothing here until somebody reads it.
           </p>
         )}
+
+        {/* Two people can argue in a doorway. Same split, same cast dropdowns
+            and same per-line takes as a room, because it is the same writing. */}
+        <div className="mt-4 border-t border-mortar/40 pt-4">
+          <DialogueSection owner={{ choiceId: choice.id }} what="reaction" />
+        </div>
       </div>
     </div>
   )

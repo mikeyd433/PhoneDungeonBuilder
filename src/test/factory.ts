@@ -259,10 +259,44 @@ export function addLines(
       id: `dl-${atSlug}-${i}`,
       story_id: graph.story.id,
       node_id: nodeId,
+      choice_id: null,
       character_id: character?.id ?? null,
       text: attributed ? rest.join('|') : spec,
       sort_order: i,
       audio_path: recorded ? `audio/line-${atSlug}-${i}.mp3` : null,
+      audio_duration_ms: recorded ? 2000 : null,
+      created_at: STAMP,
+      updated_at: STAMP,
+    }
+    graph.dialogue.set(line.id, line)
+    return line
+  })
+}
+
+/** Attach lines to a door's reaction — the same writing as a room's, on the
+ *  other kind of owner. Same `"CARTER|text"` shape as `addLines`. */
+export function addReactionLines(
+  graph: StoryGraph,
+  choiceId: string,
+  lines: string[],
+  opts: { recorded?: boolean } = {},
+): DialogueLine[] {
+  const recorded = opts.recorded ?? false
+  return lines.map((spec, i) => {
+    const [maybeSlug, ...rest] = spec.split('|')
+    const attributed = rest.length > 0
+    const character = attributed
+      ? [...graph.characters.values()].find((c) => c.slug === maybeSlug)
+      : undefined
+    const line: DialogueLine = {
+      id: `dl-${choiceId}-${i}`,
+      story_id: graph.story.id,
+      node_id: null,
+      choice_id: choiceId,
+      character_id: character?.id ?? null,
+      text: attributed ? rest.join('|') : spec,
+      sort_order: i,
+      audio_path: recorded ? `audio/react-${choiceId}-${i}.mp3` : null,
       audio_duration_ms: recorded ? 2000 : null,
       created_at: STAMP,
       updated_at: STAMP,

@@ -249,6 +249,7 @@ export function buildDemoStory(): StoryGraph {
       id: nextId('dl'),
       story_id: story.id,
       node_id: node,
+      choice_id: null,
       character_id: character,
       text,
       sort_order: order,

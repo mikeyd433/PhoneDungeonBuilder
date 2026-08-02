@@ -16,6 +16,7 @@ import {
   type EffectLike,
   type VarIndex,
 } from '@/features/state/expression'
+import { reactionPlaybackFor } from '@/features/cast/dialogue'
 
 /**
  * The playtest runtime (§4.4) — the same data, seen as the caller sees it.
@@ -250,16 +251,23 @@ export class PlaytestEngine {
     }
     const arrival = this.enter({ ...state, caller }, offer.choice.to_node_id)
 
-    // The reaction, between the press and the arrival, in that order. Written
-    // but unrecorded is flagged rather than read out as though it will ship:
-    // on the phone that moment is silence.
-    const reaction = offer.choice.reaction_narration?.trim()
+    // The reaction, between the press and the arrival, in that order. Split by
+    // speaker if it has been, and attributed the same way a room's lines are —
+    // a two-hander in a doorway reads as nonsense without the names.
+    //
+    // Written but unrecorded is flagged rather than read out as though it will
+    // ship: on the phone that part is silence.
+    const reaction = reactionPlaybackFor(this.graph, offer.choice.id)
+      .map((part) => {
+        const said = part.say.trim()
+        if (!said) return ''
+        const who = part.speaker ? `${part.speaker}: ` : ''
+        return `${who}${said}${part.audioPath ? '' : ' (no recording — silence on the phone)'}`
+      })
+      .filter(Boolean)
+      .join('\n')
     if (!reaction) return arrival
-    const note = offer.choice.audio_path ? '' : ' (no recording — silence on the phone)'
-    return {
-      ...arrival,
-      spoken: [`${reaction}${note}`, arrival.spoken].filter(Boolean).join('\n\n'),
-    }
+    return { ...arrival, spoken: [reaction, arrival.spoken].filter(Boolean).join('\n\n') }
   }
 
   /**

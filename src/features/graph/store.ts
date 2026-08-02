@@ -12,7 +12,7 @@ import type {
   StoryGraph,
   StoryNode,
 } from '@/types/domain'
-import { composeNarration } from '@/features/cast/dialogue'
+import { composeNarration, type LineOwner } from '@/features/cast/dialogue'
 import { deriveGraph } from './derived'
 import * as api from '@/lib/api'
 import { uniqueSlug } from '@/lib/slug'
@@ -74,10 +74,11 @@ interface DelveState {
   editCharacter: (id: string, patch: Partial<Character>) => Promise<void>
   removeCharacter: (id: string) => Promise<void>
 
-  /** Replace a room's lines AND rewrite its narration from them, in that order,
-   *  so the recorded text and the script can never disagree. */
+  /** Replace an owner's lines AND rewrite its narration from them, in that
+   *  order, so the recorded text and the script can never disagree. The owner
+   *  is a room, or a door's reaction. */
   saveDialogue: (
-    nodeId: string,
+    owner: LineOwner,
     lines: Array<{
       character_id: string | null
       text: string
@@ -759,12 +760,15 @@ export const useDelve = create<DelveState>((set, get) => {
       }
     },
 
-    async saveDialogue(nodeId, lines) {
+    async saveDialogue(owner, lines) {
       if (readOnly()) return
       const { graph } = get()
       if (!graph) return
-      const node = graph.nodes.get(nodeId)
-      if (!node) return
+      const isNode = 'nodeId' in owner
+      // The owner has to exist before anything is deleted: replaceDialogue is a
+      // delete-then-insert, and running it against a room that has already gone
+      // would drop the lines and have nowhere to put them back.
+      if (isNode ? !graph.nodes.get(owner.nodeId) : !graph.choices.get(owner.choiceId)) return
 
       const nameOf = (id: string | null) =>
         id ? (graph.characters.get(id)?.name ?? null) : null
@@ -773,17 +777,23 @@ export const useDelve = create<DelveState>((set, get) => {
       )
 
       try {
-        const saved = await api.replaceDialogue(graph.story.id, nodeId, lines)
+        const saved = await api.replaceDialogue(graph.story.id, owner, lines)
         // The narration is written second on purpose: if the line write fails,
         // the recorded text is still the text the lines were derived from.
         //
-        // Clearing every line means "stop splitting this room", NOT "this room
-        // says nothing" — rewriting the narration to an empty string there would
-        // silently delete the script.
-        if (lines.length > 0) await get().updateNode(nodeId, { narration })
+        // Clearing every line means "stop splitting this", NOT "this says
+        // nothing" — rewriting the text to an empty string there would silently
+        // delete the script.
+        if (lines.length > 0) {
+          if (isNode) await get().updateNode(owner.nodeId, { narration })
+          else await get().updateChoice(owner.choiceId, { reaction_narration: narration })
+        }
         patchGraph((g) => {
           const dialogue = new Map(g.dialogue)
-          for (const [id, line] of dialogue) if (line.node_id === nodeId) dialogue.delete(id)
+          for (const [id, line] of dialogue) {
+            const mine = isNode ? line.node_id === owner.nodeId : line.choice_id === owner.choiceId
+            if (mine) dialogue.delete(id)
+          }
           for (const line of saved) dialogue.set(line.id, line)
           return { ...g, dialogue }
         })

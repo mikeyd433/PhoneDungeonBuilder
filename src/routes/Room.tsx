@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { useDelve } from '@/features/graph/store'
 import { buildRoomView, type ExitView } from '@/features/room/roomModel'
 import RoomStage from '@/features/room/RoomStage'
+import ReactionSheet from '@/features/room/ReactionSheet'
 import EditorSheet from '@/features/room/EditorSheet'
 import Automap from '@/features/automap/Automap'
 import { useAutomapLayout } from '@/features/automap/useAutomapLayout'
@@ -33,6 +34,8 @@ export default function Room() {
   const [editing, setEditing] = useState(false)
   const [renaming, setRenaming] = useState(false)
   const [choosingRetreat, setChoosingRetreat] = useState(false)
+  /** Which door's reaction is open, if any. */
+  const [reacting, setReacting] = useState<string | null>(null)
   const { layout } = useAutomapLayout()
   const { result: solverResult, solving } = useSolver()
   const [satchelOpen, setSatchelOpen] = useState(false)
@@ -233,7 +236,12 @@ export default function Room() {
         onRelabelExit={(choiceId, label) => void updateChoice(choiceId, { label })}
         /* Renames a room you are not standing in — the one behind the door. */
         onRenameTarget={(id, title) => void updateNode(id, { title })}
+        /* Reaching a door's reaction from the doorway rather than the editor:
+           this is where you are standing when you decide it needs one. */
+        onReact={setReacting}
       />
+
+      {reacting && <ReactionSheet choiceId={reacting} onClose={() => setReacting(null)} />}
 
       {/* F1.12 — the retreat chooser. */}
       {choosingRetreat && (

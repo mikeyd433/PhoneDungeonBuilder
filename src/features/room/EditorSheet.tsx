@@ -5,7 +5,6 @@ import { slugify } from '@/lib/slug'
 import { nextFreeDigit } from './roomModel'
 import { isPlainRoom, roomKinds, type RoomKinds } from './roomKinds'
 import { describeCollapse, planCollapse } from './collapse'
-import ReactionSheet from './ReactionSheet'
 import { isPromptLine, promptsFor, withPrompts, type Joiner } from './prompts'
 import AudioPanel from '@/features/audio/AudioPanel'
 import ItemsSection from '@/features/state/ItemsSection'
@@ -68,7 +67,7 @@ function WhatHappensHere({
             : ''),
       )
       if (!ok) return
-      await saveDialogue(nodeId, [])
+      await saveDialogue({ nodeId }, [])
     }
     set('dialogue', false)
   }
@@ -262,7 +261,6 @@ export default function EditorSheet({ nodeId, onClose }: { nodeId: string; onClo
   }
 
   const [announcing, setAnnouncing] = useState(false)
-  const [reacting, setReacting] = useState<string | null>(null)
   const prompts = useMemo(
     () => (graph && derived && node ? promptsFor(graph, derived, node.id, 'for') : []),
     [graph, derived, node],
@@ -296,7 +294,7 @@ export default function EditorSheet({ nodeId, onClose }: { nodeId: string; onClo
         if (last.character_id === null && isPromptLine(last.text)) kept.pop()
         else break
       }
-      await saveDialogue(node.id, [
+      await saveDialogue({ nodeId: node.id }, [
         ...kept.map((l) => ({
           character_id: l.character_id,
           text: l.text,
@@ -448,7 +446,7 @@ export default function EditorSheet({ nodeId, onClose }: { nodeId: string; onClo
           </div>
         </div>
 
-        {(shown.dialogue || kinds?.dialogue) && <DialogueSection nodeId={nodeId} />}
+        {(shown.dialogue || kinds?.dialogue) && <DialogueSection owner={{ nodeId }} />}
 
         <div className="flex flex-col gap-2">
           <span className="text-xs uppercase tracking-wider text-mortar">Exits</span>
@@ -515,28 +513,9 @@ export default function EditorSheet({ nodeId, onClose }: { nodeId: string; onClo
                     </option>
                   ))}
               </select>
-              {/* The reaction to taking this door. Marked when it has one, so a
-                  room's doors can be scanned without opening each. */}
-              <button
-                onClick={() => setReacting(choice.id)}
-                title={
-                  choice.audio_path
-                    ? 'Reaction — recorded'
-                    : choice.reaction_narration?.trim()
-                      ? 'Reaction — written, not recorded'
-                      : 'Add a reaction to taking this door'
-                }
-                className={[
-                  'shrink-0 px-2',
-                  choice.audio_path
-                    ? 'text-torch'
-                    : choice.reaction_narration?.trim()
-                      ? 'text-grave'
-                      : 'text-mortar',
-                ].join(' ')}
-              >
-                🔊
-              </button>
+              {/* The reaction to taking this door lives on "Show where doors
+                  lead", beside the label it answers — not here, where the row
+                  is already four controls of wiring. */}
 
               {/* The inverse of collapse, on the door it applies to: put a room
                   between here and wherever this goes. Disabled on an unwired
@@ -696,7 +675,6 @@ export default function EditorSheet({ nodeId, onClose }: { nodeId: string; onClo
         </label>
       </fieldset>
 
-      {reacting && <ReactionSheet choiceId={reacting} onClose={() => setReacting(null)} />}
     </div>
   )
 }

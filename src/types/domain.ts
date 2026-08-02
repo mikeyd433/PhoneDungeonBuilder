@@ -178,12 +178,20 @@ export interface Character {
   updated_at: string
 }
 
-/** One attributed line of a room's narration. `character_id` null = narration
- *  with nobody speaking it. */
+/**
+ * One attributed line, of a room's narration or of a door's reaction.
+ *
+ * Exactly one of `node_id` / `choice_id` is set — the same two-nullable-keys
+ * shape as `effects`, and for the same reason: real foreign keys, real cascade
+ * deletes, rather than a polymorphic owner the database cannot check.
+ *
+ * `character_id` null = narration with nobody speaking it.
+ */
 export interface DialogueLine {
   id: string
   story_id: string
-  node_id: string
+  node_id: string | null
+  choice_id: string | null
   character_id: string | null
   text: string
   sort_order: number

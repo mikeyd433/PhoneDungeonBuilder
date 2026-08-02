@@ -1,6 +1,6 @@
 import type { StoryGraph, StoryNode } from '@/types/domain'
 import { graphEdges } from '@/features/graph/edges'
-import { playbackFor } from '@/features/cast/dialogue'
+import { playbackFor, reactionPlaybackFor } from '@/features/cast/dialogue'
 import {
   fightProblems,
   fightsByNode,
@@ -559,20 +559,36 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
       // Inside the gate on purpose: hearing the reaction to a thing you were
       // not allowed to do would be worse than hearing nothing, and a refused
       // door has its own take already.
-      if (choice.audio_path) {
-        const reactName = `${slug}_d${digitToken(choice.digit)}_react`
+      //
+      // A reaction split between two actors is one widget per line, chained and
+      // landing on the same destination — the same shape a room's conversation
+      // takes, for the same reason.
+      const reactParts = reactionPlaybackFor(graph, choice.id)
+      const reactRecorded = reactParts.filter((p) => p.audioPath)
+      const reactName = (i: number) =>
+        `${slug}_d${digitToken(choice.digit)}_react${i === 0 ? '' : `_line${i + 1}`}`
+
+      // Built back to front so each widget already knows where the next one is,
+      // and the first of them becomes what the digit points at.
+      for (let i = reactRecorded.length - 1; i >= 0; i--) {
+        const part = reactRecorded[i]
         widgets.push({
-          name: reactName,
+          name: reactName(i),
           type: 'say-play',
           nodeId: node.id,
-          note: `Reaction to pressing ${choice.digit}.`,
-          playUrl: `${audioBaseUrl}${choice.audio_path}`,
+          note: `Reaction to pressing ${choice.digit}.${part.speaker ? ` — ${part.speaker}` : ''}`,
+          playUrl: `${audioBaseUrl}${part.audioPath}`,
           transitions: [{ event: 'audioComplete', next: dest }],
         })
-        dest = reactName
-      } else if (choice.reaction_narration?.trim()) {
+        dest = reactName(i)
+      }
+
+      const reactMissing = reactParts.length - reactRecorded.length
+      if (reactMissing > 0) {
         warnings.push(
-          `${slug} digit ${choice.digit} has a reaction written ("${choice.reaction_narration.trim().slice(0, 40)}…") with no recording, so the caller hears nothing between pressing and arriving.`,
+          reactParts.length === 1
+            ? `${slug} digit ${choice.digit} has a reaction written ("${reactParts[0].say.trim().slice(0, 40)}…") with no recording, so the caller hears nothing between pressing and arriving.`
+            : `${slug} digit ${choice.digit}'s reaction plays line by line and ${reactMissing} of its ${reactParts.length} lines have no take — those lines are silent.`,
         )
       }
 

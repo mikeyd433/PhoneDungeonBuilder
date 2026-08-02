@@ -37,7 +37,8 @@ Two rules from §0 that everything else follows from:
 | Dialogue | Narration splits into attributed lines. A room is one recording by default; record a line and the room switches to playing its lines in order, then offering its exits. That's what lets two separately-booked actors share a scene. |
 | Characters | A cast list with voice-actor assignment. Doesn't change the flow's shape; a recorded line does become its own Play widget. |
 | Inventory readback | One reserved key (`*` or `#`, the only two that are never doors), pressed in any room, plays what the caller is holding and returns them to the room's **replay** — never its entry, or checking your pockets re-runs arrival effects and grants the item again. Emitted ONCE and shared: Studio has no subroutine, so each room leaves a note in `ret` on the way out and a split at the far end sends the caller back. Items need a take of their name; unrecorded is silence and is reported. Off by default, and not offered mid-fight. |
-| Door reactions | A choice carries its own script and take — what is heard between the keypress and the next room. It belongs to neither room either side: in the one you left, every other door hears it; in the one you arrive at, it replays when you return another way. Emitted **inside the gate and after the effects**, so a refused caller never hears the reaction to what they were refused. |
+| Door reactions | A choice carries its own script and take — what is heard between the keypress and the next room. It belongs to neither room either side: in the one you left, every other door hears it; in the one you arrive at, it replays when you return another way. Emitted **inside the gate and after the effects**, so a refused caller never hears the reaction to what they were refused. Reached from "Show where doors lead", beside the label it answers, not from the editor's exits row. |
+| A reaction is dialogue too | A `dialogue_lines` row hangs off **a node or a choice** — two nullable FKs and a CHECK, the same shape as `effects`. So a reaction splits by speaker, casts, and records a line at a time exactly as a room does, and one `DialogueSection` over a `LineOwner` serves both. Once its lines carry takes, the file on the choice is no longer what plays. |
 | Collapsing a room | The import made a room out of every node in the source file, including the ones that were *actions* — "enter door" is something you do on the way through, not somewhere you stand. Collapse splices a room out and joins the two either side (`src/features/room/collapse.ts`). Refused for the entrance, endings, fights, forks, self-loops and anything carrying dialogue, effects or gates — so the undo can be complete. An unlabelled door inherits the collapsed room's name, because those words were only ever heard by the room reading itself out. |
 | Inserting a room | Collapse's inverse, on the door it applies to: A -> B becomes A -> new -> B. Built forwards — new room, its way onward, and only then repoint the original door — so a part-way failure leaves a stray room the ledger reports, never a dead end. Walks you into the new room. |
 | Exit order | The digit the caller presses, and nothing else. `sort_order` only breaks ties, which is what keeps digit-less fight edges behind every real key. |
@@ -83,10 +84,13 @@ capture. pnpm. Target device order: **tablet portrait, then phone, then desktop.
    are choices. Getting this wrong reported every post-fight room as sealed.
 8. **The narration and the lines are one thing seen twice.**
    `splitNarration` and `composeNarration` are inverses, and every line edit
-   rewrites `nodes.narration` from the lines. Two independently-edited copies of
+   rewrites the owner's text from the lines — `nodes.narration` for a room,
+   `choices.reaction_narration` for a door. Two independently-edited copies of
    the script would drift, and the recorded one is the one that ships.
-   What a room *plays* is `playbackFor` — one file, or a line take each. The
-   torch is lit only when every part has audio.
+   What is *played* is `playbackFor` / `reactionPlaybackFor` — one file, or a
+   line take each. Never read `audio_path` to ask whether something is recorded:
+   once it splits, that column is not what plays. The torch is lit only when
+   every part has audio.
 11. **Everything points at `entryName`, never at `<slug>_play`.** A room's first
    widget is its arrival effects, then its batched gates, then its audio — and
    an unrecorded room has no audio widget at all. Targeting `_play` by name

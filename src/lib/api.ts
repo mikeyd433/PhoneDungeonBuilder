@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import type { LineOwner } from '@/features/cast/dialogue'
 import type {
   Character,
   Choice,
@@ -317,12 +318,15 @@ export const updateDialogueLine = (id: string, patch: Partial<DialogueLine>) =>
   updateRow<DialogueLine>('dialogue_lines', id, patch)
 export const deleteDialogueLine = (id: string) => deleteRow('dialogue_lines', id)
 
-/** Replace a room's lines wholesale. Splitting narration rewrites every line at
- *  once, and a delete-then-insert keeps sort_order contiguous without a second
- *  pass to renumber. */
+/** Replace an owner's lines wholesale. Splitting narration rewrites every line
+ *  at once, and a delete-then-insert keeps sort_order contiguous without a
+ *  second pass to renumber.
+ *
+ *  The owner is a room or a door's reaction — the same writing either way, and
+ *  the only difference is which column the rows hang off. */
 export async function replaceDialogue(
   storyId: string,
-  nodeId: string,
+  owner: LineOwner,
   lines: Array<{
     character_id: string | null
     text: string
@@ -333,14 +337,18 @@ export async function replaceDialogue(
     audio_duration_ms?: number | null
   }>,
 ): Promise<DialogueLine[]> {
-  const { error } = await supabase.from('dialogue_lines').delete().eq('node_id', nodeId)
+  // Exactly one of the two is set, and the CHECK on the table says so — pinning
+  // the other to null keeps the insert honest without a second code path.
+  const column = 'nodeId' in owner ? 'node_id' : 'choice_id'
+  const id = 'nodeId' in owner ? owner.nodeId : owner.choiceId
+  const keys = { node_id: null, choice_id: null, [column]: id }
+
+  const { error } = await supabase.from('dialogue_lines').delete().eq(column, id)
   if (error) throw error
   if (lines.length === 0) return []
   const { data, error: insertError } = await supabase
     .from('dialogue_lines')
-    .insert(
-      lines.map((l, i) => ({ story_id: storyId, node_id: nodeId, sort_order: i, ...l })),
-    )
+    .insert(lines.map((l, i) => ({ story_id: storyId, ...keys, sort_order: i, ...l })))
     .select()
   if (insertError) throw insertError
   return (data ?? []) as DialogueLine[]

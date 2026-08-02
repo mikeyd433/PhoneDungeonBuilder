@@ -1,6 +1,6 @@
 import type { StoryGraph } from '@/types/domain'
 import { buildFightView } from '@/features/fight/model'
-import { linesFor } from '@/features/cast/dialogue'
+import { linesFor, linesOf } from '@/features/cast/dialogue'
 
 /**
  * Every slot in a story that somebody could record, named the same way twice.
@@ -99,21 +99,43 @@ export function audioTargets(graph: StoryGraph): AudioTarget[] {
     }
   }
 
-  // A door's reaction: the moment between pressing and arriving.
+  // A door's reaction: the moment between pressing and arriving. Split by
+  // speaker exactly like a room, and asked for the same way — one file, or a
+  // file per line once the lines are what it plays.
   for (const choice of [...graph.choices.values()].sort((a, b) => a.id.localeCompare(b.id))) {
-    if (!choice.reaction_narration?.trim() && !choice.audio_path) continue
+    const lines = linesOf(graph, { choiceId: choice.id })
+    if (!choice.reaction_narration?.trim() && !choice.audio_path && lines.length === 0) continue
     const from = graph.nodes.get(choice.from_node_id)
     if (!from) continue
-    out.push({
-      key: `${from.slug}#d${choice.digit}react`,
-      kind: 'reaction',
-      file: `${from.slug}__d${choice.digit}__react`,
-      label: `${from.slug} — reacting to ${choice.label || `digit ${choice.digit}`}`,
-      text: choice.reaction_narration ?? '',
-      currentPath: choice.audio_path,
-      currentDurationMs: choice.audio_duration_ms,
-      ref: { kind: 'reaction', choiceId: choice.id },
-    })
+    const where = `${from.slug} — reacting to ${choice.label || `digit ${choice.digit}`}`
+    const stem = `${from.slug}__d${choice.digit}__react`
+
+    if (lines.length === 0) {
+      out.push({
+        key: `${from.slug}#d${choice.digit}react`,
+        kind: 'reaction',
+        file: stem,
+        label: where,
+        text: choice.reaction_narration ?? '',
+        currentPath: choice.audio_path,
+        currentDurationMs: choice.audio_duration_ms,
+        ref: { kind: 'reaction', choiceId: choice.id },
+      })
+    } else {
+      lines.forEach((line, i) => {
+        const who = line.character_id ? graph.characters.get(line.character_id) : null
+        out.push({
+          key: `${from.slug}#d${choice.digit}react${i + 1}`,
+          kind: 'line',
+          file: `${stem}__line${i + 1}`,
+          label: who?.name ? `${where} — ${who.name}` : where,
+          text: line.text,
+          currentPath: line.audio_path,
+          currentDurationMs: line.audio_duration_ms,
+          ref: { kind: 'line', lineId: line.id },
+        })
+      })
+    }
   }
 
   for (const gate of graph.gates.values()) {

@@ -25,6 +25,10 @@ export interface RoomStageProps {
   /** Rename the room a door leads to. That room is not the one being rendered,
    *  which is the whole point: the plates show it, so they should edit it. */
   onRenameTarget?: (nodeId: string, title: string) => void
+  /** Open the reaction for a door — what is heard between pressing and
+   *  arriving. Here rather than in the editor because it belongs beside the
+   *  label it reacts to, not in a list of wiring. */
+  onReact?: (choiceId: string) => void
 }
 
 /** Distance in px before a touch counts as a swipe rather than a tap. */
@@ -39,6 +43,7 @@ export default function RoomStage({
   onWalk,
   onRelabelExit,
   onRenameTarget,
+  onReact,
 }: RoomStageProps) {
   const { node } = view
   const [peek, setPeek] = useState(false)
@@ -192,6 +197,33 @@ export default function RoomStage({
                   <span className="flex-1 basis-40 px-2 py-1.5 text-xs text-cold">
                     leads nowhere yet
                   </span>
+                )}
+                {/* The reaction to taking this door — what is heard between the
+                    keypress and arriving. Beside the label because that is what
+                    it answers, and marked so a room's doors can be scanned for
+                    an unrecorded one without opening each. */}
+                {onReact && (
+                  <button
+                    onClick={() => onReact(exit.choiceId!)}
+                    aria-label={`Reaction to door ${exit.digit}`}
+                    title={
+                      exit.reaction === 'recorded'
+                        ? 'Reaction — recorded'
+                        : exit.reaction === 'written'
+                          ? 'Reaction — written, not recorded'
+                          : 'Add a reaction to taking this door'
+                    }
+                    className={[
+                      'shrink-0 rounded border px-2 py-1.5',
+                      exit.reaction === 'recorded'
+                        ? 'border-torch/60 text-torch'
+                        : exit.reaction === 'written'
+                          ? 'border-grave/60 text-grave'
+                          : 'border-mortar/40 text-mortar',
+                    ].join(' ')}
+                  >
+                    🔊
+                  </button>
                 )}
               </li>
             )

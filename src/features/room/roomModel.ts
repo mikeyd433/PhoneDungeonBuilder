@@ -9,7 +9,7 @@ import type {
 } from '@/types/domain'
 import { WALL_EXITS } from '@/types/domain'
 import { buildFightView, type FightView } from '@/features/fight/model'
-import { isFullyRecorded, linesFor } from '@/features/cast/dialogue'
+import { isFullyRecorded, linesFor, reactionPlaybackFor } from '@/features/cast/dialogue'
 
 /**
  * What one room shows, derived from a single node's record.
@@ -48,6 +48,10 @@ export interface ExitView {
   revokes: string[]
   /** F1.8 — an iron portcullis. Null when the choice has no gate. */
   gate: { behavior: 'hide' | 'refuse' | 'divert'; conditionCount: number } | null
+  /** What the caller hears between pressing this and arriving. `written` means
+   *  a script with at least one part nobody has read — silence on the phone,
+   *  and the reason this is three states rather than a boolean. */
+  reaction: 'none' | 'written' | 'recorded'
 }
 
 export interface RoomView {
@@ -112,6 +116,20 @@ function countConditions(expression: unknown): number {
   return 1 // a leaf: has / lacks / gte / lte / eq
 }
 
+/**
+ * How far along a door's reaction is, in one word.
+ *
+ * Asked of `reactionPlaybackFor` rather than of the columns, because a reaction
+ * split between two actors is recorded as its lines and the file on the door is
+ * not what plays — reading `choice.audio_path` here would call a half-recorded
+ * two-hander done.
+ */
+function reactionState(graph: StoryGraph, choiceId: string): 'none' | 'written' | 'recorded' {
+  const parts = reactionPlaybackFor(graph, choiceId)
+  if (parts.length === 0) return 'none'
+  return parts.every((p) => p.audioPath) ? 'recorded' : 'written'
+}
+
 export function buildRoomView(
   graph: StoryGraph,
   derived: DerivedGraph,
@@ -160,6 +178,7 @@ export function buildRoomView(
       gate: gate
         ? { behavior: gate.fail_behavior, conditionCount: countConditions(gate.expression) }
         : null,
+      reaction: reactionState(graph, choice.id),
     }
   }
 
@@ -193,6 +212,7 @@ export function buildRoomView(
         grants: [],
         revokes: [],
         gate: null,
+        reaction: 'none',
       })
       usedDigits.add(String(nextDigit) as Digit)
       nextDigit++

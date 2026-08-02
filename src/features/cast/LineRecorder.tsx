@@ -6,6 +6,7 @@ import { measureDuration, RecorderSession, recordingSupported } from '@/features
 import { IVR_EXT, IVR_MIME, toIvrWav } from '@/features/audio/ivrWav'
 import { useHoldToRecord } from '@/features/audio/useHoldToRecord'
 import { audioPath, publicAudioUrl, removeAudio, uploadAudio } from '@/features/audio/storage'
+import { audioTargets } from '@/features/audio/targets'
 
 /**
  * Record one line of a conversation.
@@ -35,18 +36,17 @@ export default function LineRecorder({ lineId }: { lineId: string }) {
     setBusy(true)
     try {
       const previous = line.audio_path
-      // The slug carries the line's position so the bucket stays legible when
-      // somebody goes looking for a file by hand.
-      const node = graph.nodes.get(line.node_id)
       // Converted before it leaves the browser. MediaRecorder gives webm or
       // m4a, and Twilio's <Play> accepts neither — uploading the raw take
       // means silence on the phone. See features/audio/ivrWav.ts.
       const wav = await toIvrWav(blob)
-      const path = audioPath(
-        graph.story.id,
-        `${node?.slug ?? 'room'}-line${line.sort_order + 1}`,
-        IVR_EXT,
-      )
+      // The one place a file is named: the manifest asks an actor for exactly
+      // this name and the bulk importer matches on it, so a second spelling
+      // here would be a file nothing claims.
+      const stem =
+        audioTargets(graph).find((t) => t.ref.kind === 'line' && t.ref.lineId === line.id)?.file ??
+        `line${line.sort_order + 1}`
+      const path = audioPath(graph.story.id, stem, IVR_EXT)
       await uploadAudio(path, wav.blob, IVR_MIME)
       await setLineAudio(line.id, path, wav.durationMs || durationMs)
       if (previous) await removeAudio(previous)

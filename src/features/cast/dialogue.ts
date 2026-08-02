@@ -95,12 +95,76 @@ export function composeNarration(lines: SpokenLine[]): string {
 
 // ------------------------------------------------------------ graph helpers
 
-/** A node's stored lines, in order. */
-export function linesFor(graph: StoryGraph, nodeId: string): DialogueLine[] {
+/**
+ * What a set of lines belongs to: a room, or a door's reaction.
+ *
+ * One type rather than two code paths, because the writing is the same writing
+ * — split it by speaker, cast it, record it a line at a time — and the only
+ * thing that differs is which column the composed text is written back to.
+ */
+export type LineOwner = { nodeId: string } | { choiceId: string }
+
+export const ownerKey = (owner: LineOwner) =>
+  'nodeId' in owner ? `node:${owner.nodeId}` : `choice:${owner.choiceId}`
+
+/** An owner's stored lines, in order. */
+export function linesOf(graph: StoryGraph, owner: LineOwner): DialogueLine[] {
   return [...graph.dialogue.values()]
-    .filter((l) => l.node_id === nodeId)
+    .filter((l) =>
+      'nodeId' in owner ? l.node_id === owner.nodeId : l.choice_id === owner.choiceId,
+    )
     .sort((a, b) => a.sort_order - b.sort_order)
 }
+
+/** A node's stored lines, in order. */
+export function linesFor(graph: StoryGraph, nodeId: string): DialogueLine[] {
+  return linesOf(graph, { nodeId })
+}
+
+/** True when this owner's audio is assembled from its lines rather than one
+ *  take. Follows the data, not a setting: one recorded line is the switch. */
+export function splitsByLine(graph: StoryGraph, owner: LineOwner): boolean {
+  return linesOf(graph, owner).some((l) => l.audio_path)
+}
+
+/** The single block of text an owner is recorded from, before any split. */
+export function narrationOf(graph: StoryGraph, owner: LineOwner): string {
+  if ('nodeId' in owner) return graph.nodes.get(owner.nodeId)?.narration ?? ''
+  return graph.choices.get(owner.choiceId)?.reaction_narration ?? ''
+}
+
+/**
+ * What a door's reaction plays, in order.
+ *
+ * Same rule as a room: one take unless the lines carry their own, in which case
+ * they play back to back. An unrecorded part is silence on the phone.
+ */
+export function reactionPlaybackFor(graph: StoryGraph, choiceId: string): PlaybackPart[] {
+  const choice = graph.choices.get(choiceId)
+  if (!choice) return []
+
+  if (!splitsByLine(graph, { choiceId })) {
+    return choice.audio_path || choice.reaction_narration?.trim()
+      ? [
+          {
+            id: choice.id,
+            audioPath: choice.audio_path,
+            say: choice.reaction_narration ?? '',
+            speaker: null,
+          },
+        ]
+      : []
+  }
+
+  return linesOf(graph, { choiceId }).map((line) => partOf(graph, line))
+}
+
+const partOf = (graph: StoryGraph, line: DialogueLine): PlaybackPart => ({
+  id: line.id,
+  audioPath: line.audio_path,
+  say: line.text,
+  speaker: line.character_id ? (graph.characters.get(line.character_id)?.name ?? null) : null,
+})
 
 /**
  * What a room actually plays, in order.
@@ -128,24 +192,16 @@ export function playbackFor(graph: StoryGraph, nodeId: string): PlaybackPart[] {
   const node = graph.nodes.get(nodeId)
   if (!node) return []
 
-  const lines = linesFor(graph, nodeId)
-  const lineByLine = lines.some((l) => l.audio_path)
-
-  if (!lineByLine) {
+  if (!splitsByLine(graph, { nodeId })) {
     return [{ id: node.id, audioPath: node.audio_path, say: node.narration, speaker: null }]
   }
 
-  return lines.map((line) => ({
-    id: line.id,
-    audioPath: line.audio_path,
-    say: line.text,
-    speaker: line.character_id ? (graph.characters.get(line.character_id)?.name ?? null) : null,
-  }))
+  return linesFor(graph, nodeId).map((line) => partOf(graph, line))
 }
 
 /** True when a room's audio is assembled from its lines rather than one take. */
 export function playsLineByLine(graph: StoryGraph, nodeId: string): boolean {
-  return linesFor(graph, nodeId).some((l) => l.audio_path)
+  return splitsByLine(graph, { nodeId })
 }
 
 /**
@@ -222,6 +278,39 @@ export interface ActorWorkload {
 }
 
 /**
+ * Where a line lives, seen from the line rather than from the owner.
+ *
+ * `workloads` walks the dialogue table and has to say which room to call an
+ * actor back for. A reaction has no room of its own — it happens in a doorway —
+ * so it is named for the room the caller is standing in when they hear it,
+ * which is the only place an actor could be pointed at.
+ */
+function ownerOf(
+  graph: StoryGraph,
+  line: DialogueLine,
+): { key: string; owner: LineOwner; where: string; audioPath: string | null } | null {
+  if (line.node_id) {
+    const node = graph.nodes.get(line.node_id)
+    if (!node) return null
+    const owner = { nodeId: node.id }
+    return { key: ownerKey(owner), owner, where: node.slug, audioPath: node.audio_path }
+  }
+  if (line.choice_id) {
+    const choice = graph.choices.get(line.choice_id)
+    const from = choice ? graph.nodes.get(choice.from_node_id) : null
+    if (!choice || !from) return null
+    const owner = { choiceId: choice.id }
+    return {
+      key: ownerKey(owner),
+      owner,
+      where: `${from.slug} (pressing ${choice.digit})`,
+      audioPath: choice.audio_path,
+    }
+  }
+  return null
+}
+
+/**
  * What each voice actor still owes.
  *
  * The unit depends on how the room records, and getting it wrong wastes
@@ -237,7 +326,7 @@ export interface ActorWorkload {
  */
 export function workloads(graph: StoryGraph): ActorWorkload[] {
   const byActor = new Map<string, ActorWorkload>()
-  const splitRooms = new Map<string, boolean>()
+  const splitByOwner = new Map<string, boolean>()
 
   for (const line of graph.dialogue.values()) {
     const character = line.character_id ? graph.characters.get(line.character_id) : null
@@ -255,13 +344,13 @@ export function workloads(graph: StoryGraph): ActorWorkload[] {
       entry.characters.push(character.name)
     }
 
-    const node = graph.nodes.get(line.node_id)
-    if (node) {
-      if (!splitRooms.has(node.id)) splitRooms.set(node.id, playsLineByLine(graph, node.id))
-      const split = splitRooms.get(node.id)!
-      if (split ? !line.audio_path : !node.audio_path) {
+    const owner = ownerOf(graph, line)
+    if (owner) {
+      if (!splitByOwner.has(owner.key)) splitByOwner.set(owner.key, splitsByLine(graph, owner.owner))
+      const split = splitByOwner.get(owner.key)!
+      if (split ? !line.audio_path : !owner.audioPath) {
         if (split) entry.unrecordedLines += 1
-        if (!entry.unrecordedSlugs.includes(node.slug)) entry.unrecordedSlugs.push(node.slug)
+        if (!entry.unrecordedSlugs.includes(owner.where)) entry.unrecordedSlugs.push(owner.where)
       }
     }
     byActor.set(key, entry)

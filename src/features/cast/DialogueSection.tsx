@@ -1,34 +1,53 @@
 import { useState } from 'react'
 import { useDelve } from '@/features/graph/store'
 import { slugify, uniqueSlug } from '@/lib/slug'
-import { castList, matchCharacter, playsLineByLine, splitNarration } from './dialogue'
+import {
+  castList,
+  linesOf,
+  matchCharacter,
+  narrationOf,
+  splitsByLine,
+  splitNarration,
+  type LineOwner,
+} from './dialogue'
 import { speakerHex, SPEAKER_COLORS } from './colors'
 import LineRecorder from './LineRecorder'
 import { canWrite } from '@/types/domain'
 
 /**
- * A room's narration, split by who says it (§4.2's editor sheet).
+ * Narration split by who says it (§4.2's editor sheet).
  *
- * The split is a per-room decision, not a migration: a room nobody has split is
- * one block of text and behaves exactly as it always did. Splitting is offered,
- * never done automatically, because the parser guesses and a wrong guess in 143
- * rooms at once would be much harder to undo than to avoid.
+ * The split is a per-owner decision, not a migration: anything nobody has split
+ * is one block of text and behaves exactly as it always did. Splitting is
+ * offered, never done automatically, because the parser guesses and a wrong
+ * guess in 143 rooms at once would be much harder to undo than to avoid.
+ *
+ * A room and a door's reaction are the same writing — "CARTER: don't touch it.
+ * / MIKE: too late." happens in a doorway as readily as in a room — so this is
+ * one component over a `LineOwner` rather than two that would drift.
  */
-export default function DialogueSection({ nodeId }: { nodeId: string }) {
+export default function DialogueSection({
+  owner,
+  what = 'room',
+}: {
+  owner: LineOwner
+  /** What to call the thing in the prose. */
+  what?: 'room' | 'reaction'
+}) {
   const graph = useDelve((s) => s.graph)
   const role = useDelve((s) => s.role)
   const saveDialogue = useDelve((s) => s.saveDialogue)
   const addCharacter = useDelve((s) => s.addCharacter)
   const [busy, setBusy] = useState(false)
 
-  const node = graph?.nodes.get(nodeId)
-  if (!graph || !node) return null
+  const exists =
+    graph && ('nodeId' in owner ? graph.nodes.has(owner.nodeId) : graph.choices.has(owner.choiceId))
+  if (!graph || !exists) return null
 
   const editable = canWrite(role)
   const cast = castList(graph)
-  const lines = [...graph.dialogue.values()]
-    .filter((l) => l.node_id === nodeId)
-    .sort((a, b) => a.sort_order - b.sort_order)
+  const lines = linesOf(graph, owner)
+  const narration = narrationOf(graph, owner)
 
   // Audio is carried explicitly: saving replaces the rows, so a line's take
   // would be lost on every text edit if the patch didn't say which recording
@@ -50,7 +69,7 @@ export default function DialogueSection({ nodeId }: { nodeId: string }) {
     }>,
   ) => {
     setBusy(true)
-    await saveDialogue(nodeId, next)
+    await saveDialogue(owner, next)
     setBusy(false)
   }
 
@@ -64,7 +83,7 @@ export default function DialogueSection({ nodeId }: { nodeId: string }) {
    */
   const splitNow = async () => {
     setBusy(true)
-    const parsed = splitNarration(node.narration)
+    const parsed = splitNarration(narration)
     const taken = new Set([...graph.characters.values()].map((c) => c.slug))
 
     for (const name of new Set(
@@ -79,7 +98,7 @@ export default function DialogueSection({ nodeId }: { nodeId: string }) {
     // Re-read: addCharacter has been writing into the store all along.
     const fresh = useDelve.getState().graph ?? graph
     await saveDialogue(
-      nodeId,
+      owner,
       parsed.map((p) => ({
         character_id: p.speaker ? (matchCharacter(fresh, p.speaker)?.id ?? null) : null,
         text: p.text,
@@ -88,7 +107,8 @@ export default function DialogueSection({ nodeId }: { nodeId: string }) {
     setBusy(false)
   }
 
-  const splitAudio = playsLineByLine(graph, nodeId)
+  const splitAudio = splitsByLine(graph, owner)
+  const room = what === 'room'
 
   const field =
     'w-full rounded border border-mortar/60 bg-stone px-3 py-2 outline-none focus:border-torch disabled:opacity-60'
@@ -102,12 +122,12 @@ export default function DialogueSection({ nodeId }: { nodeId: string }) {
       {lines.length === 0 ? (
         <>
           <p className="text-xs text-cold">
-            Not split. The room is one recording, and stays that way unless you record a line of
-            its own — splitting says who says what, so a voice actor can be handed their own lines
-            and a scene can be assembled from two separate sessions.
+            Not split. The {room ? 'room' : 'reaction'} is one recording, and stays that way unless
+            you record a line of its own — splitting says who says what, so a voice actor can be
+            handed their own lines and a scene can be assembled from two separate sessions.
           </p>
           <button
-            disabled={!editable || busy || !node.narration.trim()}
+            disabled={!editable || busy || !narration.trim()}
             onClick={() => void splitNow()}
             className="self-start rounded border border-mortar px-3 py-2 text-xs hover:border-torch disabled:opacity-40"
           >
@@ -198,20 +218,24 @@ export default function DialogueSection({ nodeId }: { nodeId: string }) {
           </div>
 
           <p className="text-xs text-cold">
-            The narration above is rebuilt from these lines every time you change one, so what gets
-            recorded and what the script says can&apos;t drift apart.
+            The {room ? 'narration' : 'reaction text'} above is rebuilt from these lines every time
+            you change one, so what gets recorded and what the script says can&apos;t drift apart.
           </p>
 
           {splitAudio ? (
             <p className="text-xs text-torch">
-              This room plays line by line: each take above is played in order, and only then are
-              the exits offered. Lines with no take will be read by Studio&apos;s voice.
+              {room
+                ? 'This room plays line by line: each take above is played in order, and only then are the exits offered.'
+                : 'This reaction plays line by line: each take above is played in order, and only then does the caller arrive.'}{' '}
+              A line with no take is silence on the phone.
             </p>
           ) : (
             <p className="text-xs text-cold">
-              This room is still one recording — the file on the room itself. Record a line above
-              and it switches to playing line by line, which is how a scene split between two
-              separately-booked actors gets assembled.
+              {room
+                ? 'This room is still one recording — the file on the room itself.'
+                : 'This reaction is still one recording — the file on the door itself.'}{' '}
+              Record a line above and it switches to playing line by line, which is how a scene
+              split between two separately-booked actors gets assembled.
             </p>
           )}
         </>
