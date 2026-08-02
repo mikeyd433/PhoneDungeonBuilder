@@ -3,6 +3,7 @@ import { useDelve } from '@/features/graph/store'
 import { estimateSeconds, isLongNarration, LONG_NARRATION_SECONDS } from '@/lib/speech'
 import { slugify } from '@/lib/slug'
 import { nextFreeDigit } from './roomModel'
+import AudioPanel from '@/features/audio/AudioPanel'
 import { DIGITS, canWrite, type Digit, type StoryNode } from '@/types/domain'
 
 /**
@@ -62,6 +63,10 @@ export default function EditorSheet({ nodeId, onClose }: { nodeId: string; onClo
           Done
         </button>
       </div>
+
+      {/* Audio sits outside the disabled fieldset: the `voice` role can record
+          even though every story field below is read-only for them. */}
+      <AudioPanel nodeId={nodeId} />
 
       {!editable && (
         <p className="mb-4 rounded border border-cold/60 bg-cold/10 p-3 text-xs">

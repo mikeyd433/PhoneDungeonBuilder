@@ -185,11 +185,25 @@ export const useDelve = create<DelveState>((set, get) => {
       }
     },
 
-    async updateNode(id, patch) {
+    async updateNode(id, rawPatch) {
       const { graph } = get()
       if (!graph) return
       const before = graph.nodes.get(id)
       if (!before) return
+
+      // F3.4 — writing narration into a blank room advances it stub -> scripted
+      // on its own. Only ever an upgrade: never demote, and never touch a room
+      // that already has audio or an explicit status set by this same call.
+      let patch = rawPatch
+      if (
+        rawPatch.narration !== undefined &&
+        rawPatch.status === undefined &&
+        before.status === 'stub' &&
+        !before.audio_path &&
+        String(rawPatch.narration).trim() !== ''
+      ) {
+        patch = { ...rawPatch, status: 'scripted' }
+      }
 
       // Optimistic: the editor autosaves on blur (F2.2), and a round trip per
       // field would make the sheet feel laggy on a tablet.
