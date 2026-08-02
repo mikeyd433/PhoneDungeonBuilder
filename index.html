@@ -9,6 +9,18 @@
       content="The Delve — a dungeon-crawl authoring tool for a Twilio Studio choose-your-own-adventure IVR."
     />
     <title>The Delve</title>
+
+    <!-- iOS reads none of this from the web manifest.
+         Without an apple-touch-icon, "Add to Home Screen" uses a SCREENSHOT of
+         whatever page you happened to be on as the icon, which is why an
+         otherwise-correct PWA can end up on the home screen looking like a
+         thumbnail of a login form. The status bar style matters too: the app is
+         near-black, and the default light bar sits on top of it badly. -->
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Delve" />
+
     <!-- Faces are self-hosted (src/styles/fonts.css) rather than pulled from a
          font CDN: bad signal is the normal case for this app and the PWA has to
          work offline. -->
