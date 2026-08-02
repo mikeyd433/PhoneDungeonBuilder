@@ -456,11 +456,21 @@ export default function EditorSheet({ nodeId, onClose }: { nodeId: string; onClo
           </p>
           {outgoing.length === 0 && <p className="text-xs text-cold">No exits yet.</p>}
           {outgoing.map((choice) => (
-            <div key={choice.id} className="flex items-center gap-2">
+            /* Wraps, and each exit is boxed so a wrapped row still reads as one
+               door. Four controls on one 430px line left the label — the thing
+               the caller actually hears — about 60px wide and unusable. */
+            <div
+              key={choice.id}
+              className="flex flex-wrap items-center gap-2 rounded border border-mortar/25 p-2"
+            >
               <select
                 value={choice.digit}
                 onChange={(e) => void updateChoice(choice.id, { digit: e.target.value as Digit })}
-                className="rounded border border-mortar/60 bg-stone px-2 py-2"
+                // Fixed width: a native select sizes itself to its widest
+                // option, and "(used)" was making a one-character field the
+                // widest thing in the row.
+                title="Which key the caller presses"
+                className="w-16 shrink-0 rounded border border-mortar/60 bg-stone px-2 py-2"
               >
                 {DIGITS.map((d) => {
                   // F2.5 — a digit already used by a sibling can't be picked.
@@ -473,14 +483,17 @@ export default function EditorSheet({ nodeId, onClose }: { nodeId: string; onClo
                   )
                 })}
               </select>
+              {/* Not `field`: that carries w-full, which in a wrapping row
+                  would take the whole line and push the digit off on its own. */}
               <input
                 defaultValue={choice.label}
                 placeholder="Grab the harpoon"
+                aria-label="What the caller hears for this door"
                 onBlur={(e) =>
                   e.target.value !== choice.label &&
                   void updateChoice(choice.id, { label: e.target.value })
                 }
-                className={field}
+                className="min-w-0 flex-1 basis-48 rounded border border-mortar/60 bg-stone px-3 py-2 outline-none focus:border-torch"
               />
               {/* F2.4 — destination picker: an existing node, or leave unwritten. */}
               <select
@@ -488,7 +501,8 @@ export default function EditorSheet({ nodeId, onClose }: { nodeId: string; onClo
                 onChange={(e) =>
                   void updateChoice(choice.id, { to_node_id: e.target.value || null })
                 }
-                className="max-w-[9rem] rounded border border-mortar/60 bg-stone px-2 py-2 text-xs"
+                aria-label="Where this door leads"
+                className="min-w-0 flex-1 basis-40 rounded border border-mortar/60 bg-stone px-2 py-2 text-xs"
               >
                 <option value="">— unwritten —</option>
                 {[...graph.nodes.values()]
@@ -512,14 +526,14 @@ export default function EditorSheet({ nodeId, onClose }: { nodeId: string; onClo
                       }`
                     : 'This door leads nowhere yet — chisel through it from the room instead'
                 }
-                className="px-2 text-mortar disabled:opacity-30"
+                className="shrink-0 px-2 text-mortar disabled:opacity-30"
               >
                 ⤵
               </button>
               <button
                 onClick={() => void deleteChoice(choice.id)}
                 title="Remove exit"
-                className="px-2 text-grave"
+                className="shrink-0 px-2 text-grave"
               >
                 ✕
               </button>
