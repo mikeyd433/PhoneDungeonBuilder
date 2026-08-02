@@ -62,13 +62,15 @@ function Nameplate({ exit, lit }: { exit: ExitView; lit: boolean }) {
   // enough when the doors go different ways. It is not enough when they don't:
   // three doors to the same cave, one rope, one lantern, one nothing, all read
   // identically without this. The item IS the difference.
-  for (const slug of exit.grants) {
-    for (const line of wrapToPlate(`+${slug}`, 15, 1)) {
+  // Two lines each: these are display names now ("a coil of rope"), not slugs,
+  // and one line of 15 would cut most of them in half.
+  for (const item of exit.grants) {
+    for (const line of wrapToPlate(`+${item}`, 15, 2)) {
       rows.push({ text: line, size: 8, fill: '#E8A33D' })
     }
   }
-  for (const slug of exit.revokes) {
-    for (const line of wrapToPlate(`-${slug}`, 15, 1)) {
+  for (const item of exit.revokes) {
+    for (const line of wrapToPlate(`-${item}`, 15, 2)) {
       rows.push({ text: line, size: 8, fill: '#8C2F22' })
     }
   }

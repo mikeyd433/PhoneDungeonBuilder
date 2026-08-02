@@ -357,10 +357,11 @@ export class PlaytestEngine {
       if (v.kind === 'counter') {
         const slot = this.index.counter.get(v.slug)
         const n = slot !== undefined ? (state.caller.counters[slot] ?? 0) : 0
-        if (n > 0) out.push(`${v.slug} ×${n}`)
+        if (n > 0) out.push(`${v.name?.trim() || v.slug} ×${n}`)
       } else {
         const bit = this.index.bit.get(v.slug)
-        if (bit !== undefined && (state.caller.mask & (1 << bit)) !== 0) out.push(v.slug)
+        if (bit !== undefined && (state.caller.mask & (1 << bit)) !== 0)
+          out.push(v.name?.trim() || v.slug)
       }
     }
     return out

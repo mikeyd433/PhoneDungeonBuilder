@@ -88,8 +88,16 @@ export interface RoomView {
   lines: Array<{ id: string; speaker: string | null; color: string; text: string }>
 }
 
-function varSlug(graph: StoryGraph, effect: Effect): string {
-  return graph.stateVars.get(effect.state_var_id)?.slug ?? '?'
+/**
+ * What to call an item where the AUTHOR is reading, not the compiler.
+ *
+ * The slug is the identifier — it is what the exported Liquid tests against and
+ * what a gate is written in terms of — but "a coil of rope" is what the room is
+ * about. Falls back to the slug for a var that never got a name.
+ */
+function varName(graph: StoryGraph, effect: Effect): string {
+  const v = graph.stateVars.get(effect.state_var_id)
+  return v?.name?.trim() || v?.slug || '?'
 }
 
 function countConditions(expression: unknown): number {
@@ -118,9 +126,9 @@ export function buildRoomView(
     for (const effect of graph.effects.values()) {
       if (!predicate(effect)) continue
       if (effect.operation === 'grant' || effect.operation === 'add') {
-        grants.push(varSlug(graph, effect))
+        grants.push(varName(graph, effect))
       } else {
-        revokes.push(varSlug(graph, effect))
+        revokes.push(varName(graph, effect))
       }
     }
     return { grants, revokes }

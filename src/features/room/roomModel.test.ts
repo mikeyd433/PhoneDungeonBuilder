@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { idOf, makeGraph } from '@/test/factory'
+import { choiceOf, idOf, makeGraph } from '@/test/factory'
 import { deriveGraph } from '@/features/graph/derived'
 import { buildRoomView, nextFreeDigit } from './roomModel'
 
@@ -103,5 +103,63 @@ describe('nextFreeDigit', () => {
   it('skips digits already in use', () => {
     const g = makeGraph(['A', 'B', 'C'], ['A>B', 'A>C'])
     expect(nextFreeDigit(deriveGraph(g), idOf(g, 'A'))).toBe('3')
+  })
+})
+
+describe('items on a door', () => {
+  it('names them the way a person would, not the way the compiler does', () => {
+    const graph = makeGraph(['HALL', 'CAVE'], ['HALL>CAVE'])
+    graph.stateVars.set('v1', {
+      id: 'v1',
+      story_id: graph.story.id,
+      slug: 'ROPE',
+      name: 'a coil of rope',
+      kind: 'item',
+      description: null,
+      is_consumable: false,
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
+    })
+    graph.effects.set('e1', {
+      id: 'e1',
+      story_id: graph.story.id,
+      node_id: null,
+      choice_id: choiceOf(graph, 'HALL', 'CAVE'),
+      state_var_id: 'v1',
+      operation: 'grant',
+      amount: null,
+      sort_order: 0,
+      created_at: '2026-01-01T00:00:00Z',
+    })
+    const view = buildRoomView(graph, deriveGraph(graph), idOf(graph, 'HALL'))!
+    expect(view.exits[0].grants).toEqual(['a coil of rope'])
+  })
+
+  it('falls back to the slug when nobody named it', () => {
+    const graph = makeGraph(['HALL', 'CAVE'], ['HALL>CAVE'])
+    graph.stateVars.set('v1', {
+      id: 'v1',
+      story_id: graph.story.id,
+      slug: 'ROPE',
+      name: '   ',
+      kind: 'item',
+      description: null,
+      is_consumable: false,
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
+    })
+    graph.effects.set('e1', {
+      id: 'e1',
+      story_id: graph.story.id,
+      node_id: null,
+      choice_id: choiceOf(graph, 'HALL', 'CAVE'),
+      state_var_id: 'v1',
+      operation: 'grant',
+      amount: null,
+      sort_order: 0,
+      created_at: '2026-01-01T00:00:00Z',
+    })
+    const view = buildRoomView(graph, deriveGraph(graph), idOf(graph, 'HALL'))!
+    expect(view.exits[0].grants).toEqual(['ROPE'])
   })
 })
