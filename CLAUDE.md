@@ -36,6 +36,8 @@ Two rules from §0 that everything else follows from:
 | Counter clamp | 10, per story, configurable. The solver needs a ceiling or it never terminates (§11.5). |
 | Dialogue | Narration splits into attributed lines. A room is one recording by default; record a line and the room switches to playing its lines in order, then offering its exits. That's what lets two separately-booked actors share a scene. |
 | Characters | A cast list with voice-actor assignment. Doesn't change the flow's shape; a recorded line does become its own Play widget. |
+| Collapsing a room | The import made a room out of every node in the source file, including the ones that were *actions* — "enter door" is something you do on the way through, not somewhere you stand. Collapse splices a room out and joins the two either side (`src/features/room/collapse.ts`). Refused for the entrance, endings, fights, forks, self-loops and anything carrying dialogue, effects or gates — so the undo can be complete. An unlabelled door inherits the collapsed room's name, because those words were only ever heard by the room reading itself out. |
+| Exit order | The digit the caller presses, and nothing else. `sort_order` only breaks ties, which is what keeps digit-less fight edges behind every real key. |
 | Fights | A first-class kind of room (a `fights` row hung off a node, not a `node_type`). **Functionally a room where you pick an exit**: each round names where every digit goes, and several may go to the same place. The counter rule (matching move advances, everything else loses) is only the default when a round doesn't name one. An unmapped digit loses; silence repeats the round `silence_patience` times first. |
 
 ## Spec gaps resolved in code

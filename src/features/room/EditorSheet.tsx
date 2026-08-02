@@ -4,6 +4,7 @@ import { estimateSeconds, isLongNarration, LONG_NARRATION_SECONDS } from '@/lib/
 import { slugify } from '@/lib/slug'
 import { nextFreeDigit } from './roomModel'
 import { isPlainRoom, roomKinds, type RoomKinds } from './roomKinds'
+import { describeCollapse, planCollapse } from './collapse'
 import AudioPanel from '@/features/audio/AudioPanel'
 import ItemsSection from '@/features/state/ItemsSection'
 import CollabPanel from '@/features/collab/CollabPanel'
@@ -157,6 +158,59 @@ function WhatHappensHere({
           Nothing ticked: the caller hears this room read out, then picks a door.
         </p>
       )}
+    </div>
+  )
+}
+
+/**
+ * Splice this room out and join the two either side.
+ *
+ * The import turned every node in the source file into a room, including the
+ * ones that were actions — "enter door" is a thing you do on the way through,
+ * not somewhere you stand. Rather than delete and rewire by hand, collapse it.
+ *
+ * The button is always visible and explains itself when it can't be used: a
+ * disabled control with no reason is worse than no control, and the reasons
+ * here are all things the author can act on.
+ */
+function CollapseRoom({ nodeId, onCollapsed }: { nodeId: string; onCollapsed: () => void }) {
+  const graph = useDelve((s) => s.graph)
+  const derived = useDelve((s) => s.derived)
+  const collapseRoom = useDelve((s) => s.collapseRoom)
+  const [busy, setBusy] = useState(false)
+  if (!graph || !derived) return null
+
+  const node = graph.nodes.get(nodeId)
+  if (!node) return null
+  const check = planCollapse(graph, derived, nodeId)
+  const roomName = node.title || node.slug
+
+  const go = async () => {
+    if (!check.ok) return
+    if (!window.confirm(describeCollapse(check.plan, roomName))) return
+    setBusy(true)
+    const done = await collapseRoom(nodeId)
+    setBusy(false)
+    // The room is gone, so the sheet editing it has to go with it.
+    if (done) onCollapsed()
+  }
+
+  return (
+    <div className="flex flex-col gap-2 rounded border border-mortar/40 p-3">
+      <span className="text-xs uppercase tracking-wider text-mortar">Collapse this room</span>
+      <p className="text-xs text-cold">
+        {check.ok
+          ? `Remove it and send everything that leads here straight to ${check.plan.toTitle}. For nodes that were really actions — "enter door" — rather than places.`
+          : check.reason}
+      </p>
+      <button
+        type="button"
+        disabled={!check.ok || busy}
+        onClick={() => void go()}
+        className="self-start rounded border border-grave/60 px-3 py-2 text-xs text-grave hover:border-grave disabled:opacity-40"
+      >
+        {busy ? 'Collapsing…' : `Collapse into ${check.ok ? check.plan.toTitle : '—'}`}
+      </button>
     </div>
   )
 }
@@ -468,6 +522,8 @@ export default function EditorSheet({ nodeId, onClose }: { nodeId: string; onClo
             onBlur={() => commit('notes')}
           />
         </label>
+
+        <CollapseRoom nodeId={nodeId} onCollapsed={onClose} />
 
         <label className="flex flex-col gap-1">
           <span className="text-xs uppercase tracking-wider text-mortar">Slug</span>

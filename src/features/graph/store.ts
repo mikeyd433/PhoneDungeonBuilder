@@ -17,6 +17,7 @@ import * as api from '@/lib/api'
 import { uniqueSlug } from '@/lib/slug'
 import { enqueue, isOffline } from '@/lib/offlineQueue'
 import { buildDemoStory, DEMO_STORY_ID } from '@/features/demo/demoStory'
+import { planCollapse } from '@/features/room/collapse'
 
 /** F2.10 — undo stack, last 20 actions. */
 const UNDO_LIMIT = 20
@@ -54,6 +55,9 @@ interface DelveState {
   clearError: () => void
 
   createChildNode: (fromChoiceId: string, title?: string) => Promise<string | null>
+  /** Splice a room out, joining what led to it to whatever it led to.
+   *  Returns false and sets `error` when the room can't be collapsed. */
+  collapseRoom: (nodeId: string) => Promise<boolean>
   addChoice: (fromNodeId: string, digit: Digit, label?: string) => Promise<void>
   updateNode: (id: string, patch: Partial<StoryNode>) => Promise<void>
   updateChoice: (id: string, patch: Partial<Choice>) => Promise<void>
@@ -308,6 +312,118 @@ export const useDelve = create<DelveState>((set, get) => {
       } catch (e) {
         fail(e)
         return null
+      }
+    },
+
+    /**
+     * Splice a room out and join the two either side (see room/collapse.ts).
+     *
+     * Repoint first, delete last: every inbound edge has to be looking at the
+     * far room before this one goes, or the delete's ON DELETE SET NULL turns a
+     * real way through the dungeon into a dead end. `refresh` afterwards rather
+     * than a hand-written patch, because a collapse can touch choices, fights,
+     * outcomes and nodes in one go and this is a once-per-room operation.
+     */
+    async collapseRoom(nodeId) {
+      if (readOnly()) return false
+      const { graph, derived } = get()
+      if (!graph || !derived) return false
+      const check = planCollapse(graph, derived, nodeId)
+      if (!check.ok) {
+        set({ error: check.reason })
+        return false
+      }
+      const { plan } = check
+      const node = graph.nodes.get(nodeId)
+      if (!node) return false
+      const exits = derived.children.get(nodeId) ?? []
+
+      try {
+        for (const link of plan.inbound) {
+          if (link.kind === 'choice') {
+            await api.updateChoice(link.choiceId, {
+              to_node_id: plan.toNodeId,
+              ...(link.fillLabel ? { label: link.fillLabel } : {}),
+            })
+          } else if (link.kind === 'fight-move') {
+            await api.upsertFightOutcome(graph.story.id, link.roundId, link.moveId, plan.toNodeId)
+          } else {
+            await api.updateFight(link.fightId, {
+              [link.kind === 'fight-win' ? 'win_node_id' : 'lose_node_id']: plan.toNodeId,
+            })
+          }
+        }
+        for (const r of plan.redirects) {
+          await api.updateNode(r.nodeId, { [r.field]: plan.toNodeId })
+        }
+        await api.deleteNode(nodeId)
+
+        // Standing in a room that no longer exists: step forward to the room it
+        // joined to, which is where the caller now goes.
+        set((s) => ({
+          ...s,
+          currentNodeId: s.currentNodeId === nodeId ? plan.toNodeId : s.currentNodeId,
+          trail: s.trail.filter((id) => id !== nodeId),
+        }))
+        await get().refresh()
+
+        pushUndo({
+          label: `collapse ${node.slug}`,
+          invert: async () => {
+            // The room comes back with a new id, so everything that pointed at
+            // it has to be re-pointed at the new one — the same id remapping a
+            // fight's undo does.
+            const restored = await api.createNode(graph.story.id, {
+              slug: node.slug,
+              title: node.title,
+              narration: node.narration,
+              node_type: node.node_type,
+              room_design: node.room_design,
+              notes: node.notes,
+              status: node.status,
+              audio_path: node.audio_path,
+              audio_duration_ms: node.audio_duration_ms,
+              timeout_seconds: node.timeout_seconds,
+              timeout_target_id: node.timeout_target_id,
+              invalid_target_id: node.invalid_target_id,
+            })
+            for (const exit of exits) {
+              await api.createChoice(graph.story.id, {
+                from_node_id: restored.id,
+                digit: exit.digit,
+                label: exit.label,
+                to_node_id: exit.to_node_id,
+                sort_order: exit.sort_order,
+              })
+            }
+            for (const link of plan.inbound) {
+              if (link.kind === 'choice') {
+                await api.updateChoice(link.choiceId, {
+                  to_node_id: restored.id,
+                  ...(link.fillLabel ? { label: '' } : {}),
+                })
+              } else if (link.kind === 'fight-move') {
+                await api.upsertFightOutcome(
+                  graph.story.id,
+                  link.roundId,
+                  link.moveId,
+                  restored.id,
+                )
+              } else {
+                await api.updateFight(link.fightId, {
+                  [link.kind === 'fight-win' ? 'win_node_id' : 'lose_node_id']: restored.id,
+                })
+              }
+            }
+            for (const r of plan.redirects) {
+              await api.updateNode(r.nodeId, { [r.field]: restored.id })
+            }
+          },
+        })
+        return true
+      } catch (e) {
+        fail(e)
+        return false
       }
     },
 
