@@ -20,6 +20,11 @@ export interface RoomStageProps {
   onCycleSibling?: (direction: 1 | -1) => void
   /** Walk somewhere with no door involved — a fight's win and lose rooms. */
   onWalk?: (nodeId: string) => void
+  /** Rewrite what the caller hears at a door, without leaving this room. */
+  onRelabelExit?: (choiceId: string, label: string) => void
+  /** Rename the room a door leads to. That room is not the one being rendered,
+   *  which is the whole point: the plates show it, so they should edit it. */
+  onRenameTarget?: (nodeId: string, title: string) => void
 }
 
 /** Distance in px before a touch counts as a swipe rather than a tap. */
@@ -32,6 +37,8 @@ export default function RoomStage({
   onRetreat,
   onCycleSibling,
   onWalk,
+  onRelabelExit,
+  onRenameTarget,
 }: RoomStageProps) {
   const { node } = view
   const [peek, setPeek] = useState(false)
@@ -81,6 +88,10 @@ export default function RoomStage({
   // stage, so the setting rides along.
   const hasDoors = view.exits.length > 0 || view.overflowExits.length > 0
 
+  // Every real door, wall and stacked alike, in keypad order. Padding slots
+  // have no choice behind them, so there is nothing there to name.
+  const editable = [...view.exits, ...view.overflowExits].filter((e) => e.choiceId)
+
   return (
     <div
       key={node.id}
@@ -108,6 +119,63 @@ export default function RoomStage({
             {peek ? '👁 Hide where doors lead' : '👁 Show where doors lead'}
           </button>
         </div>
+      )}
+
+      {/* The plates, made editable, in the order they stand on the wall.
+          Both fields belong to somewhere else: the label is the door's, and the
+          name is the NEXT room's. Reaching either used to mean walking there or
+          opening the editor — but this is where you are when you notice they
+          are wrong. */}
+      {peek && editable.length > 0 && (
+        <ul className="flex flex-col gap-2 px-4 pt-2">
+          {editable.map((exit) => {
+            const target = exit.targetId
+            return (
+              <li
+                key={exit.choiceId}
+                className="flex flex-wrap items-center gap-2 rounded border border-mortar/25 p-2"
+              >
+                <span className="w-6 shrink-0 text-center font-carved text-torch">
+                  {exit.digit}
+                </span>
+                <input
+                  // Remounts when the value changes underneath — two doors to
+                  // the same room both show its name, and renaming from one has
+                  // to move the other. Typing never remounts, because the graph
+                  // only changes on blur.
+                  key={`label:${exit.choiceId}:${exit.label}`}
+                  defaultValue={exit.label}
+                  placeholder="what the caller hears"
+                  aria-label={`What the caller hears at door ${exit.digit}`}
+                  disabled={!onRelabelExit}
+                  onBlur={(e) =>
+                    e.target.value !== exit.label &&
+                    onRelabelExit?.(exit.choiceId!, e.target.value)
+                  }
+                  className="min-w-0 flex-1 basis-40 rounded border border-mortar/60 bg-stone px-2 py-1.5 text-sm outline-none focus:border-torch disabled:opacity-60"
+                />
+                {target ? (
+                  <input
+                    key={`title:${target}:${exit.targetTitle ?? ''}`}
+                    defaultValue={exit.targetTitle ?? ''}
+                    placeholder="name of the room it leads to"
+                    aria-label={`Name of the room behind door ${exit.digit}`}
+                    disabled={!onRenameTarget}
+                    onBlur={(e) =>
+                      e.target.value !== (exit.targetTitle ?? '') &&
+                      onRenameTarget?.(target, e.target.value)
+                    }
+                    className="min-w-0 flex-1 basis-40 rounded border border-mortar/60 bg-stone px-2 py-1.5 font-carved text-sm outline-none focus:border-torch disabled:opacity-60"
+                  />
+                ) : (
+                  <span className="flex-1 basis-40 px-2 py-1.5 text-xs text-cold">
+                    leads nowhere yet
+                  </span>
+                )}
+              </li>
+            )
+          })}
+        </ul>
       )}
 
       {/* The fight, as a caller meets it: one round at a time, each with the

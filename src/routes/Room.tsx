@@ -24,6 +24,7 @@ export default function Room() {
     retreat,
     createChildNode,
     updateNode,
+    updateChoice,
     undo,
     clearError,
   } = useDelve()
@@ -221,6 +222,9 @@ export default function Room() {
         onRetreat={onRetreat}
         onCycleSibling={onCycleSibling}
         onWalk={walkTo}
+        onRelabelExit={(choiceId, label) => void updateChoice(choiceId, { label })}
+        /* Renames a room you are not standing in — the one behind the door. */
+        onRenameTarget={(id, title) => void updateNode(id, { title })}
       />
 
       {/* F1.12 — the retreat chooser. */}
