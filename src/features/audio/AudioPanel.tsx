@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useDelve } from '@/features/graph/store'
-import { canRecord, canWrite, type NodeStatus } from '@/types/domain'
+import { canRecord, canWrite } from '@/types/domain'
 import { formatDuration } from '@/lib/speech'
 import {
   computePeaks,
@@ -11,14 +11,7 @@ import {
 } from './recorder'
 import { audioPath, downloadAudio, publicAudioUrl, removeAudio, uploadAudio } from './storage'
 import Waveform from './Waveform'
-
-/** F3.4 — status advances on its own; "approved" is the one you set by hand. */
-export function nextStatus(current: NodeStatus, hasAudio: boolean, hasNarration: boolean): NodeStatus {
-  if (current === 'approved') return 'approved' // never demote a sign-off silently
-  if (hasAudio) return 'recorded'
-  if (hasNarration) return 'scripted'
-  return 'stub'
-}
+import { nextStatus } from './status'
 
 export default function AudioPanel({ nodeId }: { nodeId: string }) {
   const graph = useDelve((s) => s.graph)

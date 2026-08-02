@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { nextStatus } from './AudioPanel'
+import { nextStatus } from './status'
 
 describe('nextStatus (F3.4)', () => {
   it('advances a blank room to scripted once narration exists', () => {
