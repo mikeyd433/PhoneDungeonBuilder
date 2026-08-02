@@ -22,6 +22,7 @@ export default function Room() {
   } = useDelve()
   const undoStack = useDelve((s) => s.undoStack)
   const [editing, setEditing] = useState(false)
+  const [choosingRetreat, setChoosingRetreat] = useState(false)
 
   useEffect(() => {
     if (storyId) void loadStory(storyId)
@@ -43,6 +44,24 @@ export default function Room() {
   if (!view) return <p className="p-6">This room has collapsed.</p>
 
   const onEnter = (exit: ExitView) => exit.targetId && walkTo(exit.targetId)
+
+  // F1.11 — cycle through rooms sharing this one's parent.
+  const onCycleSibling = (direction: 1 | -1) => {
+    const here = view.siblings.indexOf(currentNodeId)
+    if (here === -1 || view.siblings.length < 2) return
+    const next = (here + direction + view.siblings.length) % view.siblings.length
+    walkTo(view.siblings[next])
+  }
+
+  // F1.12 — more than one way back means a fork in the retreat path, so ask
+  // rather than guessing. One parent retreats straight away.
+  const onRetreat = () => {
+    if (view.retreats.length > 1 && useDelve.getState().trail.length <= 1) {
+      setChoosingRetreat(true)
+      return
+    }
+    retreat()
+  }
   const onChisel = async (exit: ExitView) => {
     if (exit.choiceId) {
       await createChildNode(exit.choiceId)
@@ -85,7 +104,43 @@ export default function Room() {
         </p>
       )}
 
-      <RoomStage view={view} onEnter={onEnter} onChisel={onChisel} onRetreat={retreat} />
+      <RoomStage
+        view={view}
+        onEnter={onEnter}
+        onChisel={onChisel}
+        onRetreat={onRetreat}
+        onCycleSibling={onCycleSibling}
+      />
+
+      {/* F1.12 — the retreat chooser. */}
+      {choosingRetreat && (
+        <div className="fixed inset-0 z-30 flex items-end bg-depth/80 p-4">
+          <div className="w-full rounded-t-2xl border-t border-mortar bg-depth p-4">
+            <h3 className="mb-3 text-sm text-torch">Several ways back from here</h3>
+            <ul className="flex flex-col gap-2">
+              {view.retreats.map((r) => (
+                <li key={r.choiceId}>
+                  <button
+                    onClick={() => {
+                      setChoosingRetreat(false)
+                      walkTo(r.fromId)
+                    }}
+                    className="w-full rounded border border-mortar/60 px-3 py-3 text-left hover:border-torch"
+                  >
+                    {r.fromTitle}
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <button
+              onClick={() => setChoosingRetreat(false)}
+              className="mt-3 w-full text-sm text-mortar underline"
+            >
+              Stay here
+            </button>
+          </div>
+        </div>
+      )}
 
       <footer className="flex gap-3 border-t border-mortar/40 p-4">
         <button

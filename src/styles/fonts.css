@@ -1,0 +1,54 @@
+/**
+ * Self-hosted faces (spec §3).
+ *
+ * These were served from the Google Fonts CDN, which is wrong for this app on
+ * two counts: the van has bad signal (§1) and the PWA is meant to work offline
+ * (F7.2/F7.4), so a blocking request to a third-party host before any text can
+ * be read is exactly the wrong dependency. Self-hosting also means the room art
+ * cannot silently fall back to Georgia when the network is unavailable — which
+ * is precisely how it failed the first time it was rendered.
+ *
+ * Latin subset only. The story is English, and shipping latin-ext, Cyrillic and
+ * Vietnamese would roughly triple the payload for glyphs nothing renders.
+ *
+ * Vite rewrites these relative URLs and fingerprints the files at build time, so
+ * they resolve in dev and under the /delve/ base alike.
+ *
+ * Cinzel 400/600 and Alegreya 400/500 resolve to the same variable font file
+ * each; the duplicate declarations let the browser synthesise the weights.
+ */
+
+/* Carved — stone. Room titles, lintel digits, section headers. Caps only. */
+@font-face {
+  font-family: 'Cinzel';
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+  src: url('../assets/fonts/cinzel-latin.woff2') format('woff2');
+}
+
+/* Voice — the spoken word. Narration and choice labels. */
+@font-face {
+  font-family: 'Alegreya';
+  font-style: normal;
+  font-weight: 400 500;
+  font-display: swap;
+  src: url('../assets/fonts/alegreya-latin.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Alegreya';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../assets/fonts/alegreya-italic-latin.woff2') format('woff2');
+}
+
+/* Paper — the surveyor's pencil. Automap annotations, slugs, the ledger. */
+@font-face {
+  font-family: 'Architects Daughter';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../assets/fonts/architects-daughter-latin.woff2') format('woff2');
+}

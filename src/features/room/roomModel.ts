@@ -54,6 +54,10 @@ export interface RoomView {
   overflowExits: ExitView[]
   /** F1.4 / F1.12 — inbound choices. More than one means a retreat chooser. */
   retreats: Array<{ choiceId: string; fromId: string; fromTitle: string }>
+  /** F1.11 — rooms sharing a parent with this one, in digit order, including
+   *  this room. Swiping the floor plaque cycles them, so a whole choice set can
+   *  be reviewed without walking back up. */
+  siblings: string[]
   /** F1.5 — lit when audio exists. Unfinished territory is literally dark. */
   torchLit: boolean
   /** F1.9 — rubble and a skull, no exits. */
@@ -174,11 +178,25 @@ export function buildRoomView(
     }
   })
 
+  // Siblings share a parent. Deduped across parents, because a room reached
+  // from two places would otherwise appear twice in the cycle.
+  const siblings: string[] = []
+  const seenSibling = new Set<string>()
+  for (const inbound of derived.parents.get(nodeId) ?? []) {
+    for (const peer of derived.children.get(inbound.from_node_id) ?? []) {
+      if (peer.to_node_id && !seenSibling.has(peer.to_node_id)) {
+        seenSibling.add(peer.to_node_id)
+        siblings.push(peer.to_node_id)
+      }
+    }
+  }
+
   return {
     node,
     exits,
     overflowExits,
     retreats,
+    siblings,
     torchLit: Boolean(node.audio_path),
     isEnding,
     depth: derived.depth.get(nodeId) ?? null,

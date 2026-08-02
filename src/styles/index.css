@@ -1,3 +1,5 @@
+@import './fonts.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -27,6 +29,95 @@
   h2,
   h3 {
     @apply font-carved uppercase tracking-[0.12em];
+  }
+}
+
+@layer components {
+  /* ---------------------------------------------------------------- torch
+     §3: "the single memorable thing in this app". Two keyframes, low
+     amplitude — a torch gutters, it does not strobe. The flame and the light
+     it casts flicker on slightly different periods so the room never pulses
+     in lockstep, which is what makes it read as fire rather than as a
+     throbbing div. */
+  @keyframes delve-flame {
+    0%,
+    100% {
+      transform: scaleY(1) translateY(0);
+      opacity: 0.95;
+    }
+    50% {
+      transform: scaleY(1.06) translateY(-1px);
+      opacity: 1;
+    }
+  }
+
+  @keyframes delve-glow {
+    0%,
+    100% {
+      opacity: 0.72;
+    }
+    50% {
+      opacity: 0.85;
+    }
+  }
+
+  /* §3: "lighting the torch is the reward for recording a node. That
+     transition should have a half-second flare on it." */
+  @keyframes delve-flare {
+    0% {
+      opacity: 0.4;
+    }
+    35% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0.78;
+    }
+  }
+
+  .delve-flame {
+    transform-origin: center bottom;
+    animation: delve-flame 2.4s ease-in-out infinite;
+  }
+
+  .delve-glow {
+    animation: delve-glow 3.1s ease-in-out infinite;
+  }
+
+  .delve-flare {
+    animation: delve-flare 500ms ease-out;
+  }
+
+  /* Movement, §4.1: tapping an archway slides the room out and the new room
+     in, left-to-right, 250ms. */
+  @keyframes delve-room-in {
+    from {
+      transform: translateX(6%);
+      opacity: 0;
+    }
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+
+  @keyframes delve-room-back {
+    from {
+      transform: translateX(-6%);
+      opacity: 0;
+    }
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+
+  .delve-enter {
+    animation: delve-room-in 250ms ease-out;
+  }
+
+  .delve-retreat {
+    animation: delve-room-back 250ms ease-out;
   }
 }
 

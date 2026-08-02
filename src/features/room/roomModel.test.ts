@@ -77,6 +77,20 @@ describe('buildRoomView — status and structure', () => {
     expect(view(g, 'D').retreats).toHaveLength(2)
   })
 
+  it('lists siblings sharing a parent, for plaque cycling (F1.11)', () => {
+    const g = makeGraph(['A', 'B', 'C', 'D'], ['A>B', 'A>C', 'A>D'])
+    const v = view(g, 'B')
+    expect(v.siblings).toHaveLength(3)
+    expect(v.siblings).toContain(idOf(g, 'C'))
+  })
+
+  it('does not repeat a sibling reachable from two parents', () => {
+    // D has two parents (A and B); A also leads to C. Cycling must not list D twice.
+    const g = makeGraph(['A', 'B', 'C', 'D'], ['A>C', 'A>D', 'B>D'])
+    const v = view(g, 'D')
+    expect(new Set(v.siblings).size).toBe(v.siblings.length)
+  })
+
   it('marks an orphan room', () => {
     const g = makeGraph(['A', 'LOST'], ['A>'])
     const v = view(g, 'LOST')
