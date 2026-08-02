@@ -2,6 +2,8 @@ import { type KeyboardEvent } from 'react'
 import type { ExitView, RoomView } from '../roomModel'
 import Torch from './Torch'
 import { ARCH, archPath, archX, BACK, TORCH, VIEW, WALLS } from './geometry'
+import { designFor } from './designs'
+import { FloorMotifLayer, WallMotifLayer, WallTextureLayer } from './Texture'
 
 interface Props {
   view: RoomView
@@ -159,11 +161,15 @@ function Archway({ exit, lit, onActivate }: { exit: ExitView; lit: boolean; onAc
 export default function DungeonRoom({ view, flare, onExit }: Props) {
   const lit = view.torchLit
 
-  // §3: unlit rooms render dim — walls at `stone`, text at 60% opacity. Lit
-  // rooms shift to `stone-lit` and a warm wash spills from the torch.
-  const wall = lit ? '#4A3D30' : '#2B241E'
-  const wallDim = lit ? '#3C3227' : '#241E19'
-  const edge = lit ? '#6B5A47' : '#3A3129'
+  // §3: unlit rooms render dim, lit rooms brighten and a wash spills from the
+  // torch. Which browns those are is the design's business — the rule that dark
+  // means unrecorded is not.
+  const d = designFor(view.design)
+  const pick = (pair: { lit: string; dim: string }) => (lit ? pair.lit : pair.dim)
+  const wall = pick(d.wall)
+  const wallDim = pick(d.wallShaded)
+  const edge = pick(d.edge)
+  const floor = pick(d.floor)
 
   return (
     <svg
@@ -177,26 +183,46 @@ export default function DungeonRoom({ view, flare, onExit }: Props) {
     >
       <defs>
         <radialGradient id="torchwash" cx={TORCH.x / VIEW.w} cy={TORCH.y / VIEW.h} r="0.85">
-          <stop offset="0%" stopColor="#E8A33D" stopOpacity={0.32} />
-          <stop offset="45%" stopColor="#B85C1E" stopOpacity={0.12} />
+          <stop offset="0%" stopColor={d.glow.inner} stopOpacity={0.32} />
+          <stop offset="45%" stopColor={d.glow.outer} stopOpacity={0.12} />
           <stop offset="100%" stopColor="#141010" stopOpacity={0} />
         </radialGradient>
+        <clipPath id="backwall">
+          <polygon points={WALLS.back} />
+        </clipPath>
       </defs>
 
-      {/* Five flat polygons. That is the whole room. */}
-      <polygon points={WALLS.ceiling} fill={wallDim} />
-      <polygon points={WALLS.left} fill={wall} />
-      <polygon points={WALLS.right} fill={wallDim} />
-      <polygon points={WALLS.back} fill={wall} />
-      <polygon points={WALLS.floor} fill={lit ? '#3A2F25' : '#221C17'} />
+      {/* Five flat polygons. That is the whole room. A design that opens
+          upward simply omits the ceiling, so the room reads as unbounded. */}
+      {!d.openCeiling && <polygon points={WALLS.ceiling} fill={wallDim} />}
+      {/* A room with no walls draws only its floor, so the doors read as
+          standing in open dark rather than set into something. */}
+      {!d.openWalls && (
+        <>
+          <polygon points={WALLS.left} fill={wall} />
+          <polygon points={WALLS.right} fill={wallDim} />
+          <polygon points={WALLS.back} fill={wall} />
+        </>
+      )}
+      <polygon points={WALLS.floor} fill={floor} />
+
+      <WallTextureLayer texture={d.texture} color={pick(d.edge)} lit={lit} />
+      <WallMotifLayer motif={d.wallMotif} color={pick(d.edge)} lit={lit} />
+      <FloorMotifLayer motif={d.floorMotif} color={pick(d.edge)} lit={lit} />
 
       {/* Joins, drawn rather than shaded — no gradients pretending to be light. */}
       <g stroke={edge} strokeWidth={1.5} fill="none">
-        <polygon points={WALLS.back} />
-        <line x1={0} y1={0} x2={BACK.x0} y2={BACK.y0} />
-        <line x1={VIEW.w} y1={0} x2={BACK.x1} y2={BACK.y0} />
+        {!d.openWalls && <polygon points={WALLS.back} />}
+        {!d.openCeiling && (
+          <>
+            <line x1={0} y1={0} x2={BACK.x0} y2={BACK.y0} />
+            <line x1={VIEW.w} y1={0} x2={BACK.x1} y2={BACK.y0} />
+          </>
+        )}
         <line x1={0} y1={VIEW.h} x2={BACK.x0} y2={BACK.y1} />
         <line x1={VIEW.w} y1={VIEW.h} x2={BACK.x1} y2={BACK.y1} />
+        {/* With no walls, the floor's far edge is the only horizon. */}
+        {d.openWalls && <line x1={BACK.x0} y1={BACK.y1} x2={BACK.x1} y2={BACK.y1} />}
       </g>
 
       {view.isEnding ? (

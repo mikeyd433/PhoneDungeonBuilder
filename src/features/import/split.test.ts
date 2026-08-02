@@ -46,17 +46,17 @@ describe('slugPrefixes', () => {
 describe('suggestSplit', () => {
   it('finds the handoff out of the leading section', () => {
     const s = suggestSplit(hotlineThenDungeon())!
-    expect(s.cutId).toBe('c0')
+    expect(s.cutId).toBe('h9')
     // Names the section the FIRST story is, which is what titles it.
     expect(s.leadingPrefix).toBe('HOTLINE')
   })
 
-  it('keeps the boundary room with the first story', () => {
-    // HOTLINE_9 is the character choice — the last room of the menu, not the
-    // first of the dungeon.
+  it('makes the character choice the dungeon’s first room', () => {
+    // Picking Mike or Carter branches immediately, so it is the game's first
+    // real decision — not a trailing step of the phone menu.
     const s = suggestSplit(hotlineThenDungeon())!
-    expect(s.upstream.has('h9')).toBe(true)
-    expect(s.downstream.has('h9')).toBe(false)
+    expect(s.downstream.has('h9')).toBe(true)
+    expect(s.upstream.has('h9')).toBe(false)
   })
 
   it('anchors on the section the caller starts in, not the biggest one', () => {
@@ -68,27 +68,21 @@ describe('suggestSplit', () => {
       data.edges.push(edge('s1', `s${i}`))
     }
     const s = suggestSplit(data)!
-    expect(s.cutId).toBe('c0')
+    expect(s.cutId).toBe('h9')
     expect(s.upstream.has('h0')).toBe(true)
     expect(s.downstream.has('s1')).toBe(true)
   })
 
-  it('steps over the option node to land on the room beyond it', () => {
-    // The boundary is a room, not a keypress.
-    const s = suggestSplit(hotlineThenDungeon())!
-    expect(s.cutId).not.toBe('opt')
-  })
-
   it('puts the whole dungeon downstream and the whole menu upstream', () => {
     const s = suggestSplit(hotlineThenDungeon())!
-    expect([...s.downstream].sort()).toEqual(['c0', 'c1', 's1'])
+    expect([...s.downstream].sort()).toEqual(['c0', 'c1', 'h9', 'opt', 's1'])
     expect(s.upstream.has('h0')).toBe(true)
-    expect(s.upstream.has('h9')).toBe(true)
+    expect(s.upstream.has('h1')).toBe(true)
   })
 
   it('records the crossing rather than dropping it', () => {
     const s = suggestSplit(hotlineThenDungeon())!
-    expect(s.crossings).toEqual([{ fromId: 'opt', toId: 'c0' }])
+    expect(s.crossings).toEqual([{ fromId: 'h0', toId: 'h9' }])
   })
 
   it('leaves an ordinary one-section graph alone', () => {
@@ -136,8 +130,13 @@ describe('importing each side of a split', () => {
   it('imports only its own rooms', () => {
     const menu = buildBrainstormPlan(data, { ...collapse, restrictTo: split.upstream })
     const game = buildBrainstormPlan(data, { ...collapse, restrictTo: split.downstream })
-    expect(menu.nodes.map((n) => n.slug)).toEqual(['HOTLINE_0', 'HOTLINE_1', 'HOTLINE_9'])
-    expect(game.nodes.map((n) => n.slug)).toEqual(['CARTER_INTRO_0', 'CARTER_INTRO_1', 'SHARKS_1'])
+    expect(menu.nodes.map((n) => n.slug)).toEqual(['HOTLINE_0', 'HOTLINE_1'])
+    expect(game.nodes.map((n) => n.slug)).toEqual([
+      'HOTLINE_9',
+      'CARTER_INTRO_0',
+      'CARTER_INTRO_1',
+      'SHARKS_1',
+    ])
   })
 
   it('keeps the handoff visible as a bricked archway naming its destination', () => {
@@ -147,16 +146,16 @@ describe('importing each side of a split', () => {
       restrictTo: split.upstream,
       otherStoryName: 'The Delve',
     })
-    const handoff = menu.choices.find((c) => c.fromSlug === 'HOTLINE_9')!
-    expect(handoff.toSlug).toBeNull()
-    expect(handoff.unresolvedName).toBe('CARTER_INTRO_0')
-    expect(handoff.label).toBe('Play as Carter')
+    // HOTLINE_0 has two exits: one stays in the menu, one crosses the boundary.
+    const handoff = menu.choices.find((c) => !c.toSlug)!
+    expect(handoff.fromSlug).toBe('HOTLINE_0')
+    expect(handoff.unresolvedName).toBe('HOTLINE_9')
     expect(menu.issues.some((i) => i.message.includes('The Delve'))).toBe(true)
   })
 
   it('starts the dungeon at the cut node', () => {
     const game = buildBrainstormPlan(data, { ...collapse, restrictTo: split.downstream })
-    expect(game.rootSlug).toBe('CARTER_INTRO_0')
+    expect(game.rootSlug).toBe('HOTLINE_9')
   })
 
   it('imports the whole graph as one story when not split', () => {

@@ -6,6 +6,7 @@ import { nextFreeDigit } from './roomModel'
 import AudioPanel from '@/features/audio/AudioPanel'
 import ItemsSection from '@/features/state/ItemsSection'
 import CollabPanel from '@/features/collab/CollabPanel'
+import { ROOM_DESIGNS } from './vector/designs'
 import { DIGITS, canWrite, type Digit, type StoryNode } from '@/types/domain'
 
 /**
@@ -178,6 +179,32 @@ export default function EditorSheet({ nodeId, onClose }: { nodeId: string; onClo
         </div>
 
         <ItemsSection nodeId={nodeId} />
+
+        <div className="flex flex-col gap-2">
+          <span className="text-xs uppercase tracking-wider text-mortar">Room design</span>
+          <p className="text-xs text-cold">
+            What kind of place this is. Changes the walls only — the torch, the archways and
+            everything else still mean exactly what they meant.
+          </p>
+          <div className="flex flex-wrap gap-1">
+            {ROOM_DESIGNS.map((design) => {
+              const on = (value('room_design') || 'stone') === design.id
+              return (
+                <button
+                  key={design.id}
+                  title={design.blurb}
+                  onClick={() => void updateNode(node.id, { room_design: design.id })}
+                  className={[
+                    'rounded border px-2 py-1 text-xs',
+                    on ? 'border-torch text-torch' : 'border-mortar/60 text-mortar',
+                  ].join(' ')}
+                >
+                  {design.name}
+                </button>
+              )
+            })}
+          </div>
+        </div>
 
         <label className="flex flex-col gap-1">
           <span className="text-xs uppercase tracking-wider text-mortar">Node type</span>

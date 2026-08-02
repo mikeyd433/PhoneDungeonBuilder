@@ -6,6 +6,7 @@ import { makeGraph } from '@/test/factory'
 import type { RoomView } from '@/features/room/roomModel'
 import Automap from '@/features/automap/Automap'
 import { layoutAutomap, type MapLayout } from '@/features/automap/layout'
+import { ROOM_DESIGNS } from '@/features/room/vector/designs'
 
 /**
  * A visual bench for the room art.
@@ -104,6 +105,35 @@ export default function Preview() {
             )}
           </figure>
         ))}
+      </div>
+
+      <h2 className="mb-1 mt-10 text-xl text-torch">Room designs</h2>
+      <p className="mb-4 text-sm text-mortar">
+        Ten places a room can be. All lit, so the treatments are comparable.
+      </p>
+      <div className="grid gap-6 sm:grid-cols-2">
+        {ROOM_DESIGNS.map((design) => {
+          const g = makeGraph(['A', 'B', 'C'], ['A>B', 'A>C'], { recorded: ['A'] })
+          const first = [...g.nodes.values()][0]
+          g.nodes.set(first.id, {
+            ...first,
+            title: design.name,
+            narration: design.blurb,
+            room_design: design.id,
+          })
+          const v = buildRoomView(g, deriveGraph(g), first.id)
+          return (
+            <figure key={design.id} className="rounded border border-mortar/40 bg-stone/40 p-3">
+              <figcaption className="mb-2">
+                <span className="font-carved text-sm uppercase tracking-[0.12em] text-torch">
+                  {design.name}
+                </span>
+                <span className="block font-paper text-xs text-mortar">{design.blurb}</span>
+              </figcaption>
+              {v && <DungeonRoom view={v} flare={false} onExit={() => {}} />}
+            </figure>
+          )
+        })}
       </div>
 
       <h2 className="mb-4 mt-10 text-xl text-torch">Automap</h2>

@@ -60,6 +60,8 @@ export interface RoomView {
   siblings: string[]
   /** F1.5 — lit when audio exists. Unfinished territory is literally dark. */
   torchLit: boolean
+  /** Which of the ten room designs this room is dressed in. */
+  design: string
   /** F1.9 — rubble and a skull, no exits. */
   isEnding: boolean
   /** F1.10 — depth notches on the wall. Null when unreachable. */
@@ -198,6 +200,7 @@ export function buildRoomView(
     retreats,
     siblings,
     torchLit: Boolean(node.audio_path),
+    design: node.room_design || 'stone',
     isEnding,
     depth: derived.depth.get(nodeId) ?? null,
     arrivalGrants: arrival.grants,

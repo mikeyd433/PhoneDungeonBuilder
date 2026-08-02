@@ -69,62 +69,18 @@ function reachableFrom(data: BrainstormExport, starts: string[]): Set<string> {
 }
 
 /**
- * Split the graph at one node.
+ * Split the graph at one node: it and everything reachable from it become the
+ * second story.
  *
- * Reachability is computed from the cut node *first*, so anything the second
- * story can reach belongs to it even if the first story could also reach it by
- * another route. The alternative — assigning shared rooms to the first story —
- * would leave the dungeon with holes in it.
- */
-/**
- * Split *after* a node: it stays with the first story, everything its exits
- * lead to becomes the second.
+ * The cut node joins the SECOND story, not the first. The handoff here is the
+ * character choice, and picking Mike or Carter sends the caller somewhere
+ * immediately different — that is the dungeon's first real decision, so it
+ * belongs at the dungeon's entrance rather than tacked onto the end of a menu.
  *
- * This is the shape a handoff actually takes. The character choice — "press 1
- * to play as Mike, press 2 to play as Carter" — is the last room of the phone
- * menu, and both branches beyond it are the game. Cutting *at* one branch would
- * leave the other stranded in the menu.
+ * Reachability is computed from the cut node first, so a room both sides can
+ * reach belongs to the second. Giving it to the first would leave holes in the
+ * dungeon.
  */
-export function splitAfter(data: BrainstormExport, boundaryId: string): SplitSuggestion {
-  const outgoing = new Map<string, string[]>()
-  for (const e of data.edges) {
-    if (!outgoing.has(e.source)) outgoing.set(e.source, [])
-    outgoing.get(e.source)!.push(e.target)
-  }
-  const labelOf = new Map(data.nodes.map((n) => [n.id, n.data?.label ?? '']))
-
-  // Step over option nodes: the story starts at the room beyond the keypress.
-  const entries: string[] = []
-  for (const first of outgoing.get(boundaryId) ?? []) {
-    if (choiceDigitOf(labelOf.get(first) ?? '')) entries.push(...(outgoing.get(first) ?? []))
-    else entries.push(first)
-  }
-
-  const downstream = reachableFrom(data, entries)
-  // The boundary node itself always belongs to the first story, even if a loop
-  // makes it reachable from the second.
-  downstream.delete(boundaryId)
-
-  const upstream = new Set<string>()
-  for (const n of data.nodes) if (!downstream.has(n.id)) upstream.add(n.id)
-
-  const crossings: Array<{ fromId: string; toId: string }> = []
-  for (const e of data.edges) {
-    if (upstream.has(e.source) && downstream.has(e.target)) {
-      crossings.push({ fromId: e.source, toId: e.target })
-    }
-  }
-
-  const boundary = data.nodes.find((n) => n.id === boundaryId)
-  return {
-    cutId: entries[0] ?? boundaryId,
-    leadingPrefix: prefixOf((boundary?.data?.details ?? '').trim()),
-    upstream,
-    downstream,
-    crossings,
-  }
-}
-
 export function splitAt(data: BrainstormExport, cutId: string): SplitSuggestion {
   const downstream = reachableFrom(data, [cutId])
   const upstream = new Set<string>()
@@ -156,8 +112,10 @@ export function splitAt(data: BrainstormExport, cutId: string): SplitSuggestion 
  * so "anything without the leading prefix" matches almost everything and cuts
  * the story in the wrong place.
  *
- * The split is taken *after* the last node of the first section, so every
- * branch out of it — both characters, in this story — lands in the second.
+ * The split is taken *at* the handoff room, so that room becomes the second
+ * story's entrance. In this story that room is the character choice, and the
+ * two characters immediately lead somewhere different — so it belongs to the
+ * dungeon as its first decision, not to the menu as an afterthought.
  *
  * Returns null when there is no such transition, which is the common case:
  * most flowcharts are one story and must be left alone.
@@ -200,7 +158,7 @@ export function suggestSplit(data: BrainstormExport): SplitSuggestion | null {
   // A transition out of the entrance's own section is the handoff we want.
   const handoff =
     transitions.find((t) => t.fromPrefix === rootPrefix) ?? transitions[0]
-  const split = splitAfter(data, handoff.fromId)
+  const split = splitAt(data, handoff.fromId)
 
   // A split leaving almost nothing on one side is not a split.
   if (split.upstream.size < 2 || split.downstream.size < 2) return null

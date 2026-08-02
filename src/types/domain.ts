@@ -41,6 +41,8 @@ export interface StoryNode {
   timeout_target_id: string | null
   invalid_target_id: string | null
   timeout_seconds: number
+  /** Visual treatment for the room view; falls back to `stone` if unknown. */
+  room_design: string
   created_at: string
   updated_at: string
 }

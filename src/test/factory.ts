@@ -46,6 +46,7 @@ export function makeGraph(
       timeout_target_id: null,
       invalid_target_id: null,
       timeout_seconds: 5,
+      room_design: 'stone',
       created_at: '2026-01-01T00:00:00Z',
       updated_at: '2026-01-01T00:00:00Z',
     })
