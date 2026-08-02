@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { supabase, supabaseConfigured } from '@/lib/supabase'
+import { describeAuthError } from '@/features/auth/authError'
 
 /** F7.1 — magic link, the same pattern as Stroke Off. */
 export default function Login() {
@@ -17,7 +18,7 @@ export default function Login() {
       options: { emailRedirectTo: window.location.origin + import.meta.env.BASE_URL },
     })
     setBusy(false)
-    if (error) setError(error.message)
+    if (error) setError(describeAuthError(error))
     else setSent(true)
   }
 
