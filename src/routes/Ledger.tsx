@@ -1,15 +1,20 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useDelve } from '@/features/graph/store'
-import { darkRooms, unwrittenBranches } from '@/features/graph/derived'
+import { darkRooms, trapNodes, unwrittenBranches } from '@/features/graph/derived'
 import type { StoryNode } from '@/types/domain'
 
-type Tab = 'unexplored' | 'sealed' | 'dark' | 'all'
+type Tab = 'unexplored' | 'sealed' | 'dark' | 'traps' | 'all'
 
 const TABS: Array<{ id: Tab; label: string; help: string }> = [
   { id: 'unexplored', label: 'Unexplored passages', help: 'Choices with no destination — your to-write list.' },
   { id: 'sealed', label: 'Sealed rooms', help: 'Rooms with nothing leading to them.' },
   { id: 'dark', label: 'Dark rooms', help: 'No audio yet, shallowest first — record from the entrance outward.' },
+  {
+    id: 'traps',
+    label: 'Traps',
+    help: 'Reachable rooms from which no ending can ever be reached — a caller who walks in can never finish (F4.9).',
+  },
   { id: 'all', label: 'All rooms', help: 'The whole dungeon.' },
 ]
 
@@ -64,6 +69,10 @@ export default function Ledger() {
     }
     if (tab === 'dark') {
       return nodeRows(darkRooms(graph, derived))
+    }
+    if (tab === 'traps') {
+      const traps = trapNodes(graph, derived)
+      return nodeRows([...graph.nodes.values()].filter((n) => traps.has(n.id)))
     }
     return nodeRows([...graph.nodes.values()].sort((a, b) => a.slug.localeCompare(b.slug)))
   }, [graph, derived, tab, query])

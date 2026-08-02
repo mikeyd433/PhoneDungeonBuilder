@@ -1,8 +1,11 @@
+import { useEffect, useState } from 'react'
 import { deriveGraph } from '@/features/graph/derived'
 import { buildRoomView } from '@/features/room/roomModel'
 import DungeonRoom from '@/features/room/vector/DungeonRoom'
 import { makeGraph } from '@/test/factory'
 import type { RoomView } from '@/features/room/roomModel'
+import Automap from '@/features/automap/Automap'
+import { layoutAutomap, type MapLayout } from '@/features/automap/layout'
 
 /**
  * A visual bench for the room art.
@@ -34,6 +37,34 @@ function roomFrom(
     narration: 'The hull groans. Something big is circling below.',
   })
   return buildRoomView(g, deriveGraph(g), node.id)
+}
+
+/** A small dungeon with every automap feature in it: branches, a reconvergence,
+ *  a back-edge, an ending, an unwritten branch and an orphan. */
+function AutomapSample() {
+  const [layout, setLayout] = useState<MapLayout | null>(null)
+  useEffect(() => {
+    const g = makeGraph(
+      ['ENTRANCE', 'HULL', 'DECK', 'HOLD', 'SHARKS_1', 'FIN', 'LOST'],
+      ['ENTRANCE>HULL', 'ENTRANCE>DECK', 'HULL>HOLD', 'DECK>HOLD', 'HOLD>SHARKS_1',
+       'SHARKS_1>ENTRANCE', 'SHARKS_1>FIN', 'HOLD>'],
+      { endings: ['FIN'], recorded: ['ENTRANCE', 'HULL'] },
+    )
+    // Give a couple of rooms narration so "written" vs "stub" is visible.
+    for (const n of g.nodes.values()) {
+      if (['ENTRANCE', 'HULL', 'HOLD', 'FIN'].includes(n.slug)) {
+        g.nodes.set(n.id, { ...n, narration: 'Something is written here.' })
+      }
+    }
+    void layoutAutomap(g, deriveGraph(g)).then(setLayout)
+  }, [])
+
+  if (!layout) return <p className="font-paper text-mortar">surveying…</p>
+  return (
+    <div className="h-[520px] overflow-hidden rounded border border-grid">
+      <Automap layout={layout} currentId={layout.rooms[3]?.id ?? null} onTeleport={() => {}} />
+    </div>
+  )
 }
 
 export default function Preview() {
@@ -74,6 +105,9 @@ export default function Preview() {
           </figure>
         ))}
       </div>
+
+      <h2 className="mb-4 mt-10 text-xl text-torch">Automap</h2>
+      <AutomapSample />
     </main>
   )
 }

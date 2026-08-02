@@ -4,6 +4,8 @@ import { useDelve } from '@/features/graph/store'
 import { buildRoomView, type ExitView } from '@/features/room/roomModel'
 import RoomStage from '@/features/room/RoomStage'
 import EditorSheet from '@/features/room/EditorSheet'
+import Automap from '@/features/automap/Automap'
+import { useAutomapLayout } from '@/features/automap/useAutomapLayout'
 
 export default function Room() {
   const { storyId } = useParams<{ storyId: string }>()
@@ -23,6 +25,7 @@ export default function Room() {
   const undoStack = useDelve((s) => s.undoStack)
   const [editing, setEditing] = useState(false)
   const [choosingRetreat, setChoosingRetreat] = useState(false)
+  const { layout } = useAutomapLayout()
 
   useEffect(() => {
     if (storyId) void loadStory(storyId)
@@ -90,6 +93,9 @@ export default function Room() {
           >
             Undo
           </button>
+          <Link to={`/story/${storyId}/map`} className="text-mortar underline">
+            Map
+          </Link>
           <Link to={`/story/${storyId}/ledger`} className="text-mortar underline">
             Ledger
           </Link>
@@ -142,13 +148,24 @@ export default function Room() {
         </div>
       )}
 
-      <footer className="flex gap-3 border-t border-mortar/40 p-4">
+      <footer className="flex items-center gap-3 border-t border-mortar/40 p-4">
         <button
           onClick={() => setEditing((v) => !v)}
           className="flex-1 rounded bg-torch px-4 py-3 font-carved uppercase tracking-[0.12em] text-depth"
         >
           ✎ Edit
         </button>
+
+        {/* F4.2 — a 120x120 minimap thumbnail; tap to expand. */}
+        {layout && (
+          <Link
+            to={`/story/${storyId}/map`}
+            aria-label="Open the automap"
+            className="h-[76px] w-[76px] shrink-0 overflow-hidden rounded border border-mortar/60"
+          >
+            <Automap layout={layout} currentId={currentNodeId} onTeleport={() => {}} thumbnail />
+          </Link>
+        )}
       </footer>
 
       {error && (

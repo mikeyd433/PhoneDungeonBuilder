@@ -6,6 +6,7 @@ import Room from '@/routes/Room'
 import Ledger from '@/routes/Ledger'
 import Import from '@/routes/Import'
 import Preview from '@/routes/Preview'
+import MapScreen from '@/routes/Map'
 
 export default function App() {
   const { session, ready } = useSession()
@@ -28,6 +29,7 @@ export default function App() {
       <Route path="/" element={<Stories />} />
       <Route path="/import" element={<Import />} />
       <Route path="/story/:storyId" element={<Room />} />
+      <Route path="/story/:storyId/map" element={<MapScreen />} />
       <Route path="/story/:storyId/ledger" element={<Ledger />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
