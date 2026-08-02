@@ -87,29 +87,78 @@ export default function Import() {
           <section className="mb-6">
             <h2 className="mb-2 text-sm text-mortar">Map the columns</h2>
             <div className="flex flex-col gap-2">
-              {IMPORT_FIELDS.map((spec) => (
-                <label key={spec.field} className="flex flex-wrap items-center gap-2 text-sm">
-                  <span className="w-36 shrink-0">
-                    {spec.label}
-                    {spec.required && <span className="text-grave"> *</span>}
-                  </span>
-                  <select
-                    value={mapping[spec.field] ?? ''}
-                    onChange={(e) =>
-                      setMapping((m) => ({ ...m, [spec.field]: e.target.value || undefined }))
-                    }
-                    className={field}
-                  >
-                    <option value="">— not imported —</option>
-                    {table.headers.map((h) => (
-                      <option key={h} value={h}>
-                        {h}
-                      </option>
-                    ))}
-                  </select>
-                  <span className="w-full text-xs text-cold sm:w-auto">{spec.help}</span>
-                </label>
-              ))}
+              {IMPORT_FIELDS.map((spec) => {
+                const current = mapping[spec.field]
+                const selected = current === undefined ? [] : ([] as string[]).concat(current)
+
+                // A repeatable field can be fed by several columns at once —
+                // trackers spread exits across "Leads To 1..5" rather than
+                // putting a comma-separated list in one cell, so this has to be
+                // a multi-select or four fifths of the branching is lost.
+                return (
+                  <div key={spec.field} className="flex flex-wrap items-start gap-2 text-sm">
+                    <span className="w-36 shrink-0 pt-2">
+                      {spec.label}
+                      {spec.required && <span className="text-grave"> *</span>}
+                    </span>
+
+                    {spec.repeatable ? (
+                      <div className="flex flex-wrap gap-1">
+                        {table.headers.map((h) => {
+                          const on = selected.includes(h)
+                          return (
+                            <button
+                              key={h}
+                              onClick={() =>
+                                setMapping((m) => {
+                                  const next = on
+                                    ? selected.filter((x) => x !== h)
+                                    : [...selected, h]
+                                  return {
+                                    ...m,
+                                    [spec.field]:
+                                      next.length === 0
+                                        ? undefined
+                                        : next.length === 1
+                                          ? next[0]
+                                          : next,
+                                  }
+                                })
+                              }
+                              className={[
+                                'rounded border px-2 py-1 text-xs',
+                                on ? 'border-torch text-torch' : 'border-mortar/60 text-mortar',
+                              ].join(' ')}
+                            >
+                              {h}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    ) : (
+                      <select
+                        value={typeof current === 'string' ? current : ''}
+                        onChange={(e) =>
+                          setMapping((m) => ({ ...m, [spec.field]: e.target.value || undefined }))
+                        }
+                        className={field}
+                      >
+                        <option value="">— not imported —</option>
+                        {table.headers.map((h) => (
+                          <option key={h} value={h}>
+                            {h}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+
+                    <span className="w-full text-xs text-cold sm:w-auto sm:max-w-xs">
+                      {spec.help}
+                      {spec.repeatable && ' Pick every column that feeds this.'}
+                    </span>
+                  </div>
+                )
+              })}
             </div>
           </section>
 

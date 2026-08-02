@@ -122,3 +122,86 @@ describe('buildImportPlan', () => {
     expect(p.choices.filter((c) => c.fromSlug === 'A')).toHaveLength(2)
   })
 })
+
+/**
+ * The real tracker (CYOA_Node_Tracker.xlsx) rather than the shape §8 assumed.
+ * Two things differ and both would silently corrupt an import:
+ * exits live in five numbered columns, and endings are typed "Win"/"Lose".
+ */
+describe('the real CYOA_Node_Tracker shape', () => {
+  const HEADERS =
+    'Node ID,Node Type,Dialogue,Comes From 1,Comes From 2,Leads To 1,Leads To 2,Leads To 3,' +
+    'Item Received,Item Lost,Voice Actor,Audio File Name,Recorded,Notes'
+
+  it('maps all five Leads To columns to one field, not just the first', () => {
+    const m = guessMapping(HEADERS.split(','))
+    expect(Array.isArray(m.leads_to)).toBe(true)
+    expect(m.leads_to).toEqual(['Leads To 1', 'Leads To 2', 'Leads To 3'])
+  })
+
+  it('does not let "Comes From" columns steal the Leads To mapping', () => {
+    // Comes From is derived and must stay unmapped (§8 says ignore it).
+    const m = guessMapping(HEADERS.split(','))
+    const claimed = Object.values(m).flat()
+    expect(claimed).not.toContain('Comes From 1')
+    expect(claimed).not.toContain('Comes From 2')
+  })
+
+  it('reads exits spread across numbered columns into digits 1,2,3', () => {
+    const p = plan(
+      `Node ID,Leads To 1,Leads To 2,Leads To 3\nBEACH_1,SHARKS_1,SHARKS_2,SHARKS_3\n` +
+        'SHARKS_1,,,\nSHARKS_2,,,\nSHARKS_3,,,',
+    )
+    const exits = p.choices.filter((c) => c.fromSlug === 'BEACH_1')
+    expect(exits.map((c) => c.digit)).toEqual(['1', '2', '3'])
+    expect(exits.map((c) => c.toSlug)).toEqual(['SHARKS_1', 'SHARKS_2', 'SHARKS_3'])
+  })
+
+  it('closes gaps so a half-filled row does not skip digits', () => {
+    // Leads To 1 and 3 filled, 2 blank: the caller should press 1 and 2.
+    const p = plan(
+      'Node ID,Leads To 1,Leads To 2,Leads To 3\nA,B,,C\nB,,,\nC,,,',
+    )
+    const exits = p.choices.filter((c) => c.fromSlug === 'A')
+    expect(exits.map((c) => c.digit)).toEqual(['1', '2'])
+    expect(exits.map((c) => c.toSlug)).toEqual(['B', 'C'])
+  })
+
+  it('treats Win and Lose as endings', () => {
+    const p = plan(
+      'Node ID,Node Type\nA,Dialogue\nB,Choice\nC,Win\nD,Lose\nE,Branch\nF,Item Received',
+    )
+    expect(p.nodes.map((n) => n.node_type)).toEqual([
+      'room',
+      'room',
+      'ending',
+      'ending',
+      'room',
+      'room',
+    ])
+  })
+
+  it('keeps the sheet audio filename as a note without faking a recording', () => {
+    // Pointing audio_path at a file that isn't in Storage would light the torch
+    // for a room with nothing to play.
+    const p = plan('Node ID,Audio File Name,Notes\nA,INTRO_1_v1.wav,retake wanted')
+    expect(p.nodes[0].notes).toContain('INTRO_1_v1.wav')
+    expect(p.nodes[0].notes).toContain('retake wanted')
+    expect(p.nodes[0].recorded).toBe(false)
+  })
+
+  it('imports the tracker example row end to end', () => {
+    const p = plan(
+      `${HEADERS}\n` +
+        'INTRO_1,Dialogue,"You wake up on a beach. The sun is blinding.",START_1,,BEACH_1,BEACH_2,,' +
+        ',,VO_Actor_Name,INTRO_1_v1.wav,No,Example row\n' +
+        'BEACH_1,Dialogue,,,,,,,,,,,,\n' +
+        'BEACH_2,Dialogue,,,,,,,,,,,,',
+    )
+    expect(p.nodes.map((n) => n.slug)).toEqual(['INTRO_1', 'BEACH_1', 'BEACH_2'])
+    expect(p.nodes[0].narration).toBe('You wake up on a beach. The sun is blinding.')
+    const exits = p.choices.filter((c) => c.fromSlug === 'INTRO_1')
+    expect(exits.map((c) => c.toSlug)).toEqual(['BEACH_1', 'BEACH_2'])
+    expect(p.nodes[0].recorded).toBe(false)
+  })
+})

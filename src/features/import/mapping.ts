@@ -17,6 +17,7 @@ export type ImportField =
   | 'item_received'
   | 'item_lost'
   | 'recorded'
+  | 'audio_file'
   | 'notes'
 
 export interface FieldSpec {
@@ -26,6 +27,15 @@ export interface FieldSpec {
   required: boolean
   /** Lowercased header fragments that suggest this field. */
   aliases: string[]
+  /**
+   * Whether several columns can feed this one field.
+   *
+   * Real trackers spread exits across numbered columns — "Leads To 1" through
+   * "Leads To 5" — rather than putting a comma-separated list in one cell.
+   * Mapping only one of them would silently import a single exit per room and
+   * quietly drop the rest of the story's branching.
+   */
+  repeatable?: boolean
 }
 
 export const IMPORT_FIELDS: FieldSpec[] = [
@@ -63,6 +73,7 @@ export const IMPORT_FIELDS: FieldSpec[] = [
     help: 'Comma-separated node names. Digits are assigned 1, 2, 3 in listed order.',
     required: false,
     aliases: ['leads to', 'goes to', 'exits', 'children', 'next', 'destinations', 'options'],
+    repeatable: true,
   },
   {
     field: 'item_received',
@@ -70,6 +81,7 @@ export const IMPORT_FIELDS: FieldSpec[] = [
     help: 'Comma-separated. Imported as node-level grants — you then walk them onto the right door.',
     required: false,
     aliases: ['item received', 'items received', 'item gained', 'grants', 'gives', 'item'],
+    repeatable: true,
   },
   {
     field: 'item_lost',
@@ -77,6 +89,7 @@ export const IMPORT_FIELDS: FieldSpec[] = [
     help: 'Comma-separated. Imported as node-level revokes.',
     required: false,
     aliases: ['item lost', 'items lost', 'item used', 'revokes', 'takes', 'loses'],
+    repeatable: true,
   },
   {
     field: 'recorded',
@@ -84,6 +97,13 @@ export const IMPORT_FIELDS: FieldSpec[] = [
     help: 'Anything truthy marks the node as recorded.',
     required: false,
     aliases: ['recorded', 'audio', 'vo', 'voiced', 'done', 'status'],
+  },
+  {
+    field: 'audio_file',
+    label: 'Audio file name',
+    help: 'Existing recording filename. Imported as a note — the file itself still has to be uploaded.',
+    required: false,
+    aliases: ['audio file name', 'audio file', 'filename', 'file name', 'wav', 'audio'],
   },
   {
     field: 'notes',
@@ -94,8 +114,14 @@ export const IMPORT_FIELDS: FieldSpec[] = [
   },
 ]
 
-/** field -> header name. A field absent from the map is simply not imported. */
-export type ColumnMapping = Partial<Record<ImportField, string>>
+/**
+ * field -> header name(s). A field absent from the map is not imported.
+ *
+ * Repeatable fields may hold several headers; their values are concatenated
+ * before being split, so "Leads To 1..5" behaves exactly like one comma-
+ * separated cell.
+ */
+export type ColumnMapping = Partial<Record<ImportField, string | string[]>>
 
 const words = (s: string): string[] => s.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean)
 
@@ -130,29 +156,58 @@ export function guessMapping(headers: string[]): ColumnMapping {
   for (const pass of ['exact', 'phrase'] as const) {
     for (const spec of IMPORT_FIELDS) {
       if (mapping[spec.field]) continue
-      const hit = headers.find((h) => {
+      const matches = headers.filter((h) => {
         if (claimed.has(h)) return false
         const hw = headerWords.get(h)!
         return pass === 'exact'
           ? spec.aliases.includes(h.trim().toLowerCase())
           : spec.aliases.some((a) => containsPhrase(hw, words(a)))
       })
-      if (hit) {
-        mapping[spec.field] = hit
-        claimed.add(hit)
-      }
+      if (matches.length === 0) continue
+
+      // A repeatable field takes the whole numbered family ("Leads To 1..5");
+      // everything else takes the first match only.
+      const taken = spec.repeatable ? matches : [matches[0]]
+      mapping[spec.field] = spec.repeatable && taken.length > 1 ? taken : taken[0]
+      for (const h of taken) claimed.add(h)
     }
   }
   return mapping
 }
 
-const ENDING_WORDS = ['ending', 'end', 'death', 'died', 'game over', 'finish', 'terminal', 'final']
+/**
+ * §8 warns the sheet's type vocabulary may not match ours.
+ *
+ * Matched on whole words, not substrings. A tracker whose types are "Win" and
+ * "Lose" is the case that matters here — and a substring test would also make
+ * "Lose" match any cell containing "close", which is exactly the class of bug
+ * that bit the column matcher.
+ */
+const ENDING_WORDS = new Set([
+  'ending',
+  'end',
+  'death',
+  'died',
+  'die',
+  'dead',
+  'finish',
+  'finished',
+  'terminal',
+  'final',
+  'win',
+  'won',
+  'victory',
+  'lose',
+  'lost',
+  'defeat',
+  'gameover',
+])
 
-/** §8 warns the sheet's type vocabulary may not match ours. */
 export function normalizeNodeType(raw: string): 'room' | 'ending' {
   const v = raw.trim().toLowerCase()
   if (!v) return 'room'
-  return ENDING_WORDS.some((w) => v.includes(w)) ? 'ending' : 'room'
+  if (v.replace(/[^a-z]/g, '') === 'gameover') return 'ending'
+  return v.split(/[^a-z0-9]+/).some((w) => ENDING_WORDS.has(w)) ? 'ending' : 'room'
 }
 
 const TRUTHY = ['yes', 'y', 'true', '1', 'x', 'done', 'recorded', 'complete', '✓', 'checked']

@@ -61,10 +61,26 @@ export function buildImportPlan(
   mapping: ColumnMapping,
 ): ImportPlan {
   const issues: ImportIssue[] = []
+
+  /**
+   * Read one field from a row.
+   *
+   * A repeatable field may be mapped to several columns ("Leads To 1..5"), in
+   * which case their values are joined with a comma so downstream splitting
+   * treats them exactly like one comma-separated cell. Blank columns drop out,
+   * so a room with two of five exits filled in still gets digits 1 and 2 rather
+   * than 1 and 4.
+   */
   const get = (row: Record<string, string>, field: ImportField): string => {
-    const header = mapping[field]
-    if (!header) return ''
-    return (row[header] ?? '').trim()
+    const mapped = mapping[field]
+    if (!mapped) return ''
+    if (Array.isArray(mapped)) {
+      return mapped
+        .map((h) => (row[h] ?? '').trim())
+        .filter(Boolean)
+        .join(',')
+    }
+    return (row[mapped] ?? '').trim()
   }
 
   if (!mapping.slug) {
@@ -109,12 +125,23 @@ export function buildImportPlan(
     if (!nameToSlug.has(desired.toLowerCase())) nameToSlug.set(desired.toLowerCase(), slug)
 
     const title = get(row, 'title') || rawName.trim()
+
+    // The sheet's audio filename is kept as a production note rather than
+    // written to audio_path: the row names a file that lives on someone's
+    // drive, and pointing audio_path at a Storage object that doesn't exist
+    // would light the torch for a room with nothing to play.
+    const audioFile = get(row, 'audio_file')
+    const sheetNotes = get(row, 'notes')
+    const notes = [sheetNotes, audioFile ? `Audio file on the sheet: ${audioFile}` : '']
+      .filter(Boolean)
+      .join(' · ')
+
     nodes.push({
       slug,
       title,
       narration: get(row, 'narration'),
       node_type: normalizeNodeType(get(row, 'node_type')),
-      notes: get(row, 'notes') || null,
+      notes: notes || null,
       recorded: mapping.recorded ? isTruthy(get(row, 'recorded')) : false,
       sourceRow,
     })
