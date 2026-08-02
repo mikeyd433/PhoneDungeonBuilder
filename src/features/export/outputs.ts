@@ -1,6 +1,7 @@
 import type { StoryGraph } from '@/types/domain'
 import { PATIENCE_VALVE_AT, type CompileResult, type Widget } from './compile'
 import { formatDuration } from '@/lib/speech'
+import { audioTargets } from '@/features/audio/targets'
 import { castList, linesFor, workloads } from '@/features/cast/dialogue'
 import { buildFightView } from '@/features/fight/model'
 
@@ -221,7 +222,12 @@ export function studioFlowJson(
 export function audioManifestCsv(graph: StoryGraph): string {
   const esc = (s: string) => `"${String(s).replace(/"/g, '""')}"`
   const words = (text: string) => String(text.trim() ? text.trim().split(/\s+/).length : 0)
-  const rows = [['kind', 'slug', 'title', 'status', 'filename', 'duration', 'words'].join(',')]
+  // `call it` is the column an actor works from, and the one the bulk importer
+  // matches on — both read features/audio/targets.ts so they cannot disagree.
+  const wanted = new Map(audioTargets(graph).map((t) => [t.key, t.file]))
+  const rows = [
+    ['kind', 'slug', 'call it', 'title', 'status', 'filename', 'duration', 'words'].join(','),
+  ]
 
   const push = (
     kind: string,
@@ -236,6 +242,7 @@ export function audioManifestCsv(graph: StoryGraph): string {
       [
         esc(kind),
         esc(slug),
+        esc(wanted.get(slug) ?? ''),
         esc(title),
         esc(status),
         esc(path ?? ''),

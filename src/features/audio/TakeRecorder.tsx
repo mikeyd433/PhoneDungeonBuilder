@@ -4,6 +4,7 @@ import { canRecord } from '@/types/domain'
 import { formatDuration } from '@/lib/speech'
 import { measureDuration, RecorderSession, recordingSupported } from './recorder'
 import { IVR_EXT, IVR_MIME, toIvrWav } from './ivrWav'
+import { useHoldToRecord } from './useHoldToRecord'
 import { audioPath, publicAudioUrl, removeAudio, uploadAudio } from './storage'
 
 /**
@@ -25,18 +26,18 @@ export default function TakeRecorder({
   name: string
   path: string | null
   durationMs: number | null
-  onSaved: (path: string, durationMs: number) => Promise<void> | void
+  /** null clears the take. */
+  onSaved: (path: string | null, durationMs: number | null) => Promise<void> | void
 }) {
   const graph = useDelve((s) => s.graph)
   const role = useDelve((s) => s.role)
-  const [recording, setRecording] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const session = useRef<RecorderSession | null>(null)
 
-  if (!graph || !canRecord(role)) return null
 
   const save = async (blob: Blob, _mimeType: string, ms: number) => {
+    if (!graph) return
     setBusy(true)
     try {
       const previous = path
@@ -55,13 +56,28 @@ export default function TakeRecorder({
     }
   }
 
+  /** Deleting the take, not replacing it: the slot goes back to silent, and
+   *  the file is removed so nothing is left paying for storage. */
+  const clear = async () => {
+    if (!path) return
+    if (!window.confirm('Delete this take? The slot goes back to silent on the phone.')) return
+    setBusy(true)
+    try {
+      await onSaved(null, null)
+      await removeAudio(path)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const start = async () => {
     setError(null)
     try {
       const s = new RecorderSession()
       await s.start()
       session.current = s
-      setRecording(true)
     } catch {
       setError('No microphone.')
     }
@@ -70,7 +86,6 @@ export default function TakeRecorder({
   const stop = async () => {
     const s = session.current
     session.current = null
-    setRecording(false)
     if (!s) return
     try {
       const { blob, mimeType, durationMs: measured } = await s.stop()
@@ -80,17 +95,21 @@ export default function TakeRecorder({
     }
   }
 
+  const hold = useHoldToRecord(start, stop)
+  const recording = hold.recording
+
+  // Every hook above this line, unconditionally — the guard comes after.
+  if (!graph || !canRecord(role)) return null
+
   return (
     <div className="flex flex-wrap items-center gap-2 text-xs">
       {recordingSupported() && (
         <button
-          onPointerDown={start}
-          onPointerUp={stop}
-          onPointerLeave={() => recording && void stop()}
+          {...hold.handlers}
           disabled={busy}
           title="Hold to record"
           className={[
-            'rounded border px-2 py-1',
+            'touch-none rounded border px-2 py-1',
             recording ? 'border-grave text-grave' : 'border-mortar/60 text-mortar',
             busy ? 'opacity-50' : '',
           ].join(' ')}
@@ -114,7 +133,17 @@ export default function TakeRecorder({
       </label>
 
       {path ? (
-        <audio controls preload="none" src={publicAudioUrl(path)} className="h-7 max-w-[10rem]" />
+        <>
+          <audio controls preload="none" src={publicAudioUrl(path)} className="h-7 max-w-[10rem]" />
+          <button
+            onClick={() => void clear()}
+            disabled={busy}
+            title="Delete this take"
+            className="rounded border border-grave/60 px-2 py-1 text-grave disabled:opacity-40"
+          >
+            ✕ clear
+          </button>
+        </>
       ) : (
         /* Not a gentle "no take": with no text-to-speech fallback this is a
            silence the caller will actually hear. */

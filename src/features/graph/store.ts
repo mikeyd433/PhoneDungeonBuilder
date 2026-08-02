@@ -61,7 +61,7 @@ interface DelveState {
   collapseRoom: (nodeId: string) => Promise<boolean>
   /** Story-level settings: the inventory readback's key and its two takes. */
   updateStory: (patch: Partial<Story>) => Promise<void>
-  setItemAudio: (id: string, path: string, durationMs: number) => Promise<void>
+  setItemAudio: (id: string, path: string | null, durationMs: number | null) => Promise<void>
   /** The inverse: put a new room on an existing door, so A -> B becomes
    *  A -> new -> B. Walks into the new room. */
   insertRoomOnChoice: (choiceId: string, title?: string) => Promise<string | null>
@@ -87,7 +87,7 @@ interface DelveState {
   ) => Promise<void>
   /** Attach a take to one line. Separate from saveDialogue because the `voice`
    *  role may do this and may not touch anything else on the row. */
-  setLineAudio: (id: string, path: string, durationMs: number) => Promise<void>
+  setLineAudio: (id: string, path: string | null, durationMs: number | null) => Promise<void>
 
   addFight: (nodeId: string) => Promise<void>
   editFight: (id: string, patch: Partial<Fight>) => Promise<void>

@@ -99,6 +99,16 @@ capture. pnpm. Target device order: **tablet portrait, then phone, then desktop.
    `ROPE` would match `ROPEBURN`. Always wrap in `|`. Same class of bug bit the
    importer's column matching — use whole-word matching, never `includes`.
 
+## Recording workflow
+
+Takes can be recorded in the app or brought in finished. `src/features/audio/targets.ts`
+is the single list of every recordable slot and **what to call its file** — the
+audio manifest's `call it` column and the bulk importer (`/story/:id/audio`)
+both read it, so they can never disagree. Hold-to-record is guarded against a
+scroll that starts on the button (`useHoldToRecord`), and every take can be
+cleared: an accidental one-second take is worse than none, because it reads as
+a recorded room and plays as silence.
+
 ## Repo layout
 
 ```

@@ -10,6 +10,7 @@ import MapScreen from '@/routes/Map'
 import Playtest from '@/routes/Playtest'
 import Export from '@/routes/Export'
 import Cast from '@/routes/Cast'
+import AudioImport from '@/routes/AudioImport'
 import VersionBadge from '@/features/app/VersionBadge'
 
 export default function App() {
@@ -62,6 +63,7 @@ function StoryRoutes() {
       <Route path="/story/:storyId/ledger" element={<Ledger />} />
       <Route path="/story/:storyId/playtest" element={<Playtest />} />
       <Route path="/story/:storyId/export" element={<Export />} />
+      <Route path="/story/:storyId/audio" element={<AudioImport />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )

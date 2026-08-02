@@ -10,6 +10,7 @@ import {
 } from './recorder'
 import { audioPath, downloadAudio, publicAudioUrl, removeAudio, uploadAudio } from './storage'
 import { IVR_EXT, IVR_MIME, toIvrWav } from './ivrWav'
+import { useHoldToRecord } from './useHoldToRecord'
 import Waveform from './Waveform'
 import { nextStatus } from './status'
 import { isFullyRecorded, playsLineByLine } from '@/features/cast/dialogue'
@@ -20,13 +21,15 @@ export default function AudioPanel({ nodeId }: { nodeId: string }) {
   const updateNode = useDelve((s) => s.updateNode)
   const node = graph?.nodes.get(nodeId)
 
-  const [recording, setRecording] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [peaks, setPeaks] = useState<number[]>([])
   const [elapsed, setElapsed] = useState(0)
   const session = useRef<RecorderSession | null>(null)
   const tick = useRef<number | null>(null)
+
+  const hold = useHoldToRecord(startRecording, stopRecording)
+  const recording = hold.recording
 
   const url = node?.audio_path ? publicAudioUrl(node.audio_path) : null
 
@@ -84,13 +87,34 @@ export default function AudioPanel({ nodeId }: { nodeId: string }) {
     [node, graph, updateNode],
   )
 
+  /** Drop the take and put the room back to un-recorded. The status follows,
+   *  or the ledger would keep counting a room that plays nothing. */
+  async function clearTake() {
+    if (!node || !graph || !node.audio_path) return
+    if (!window.confirm(`Delete the recording for ${node.slug}? It becomes silent again.`)) return
+    setBusy('Clearing…')
+    try {
+      const previous = node.audio_path
+      await updateNode(node.id, {
+        audio_path: null,
+        audio_duration_ms: null,
+        status: nextStatus(node.status === 'approved' ? 'recorded' : node.status, false, Boolean(node.narration)),
+      })
+      await removeAudio(previous)
+      setPeaks([])
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBusy(null)
+    }
+  }
+
   async function startRecording() {
     setError(null)
     try {
       const s = new RecorderSession()
       await s.start()
       session.current = s
-      setRecording(true)
       setElapsed(0)
       const began = Date.now()
       tick.current = window.setInterval(() => setElapsed(Date.now() - began), 100)
@@ -103,7 +127,6 @@ export default function AudioPanel({ nodeId }: { nodeId: string }) {
     if (tick.current) window.clearInterval(tick.current)
     const s = session.current
     session.current = null
-    setRecording(false)
     if (!s) return
     try {
       const { blob, mimeType, durationMs } = await s.stop()
@@ -154,12 +177,10 @@ export default function AudioPanel({ nodeId }: { nodeId: string }) {
               // Hold to record (F3.1): press and hold on touch, mouse-down on
               // desktop. Releasing anywhere ends the take, so dragging off the
               // button can't leave the mic open.
-              onPointerDown={startRecording}
-              onPointerUp={stopRecording}
-              onPointerLeave={() => recording && void stopRecording()}
+              {...hold.handlers}
               disabled={Boolean(busy)}
               className={[
-                'flex-1 rounded px-4 py-3 font-carved uppercase tracking-[0.12em]',
+                'flex-1 touch-none rounded px-4 py-3 font-carved uppercase tracking-[0.12em]',
                 recording ? 'bg-grave text-parchment' : 'bg-torch text-depth',
                 busy ? 'opacity-50' : '',
               ].join(' ')}
@@ -181,6 +202,19 @@ export default function AudioPanel({ nodeId }: { nodeId: string }) {
               onChange={(e) => e.target.files?.[0] && void onUpload(e.target.files[0])}
             />
           </label>
+
+          {/* An accidental take is worse than no take: it is silence the
+              caller hears, dressed up as a room that has been recorded. */}
+          {node.audio_path && (
+            <button
+              onClick={() => void clearTake()}
+              disabled={Boolean(busy)}
+              title="Delete this recording"
+              className="rounded border border-grave/60 px-3 py-3 text-sm text-grave hover:border-grave disabled:opacity-40"
+            >
+              ✕ Clear
+            </button>
+          )}
         </div>
       )}
 

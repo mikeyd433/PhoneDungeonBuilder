@@ -4,6 +4,7 @@ import { canRecord } from '@/types/domain'
 import { formatDuration } from '@/lib/speech'
 import { measureDuration, RecorderSession, recordingSupported } from '@/features/audio/recorder'
 import { IVR_EXT, IVR_MIME, toIvrWav } from '@/features/audio/ivrWav'
+import { useHoldToRecord } from '@/features/audio/useHoldToRecord'
 import { audioPath, publicAudioUrl, removeAudio, uploadAudio } from '@/features/audio/storage'
 
 /**
@@ -23,16 +24,14 @@ export default function LineRecorder({ lineId }: { lineId: string }) {
   const role = useDelve((s) => s.role)
   const setLineAudio = useDelve((s) => s.setLineAudio)
 
-  const [recording, setRecording] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const session = useRef<RecorderSession | null>(null)
 
   const line = graph?.dialogue.get(lineId)
-  if (!line || !graph) return null
-  if (!canRecord(role)) return null
 
   const save = async (blob: Blob, _mimeType: string, durationMs: number) => {
+    if (!graph || !line) return
     setBusy(true)
     try {
       const previous = line.audio_path
@@ -64,7 +63,6 @@ export default function LineRecorder({ lineId }: { lineId: string }) {
       const s = new RecorderSession()
       await s.start()
       session.current = s
-      setRecording(true)
     } catch {
       setError('No microphone.')
     }
@@ -73,7 +71,6 @@ export default function LineRecorder({ lineId }: { lineId: string }) {
   const stop = async () => {
     const s = session.current
     session.current = null
-    setRecording(false)
     if (!s) return
     try {
       const { blob, mimeType, durationMs } = await s.stop()
@@ -83,22 +80,54 @@ export default function LineRecorder({ lineId }: { lineId: string }) {
     }
   }
 
+  /** A take deleted, not replaced: the line goes back to silent. */
+  const clear = async () => {
+    const previous = line?.audio_path
+    if (!line) return
+    if (!previous) return
+    if (!window.confirm('Delete this line’s take? It becomes silent on the phone.')) return
+    setBusy(true)
+    try {
+      await setLineAudio(line.id, null, null)
+      await removeAudio(previous)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const hold = useHoldToRecord(start, stop)
+  const recording = hold.recording
+
+  // Every hook above this line, unconditionally — the guards come after.
+  if (!canRecord(role) || !line || !graph) return null
+
   return (
     <div className="flex items-center gap-2 text-xs">
       {recordingSupported() && (
         <button
-          onPointerDown={start}
-          onPointerUp={stop}
-          onPointerLeave={() => recording && void stop()}
+          {...hold.handlers}
           disabled={busy}
           title="Hold to record this line"
           className={[
-            'rounded border px-2 py-1',
+            'touch-none rounded border px-2 py-1',
             recording ? 'border-grave text-grave' : 'border-mortar/60 text-mortar',
             busy ? 'opacity-50' : '',
           ].join(' ')}
         >
           {recording ? '● release' : '● hold'}
+        </button>
+      )}
+
+      {line.audio_path && (
+        <button
+          onClick={() => void clear()}
+          disabled={busy}
+          title="Delete this line's take"
+          className="rounded border border-grave/60 px-2 py-1 text-grave disabled:opacity-40"
+        >
+          ✕
         </button>
       )}
 

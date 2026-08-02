@@ -71,6 +71,14 @@ export default function Export() {
 
       {/* §6.5 — the widget budget meter, so you know where you stand while
           writing rather than at export time. */}
+      <p className="mb-6 rounded border border-mortar/40 p-4 text-sm">
+        Recording outside the app?{' '}
+        <Link to={`/story/${storyId}/audio`} className="text-torch underline">
+          Import a folder of audio
+        </Link>{' '}
+        — the manifest&apos;s <strong>call it</strong> column is what to name each file.
+      </p>
+
       <div className="mb-6">
         <InventoryPanel />
       </div>
