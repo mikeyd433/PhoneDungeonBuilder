@@ -10,6 +10,7 @@ import {
   isBrainstormExport,
   type BrainstormExport,
 } from '@/features/import/brainstorm'
+import { suggestSplit, type SplitSuggestion } from '@/features/import/split'
 import { commitImportPlan } from '@/features/import/commitImport'
 import { createStory } from '@/lib/api'
 
@@ -32,17 +33,48 @@ export default function Import() {
   const [fileName, setFileName] = useState('')
   const [mapping, setMapping] = useState<ColumnMapping>({})
   const [endingColors, setEndingColors] = useState<string[]>(DEFAULT_ENDING_COLORS)
+  const [split, setSplit] = useState<SplitSuggestion | null>(null)
+  const [useSplit, setUseSplit] = useState(true)
+  const [firstTitle, setFirstTitle] = useState('')
   const [title, setTitle] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const navigate = useNavigate()
 
-  const plan = useMemo(() => {
-    if (!source) return null
-    return source.kind === 'csv'
-      ? buildImportPlan(source.table.rows, mapping)
-      : buildBrainstormPlan(source.data, endingColors)
-  }, [source, mapping, endingColors])
+  /**
+   * One plan, or two when the graph holds two stories. They are built together
+   * so the preview shows exactly what each will contain before anything is
+   * written — a split is much harder to unpick afterwards than to check now.
+   */
+  const plans = useMemo((): Array<{ title: string; plan: ReturnType<typeof buildImportPlan> }> => {
+    if (!source) return []
+    if (source.kind === 'csv') {
+      return [{ title: title.trim(), plan: buildImportPlan(source.table.rows, mapping) }]
+    }
+    if (split && useSplit) {
+      return [
+        {
+          title: firstTitle.trim(),
+          plan: buildBrainstormPlan(source.data, {
+            endingColors,
+            restrictTo: split.upstream,
+            otherStoryName: title.trim(),
+          }),
+        },
+        {
+          title: title.trim(),
+          plan: buildBrainstormPlan(source.data, {
+            endingColors,
+            restrictTo: split.downstream,
+            otherStoryName: firstTitle.trim(),
+          }),
+        },
+      ]
+    }
+    return [{ title: title.trim(), plan: buildBrainstormPlan(source.data, { endingColors }) }]
+  }, [source, mapping, endingColors, split, useSplit, title, firstTitle])
+
+  const plan = plans.length === 1 ? plans[0].plan : null
 
   async function onFile(file: File) {
     setError(null)
@@ -63,6 +95,16 @@ export default function Import() {
         }
         setSource({ kind: 'brainstorm', data: parsed })
         setEndingColors(DEFAULT_ENDING_COLORS)
+        const found = suggestSplit(parsed)
+        setSplit(found)
+        setUseSplit(Boolean(found))
+        if (found?.leadingPrefix) {
+          setFirstTitle(
+            found.leadingPrefix.charAt(0) + found.leadingPrefix.slice(1).toLowerCase().replace(/_/g, ' '),
+          )
+        } else if (found) {
+          setFirstTitle('Part one')
+        }
       } catch {
         setError("That file isn't valid JSON.")
         setSource(null)
@@ -75,15 +117,24 @@ export default function Import() {
     setMapping(guessMapping(table.headers))
   }
 
+  const ready =
+    plans.length > 0 &&
+    plans.every((p) => p.title.length > 0 && p.plan.nodes.length > 0)
+
   async function commit() {
-    if (!plan || !title.trim()) return
+    if (!ready) return
     setBusy(true)
     setError(null)
     try {
-      // No seeded entrance: the file's own root becomes it.
-      const story = await createStory(title.trim(), false)
-      await commitImportPlan(story.id, plan)
-      navigate(`/story/${story.id}`)
+      let last = ''
+      for (const { title: name, plan: p } of plans) {
+        // No seeded entrance: the file's own root becomes it.
+        const story = await createStory(name, false)
+        await commitImportPlan(story.id, p)
+        last = story.id
+      }
+      // Land in the last story created — the dungeon, when splitting.
+      navigate(`/story/${last}`)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
       setBusy(false)
@@ -247,6 +298,77 @@ export default function Import() {
             </section>
           )}
 
+          {split && source.kind === 'brainstorm' && (
+            <section className="mb-6 rounded border border-torch/40 bg-torch/5 p-4">
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={useSplit}
+                  onChange={(e) => setUseSplit(e.target.checked)}
+                  className="mt-1"
+                />
+                <span>
+                  <strong>This file looks like two stories.</strong>
+                  <span className="mt-1 block text-xs text-mortar">
+                    {split.upstream.size} nodes lead up to the handoff and {split.downstream.size}{' '}
+                    follow it. Importing them separately keeps a finished front section out of the
+                    way while you write the rest. They stay two stories with two exports; the
+                    handoff between them is wired in Studio, not here.
+                  </span>
+                </span>
+              </label>
+
+              {useSplit && (
+                <label className="mt-3 flex flex-col gap-1 text-sm">
+                  <span className="text-mortar">Name for the first story</span>
+                  <input
+                    value={firstTitle}
+                    onChange={(e) => setFirstTitle(e.target.value)}
+                    className={field}
+                  />
+                </label>
+              )}
+            </section>
+          )}
+
+          {plans.length > 1 && (
+            <section className="mb-6 flex flex-col gap-3">
+              {plans.map(({ title: name, plan: p }, i) => (
+                <div key={i} className="rounded border border-mortar/50 p-4">
+                  <h2 className="mb-2 text-sm text-torch">{name || `Story ${i + 1}`}</h2>
+                  <ul className="flex flex-wrap gap-4 text-sm">
+                    <li>{p.nodes.length} rooms</li>
+                    <li>{p.nodes.filter((n) => n.node_type === 'ending').length} endings</li>
+                    <li>{p.choices.length} exits</li>
+                    <li>{p.choices.filter((c) => !c.toSlug).length} unwritten</li>
+                    <li>entrance: {p.rootSlug ?? '—'}</li>
+                  </ul>
+                  {p.issues.filter((x) => x.severity === 'error').length > 0 && (
+                    <ul className="mt-2 list-disc pl-5 text-xs text-grave">
+                      {p.issues
+                        .filter((x) => x.severity === 'error')
+                        .map((x, n) => (
+                          <li key={n}>{x.message}</li>
+                        ))}
+                    </ul>
+                  )}
+                  <details className="mt-2 text-xs">
+                    <summary className="cursor-pointer text-mortar">
+                      {p.issues.filter((x) => x.severity === 'warning').length} thing(s) to check
+                    </summary>
+                    <ul className="mt-2 list-disc pl-5">
+                      {p.issues
+                        .filter((x) => x.severity === 'warning')
+                        .map((x, n) => (
+                          <li key={n}>{x.message}</li>
+                        ))}
+                    </ul>
+                  </details>
+                </div>
+              ))}
+            </section>
+          )}
+
           {plan && (
             <section className="mb-6">
               <h2 className="mb-2 text-sm text-mortar">What will be created</h2>
@@ -320,15 +442,21 @@ export default function Import() {
 
           <section className="flex flex-col gap-3">
             <label className="flex flex-col gap-1 text-sm">
-              <span className="text-mortar">Story title</span>
+              <span className="text-mortar">
+                {plans.length > 1 ? 'Name for the second story' : 'Story title'}
+              </span>
               <input value={title} onChange={(e) => setTitle(e.target.value)} className={field} />
             </label>
             <button
               onClick={commit}
-              disabled={busy || !plan || plan.nodes.length === 0 || !title.trim()}
+              disabled={busy || !ready}
               className="rounded bg-torch px-4 py-3 font-carved uppercase tracking-[0.12em] text-depth disabled:opacity-50"
             >
-              {busy ? 'Digging…' : `Create ${plan?.nodes.length ?? 0} rooms`}
+              {busy
+                ? 'Digging…'
+                : plans.length > 1
+                  ? `Create ${plans.length} stories, ${plans.reduce((n, p) => n + p.plan.nodes.length, 0)} rooms`
+                  : `Create ${plan?.nodes.length ?? 0} rooms`}
             </button>
             {error && <p className="text-sm text-grave">{error}</p>}
           </section>

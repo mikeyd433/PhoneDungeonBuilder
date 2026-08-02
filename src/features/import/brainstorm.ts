@@ -138,6 +138,14 @@ export function colorsUsed(data: BrainstormExport): string[] {
 export interface BrainstormOptions {
   endingColors?: string[]
   /**
+   * Import only these nodes as rooms. Edges reaching anything outside the set
+   * become bricked archways naming where they used to lead, so a handoff to a
+   * sibling story stays visible in the ledger instead of vanishing.
+   */
+  restrictTo?: Set<string>
+  /** What to call the other side of the boundary, in warnings and labels. */
+  otherStoryName?: string
+  /**
    * Collapse "1./2./3." nodes into the exits they represent instead of
    * importing them as rooms. On when the graph clearly uses that convention.
    */
@@ -202,7 +210,10 @@ export function buildBrainstormPlan(
     }
   }
 
-  const realNodes = data.nodes.filter((n) => !isStub(n) && !collapsed.has(n.id))
+  const inPartition = (id: string) => !opts.restrictTo || opts.restrictTo.has(id)
+  const realNodes = data.nodes.filter(
+    (n) => !isStub(n) && !collapsed.has(n.id) && inPartition(n.id),
+  )
 
   // ---- rooms
   const nodes: PlannedNode[] = []
@@ -259,10 +270,21 @@ export function buildBrainstormPlan(
   }
 
   // ---- exits
+  const crossings: string[] = []
+  const nameOutside = (id: string) => {
+    const n = byId.get(id)
+    const written = explicitSlug(n?.data?.details)
+    return written ?? titleFrom(n?.data?.label ?? 'elsewhere')
+  }
   const choices: PlannedChoice[] = []
   for (const n of realNodes) {
     const fromSlug = slugById.get(n.id)!
-    const wanted: Array<{ slug: string | null; label: string; digit: string | null }> = []
+    const wanted: Array<{
+      slug: string | null
+      label: string
+      digit: string | null
+      beyond?: string
+    }> = []
 
     for (const e of outgoing.get(n.id) ?? []) {
       const reached = throughStubs(e.target)
@@ -286,16 +308,22 @@ export function buildBrainstormPlan(
           const optLabel = labelOf(targetId)
           const onward = (outgoing.get(targetId) ?? []).flatMap((x) => throughStubs(x.target))
           const dest = onward.find((id) => slugById.has(id))
+          const outside = !dest && onward.find((id) => !inPartition(id))
+          if (outside) crossings.push(outside)
           wanted.push({
             slug: dest ? (slugById.get(dest) ?? null) : null,
             label: stripChoicePrefix(optLabel) || optLabel,
             digit: choiceDigitOf(optLabel),
+            beyond: outside ? nameOutside(outside) : undefined,
           })
         } else {
+          const known = slugById.get(targetId) ?? null
+          if (!known && !inPartition(targetId)) crossings.push(targetId)
           wanted.push({
-            slug: slugById.get(targetId) ?? null,
+            slug: known,
             label: (e.data?.label ?? e.label ?? '').trim(),
             digit: null,
+            beyond: !known && !inPartition(targetId) ? nameOutside(targetId) : undefined,
           })
         }
       }
@@ -334,7 +362,7 @@ export function buildBrainstormPlan(
         digit,
         label: t.label || (t.slug ? `Go to ${t.slug}` : ''),
         toSlug: t.slug,
-        ...(t.slug ? {} : { unresolvedName: t.label || '(unfinished branch)' }),
+        ...(t.slug ? {} : { unresolvedName: t.beyond ?? t.label ?? '(unfinished branch)' }),
       })
     }
 
@@ -346,6 +374,17 @@ export function buildBrainstormPlan(
         message: `${fromSlug} is coloured as an ending but has exits — endings are read then hung up on, so those exits will never be offered.`,
       })
     }
+  }
+
+  if (crossings.length > 0) {
+    const where = opts.otherStoryName ? ` into "${opts.otherStoryName}"` : ' into the other story'
+    issues.push({
+      severity: 'warning',
+      row: null,
+      message: `${crossings.length} exit(s) lead${where} (${[...new Set(crossings.map(nameOutside))]
+        .slice(0, 3)
+        .join(', ')}). They import as bricked archways here — the two stories are wired together in Studio, not in the app.`,
+    })
   }
 
   const unwritten = choices.filter((c) => !c.toSlug).length
