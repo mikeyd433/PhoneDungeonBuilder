@@ -2,7 +2,7 @@ import type { StoryGraph } from '@/types/domain'
 import { PATIENCE_VALVE_AT, type CompileResult, type Widget } from './compile'
 import { formatDuration } from '@/lib/speech'
 import { castList, linesFor, workloads } from '@/features/cast/dialogue'
-import { counterFor, fightFor, movesOf, roundsOf } from '@/features/fight/model'
+import { buildFightView } from '@/features/fight/model'
 
 /**
  * §6.6 path B — the build sheet.
@@ -216,6 +216,7 @@ export function storyJson(graph: StoryGraph): string {
       fights: [...graph.fights.values()],
       fightMoves: [...graph.fightMoves.values()],
       fightRounds: [...graph.fightRounds.values()],
+      fightOutcomes: [...graph.fightOutcomes.values()],
     },
     null,
     2,
@@ -277,18 +278,18 @@ export function printableScript(graph: StoryGraph, onlyActor?: string): string {
 
     // A fight's rounds are script too, and they are the lines most likely to be
     // missed — they live on the fight, not in the room's narration.
-    const fight = fightFor(graph, n.id)
+    const fight = buildFightView(graph, n.id)
     if (fight) {
-      const moves = movesOf(graph, fight.id)
       out.push('')
-      out.push(`   [fight: ${fight.opponent_name}]`)
-      roundsOf(graph, fight.id).forEach((round, i) => {
-        const answer = counterFor(moves, round)
-        out.push(
-          `   ${i + 1}. ${round.narration || round.opponent_move}  → press ${
-            answer ? moves.findIndex((m) => m.id === answer.id) + 1 : '?'
-          }`,
-        )
+      out.push(`   [fight: ${fight.fight.opponent_name}]`)
+      fight.table.forEach(({ round, cells }, i) => {
+        out.push(`   ${i + 1}. ${round.narration || round.opponent_move}`)
+        // Every digit, not just the "right" one — a round where all three lead
+        // to the same room has no right answer, and a script that printed one
+        // would be describing a fight that doesn't exist.
+        for (const cell of cells) {
+          out.push(`        ${cell.digit} ${cell.move.slug} → ${cell.where}`)
+        }
       })
     }
 

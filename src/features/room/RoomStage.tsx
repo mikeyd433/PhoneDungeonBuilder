@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, type TouchEvent } from 'react'
 import type { ExitView, RoomView } from './roomModel'
 import DungeonRoom from './vector/DungeonRoom'
-import { counterFor } from '@/features/fight/model'
 import { speakerHex } from '@/features/cast/colors'
 
 /**
@@ -91,31 +90,31 @@ export default function RoomStage({
           view — the caller only ever hears one round. */}
       {view.fight && (
         <section className="px-4 pt-3 text-sm">
+          {/* Each round, with where every digit actually goes. The destination
+              is what the author needs to see — "which one is right" is only one
+              of the shapes a round can take. */}
           <ol className="flex flex-col gap-1">
-            {view.fight.rounds.map((round, i) => {
-              const answer = counterFor(view.fight!.moves, round)
-              const digit = answer
-                ? view.fight!.moves.findIndex((m) => m.id === answer.id) + 1
-                : null
-              return (
-                <li
-                  key={round.id}
-                  className="flex items-baseline gap-3 rounded border border-mortar/40 px-3 py-2"
-                >
+            {view.fight.table.map(({ round, cells }, i) => (
+              <li key={round.id} className="rounded border border-mortar/40 px-3 py-2">
+                <div className="flex items-baseline gap-3">
                   <span className="font-carved text-xs text-mortar">{i + 1}</span>
                   <span className="min-w-0 flex-1 truncate">
-                    {round.opponent_move || <span className="text-grave">no move set</span>}
+                    {round.opponent_move || <span className="text-cold">nothing announced</span>}
                   </span>
-                  {answer && digit && digit <= 9 ? (
-                    <span className="shrink-0 text-torch">
-                      press {digit} · {answer.slug}
-                    </span>
-                  ) : (
-                    <span className="shrink-0 text-grave">no answer</span>
-                  )}
-                </li>
-              )
-            })}
+                </div>
+                <ul className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs">
+                  {cells.map((cell) => (
+                    <li key={cell.move.id} className="flex items-baseline gap-1">
+                      <span className="font-carved text-torch">{cell.digit}</span>
+                      <span className="text-mortar">{cell.move.slug}</span>
+                      <span aria-hidden>→</span>
+                      <span className={cell.wired ? '' : 'text-grave'}>{cell.where}</span>
+                    </li>
+                  ))}
+                  {cells.length === 0 && <li className="text-grave">no moves to press</li>}
+                </ul>
+              </li>
+            ))}
             {view.fight.rounds.length === 0 && (
               <li className="text-cold">No rounds yet — add one in the editor.</li>
             )}

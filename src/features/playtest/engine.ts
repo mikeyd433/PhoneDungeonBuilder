@@ -1,5 +1,11 @@
 import type { Choice, StoryGraph } from '@/types/domain'
-import { buildFightView, counterFor, type FightView } from '@/features/fight/model'
+import {
+  buildFightView,
+  MAX_FIGHT_MOVES,
+  resolveMiss,
+  resolveMove,
+  type FightView,
+} from '@/features/fight/model'
 import {
   applyEffects,
   buildVarIndex,
@@ -231,9 +237,11 @@ export class PlaytestEngine {
   /**
    * A digit pressed mid-fight.
    *
-   * There is no "that isn't one of the options" here. Every wrong answer loses,
-   * including a digit no move is mapped to — a fight that let you retry until
-   * you guessed right would not be a fight.
+   * Where it goes is `resolveMove`'s decision, not this method's — the exporter
+   * asks the same function, which is the only reason a fight can be trusted to
+   * behave on the phone the way it behaves here. A digit no move is mapped to
+   * takes the miss route rather than being rejected: pressing 9 in a fight is an
+   * answer, and a fight you can retry until you guess right is not a fight.
    */
   private pressInFight(
     state: PlaytestState,
@@ -241,41 +249,46 @@ export class PlaytestEngine {
   ): { next: PlaytestState; spoken: string | null } {
     const view = this.fightAt(state)
     if (!view || state.fightRound === null) return { next: state, spoken: null }
+    if (!view.rounds[state.fightRound]) return this.leaveFight(state, view, resolveMiss(view))
 
-    const round = view.rounds[state.fightRound]
-    if (!round) return this.endFight(state, view, true)
+    const index = Number(digit) - 1
+    const move = index >= 0 && index < MAX_FIGHT_MOVES ? view.moves[index] : undefined
+    if (!move) return this.leaveFight(state, view, resolveMiss(view), 'miss')
 
-    const move = view.moves[Number(digit) - 1]
-    const right = move && counterFor(view.moves, round)?.id === move.id
-    if (!right) return this.endFight(state, view, false)
-
-    const nextRound = state.fightRound + 1
-    if (nextRound >= view.rounds.length) return this.endFight(state, view, true)
-
-    const upcoming = view.rounds[nextRound]
-    return {
-      next: { ...state, fightRound: nextRound, failedAttempts: 0 },
-      spoken:
-        upcoming.narration || `${view.fight.opponent_name}: ${upcoming.opponent_move}`,
+    const outcome = resolveMove(view, state.fightRound, move.id)
+    if (outcome.via === 'advance' && outcome.nextRound !== null) {
+      const upcoming = view.rounds[outcome.nextRound]
+      return {
+        next: { ...state, fightRound: outcome.nextRound, failedAttempts: 0 },
+        spoken: upcoming.narration || `${view.fight.opponent_name}: ${upcoming.opponent_move}`,
+      }
     }
+    // `advance` is handled above, so anything reaching here leaves the fight.
+    return this.leaveFight(
+      state,
+      view,
+      outcome.nodeId,
+      outcome.via === 'advance' ? 'lose' : outcome.via,
+    )
   }
 
-  private endFight(
+  /** Walk out of a fight to wherever the round said. */
+  private leaveFight(
     state: PlaytestState,
     view: FightView,
-    won: boolean,
+    target: string | null,
+    via: 'named' | 'win' | 'lose' | 'miss' = 'lose',
   ): { next: PlaytestState; spoken: string | null } {
     const opponent = view.fight.opponent_name
-    const spoken = won ? `${opponent} goes down.` : `${opponent} puts you down.`
-    const target = won ? view.fight.win_node_id : view.fight.lose_node_id
+    // Only the two fallback routes get a line of their own — a named
+    // destination is an ordinary room and speaks for itself.
+    const spoken =
+      via === 'win' ? `${opponent} goes down.` : via === 'named' ? null : `${opponent} puts you down.`
 
     if (!target || !this.graph.nodes.has(target)) {
-      // The author hasn't said where this outcome leads. Say so rather than
-      // silently repeating the round, which would read as the fight ignoring
-      // a correct answer.
       return {
         next: { ...state, fightRound: null, failedAttempts: state.failedAttempts + 1 },
-        spoken: `${spoken} (Nowhere is set for ${won ? 'winning' : 'losing'} — this branch is unwritten.)`,
+        spoken: `${spoken ?? 'That answer'} (Nowhere is set for this answer — the branch is unwritten.)`,
       }
     }
     return { next: this.enter(state, target).next, spoken }
@@ -288,7 +301,7 @@ export class PlaytestEngine {
     // out any round they couldn't solve — and the two must not disagree.
     if (state.fightRound !== null) {
       const view = this.fightAt(state)
-      if (view) return this.endFight(state, view, false)
+      if (view) return this.leaveFight(state, view, resolveMiss(view), 'miss')
     }
 
     const node = this.graph.nodes.get(state.nodeId)

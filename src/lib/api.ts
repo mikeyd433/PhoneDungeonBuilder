@@ -7,6 +7,7 @@ import type {
   Fight,
   FightMove,
   FightRound,
+  FightRoundOutcome,
   Gate,
   Membership,
   MembershipRole,
@@ -33,6 +34,7 @@ export async function loadStoryGraph(storyId: string): Promise<StoryGraph> {
     fights,
     fightMoves,
     fightRounds,
+    fightOutcomes,
   ] = await Promise.all([
     supabase.from('stories').select('*').eq('id', storyId).single(),
     byStory('nodes'),
@@ -45,6 +47,7 @@ export async function loadStoryGraph(storyId: string): Promise<StoryGraph> {
     byStory('fights'),
     byStory('fight_moves'),
     byStory('fight_rounds'),
+    byStory('fight_round_outcomes'),
   ])
 
   const firstError = [
@@ -59,6 +62,7 @@ export async function loadStoryGraph(storyId: string): Promise<StoryGraph> {
     fights,
     fightMoves,
     fightRounds,
+    fightOutcomes,
   ].find((r) => r.error)?.error
   if (firstError) throw firstError
 
@@ -77,6 +81,7 @@ export async function loadStoryGraph(storyId: string): Promise<StoryGraph> {
     fights: index<Fight>(fights.data),
     fightMoves: index<FightMove>(fightMoves.data),
     fightRounds: index<FightRound>(fightRounds.data),
+    fightOutcomes: index<FightRoundOutcome>(fightOutcomes.data),
   }
 }
 
@@ -347,3 +352,37 @@ export const createFightRound = (storyId: string, patch: Partial<FightRound> & {
 export const updateFightRound = (id: string, patch: Partial<FightRound>) =>
   updateRow<FightRound>('fight_rounds', id, patch)
 export const deleteFightRound = (id: string) => deleteRow('fight_rounds', id)
+
+/**
+ * Name where one move goes in one round.
+ *
+ * Upserted on (round, move) rather than on the row id: the editor knows which
+ * cell of the grid it is filling in, and never which row — if it has one at all.
+ */
+export async function upsertFightOutcome(
+  storyId: string,
+  roundId: string,
+  moveId: string,
+  toNodeId: string | null,
+): Promise<FightRoundOutcome> {
+  const { data, error } = await supabase
+    .from('fight_round_outcomes')
+    .upsert(
+      { story_id: storyId, round_id: roundId, move_id: moveId, to_node_id: toNodeId },
+      { onConflict: 'round_id,move_id' },
+    )
+    .select()
+    .single()
+  if (error) throw error
+  return data as FightRoundOutcome
+}
+
+/** Drop the naming and fall back to the counter rule. */
+export async function deleteFightOutcome(roundId: string, moveId: string): Promise<void> {
+  const { error } = await supabase
+    .from('fight_round_outcomes')
+    .delete()
+    .eq('round_id', roundId)
+    .eq('move_id', moveId)
+  if (error) throw error
+}

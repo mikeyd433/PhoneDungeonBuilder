@@ -1,11 +1,13 @@
 import type { StoryGraph } from '@/types/domain'
 import { graphEdges } from '@/features/graph/edges'
 import {
-  counterFor,
   fightProblems,
   fightsByNode,
   movesOf,
   MAX_FIGHT_MOVES,
+  outcomesOf,
+  resolveMiss,
+  resolveMove,
   roundsOf,
 } from '@/features/fight/model'
 import {
@@ -174,6 +176,7 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
     const fight = fights.get(node.id)
     const rounds = fight ? roundsOf(graph, fight.id) : []
     const moves = fight ? movesOf(graph, fight.id) : []
+    const outcomes = fight ? outcomesOf(graph, fight.id) : new Map()
 
     // ---- arrival effects, before play so narration can reference them (§6.2)
     const arrival = effectsFor((e) => e.node_id === node.id)
@@ -265,15 +268,10 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
 
     // ---- a fight: two widgets per round, and no gather for the room itself
     if (fight) {
-      const winNext = fightOutcome(fight.win_node_id, slug)
-      const loseNext = fightOutcome(fight.lose_node_id, slug)
+      const view = { fight, moves, rounds, outcomes }
+      const missNext = fightOutcome(resolveMiss(view), slug)
 
       rounds.forEach((round, i) => {
-        const answer = counterFor(moves, round)
-        const digit = answer ? moves.findIndex((m) => m.id === answer.id) + 1 : null
-        const advance =
-          i + 1 < rounds.length ? roundName(slug, i + 1, 'play') : winNext
-
         widgets.push({
           name: roundName(slug, i, 'play'),
           type: 'say-play',
@@ -283,33 +281,46 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
           transitions: [{ event: 'audioComplete', next: roundName(slug, i, 'gather') }],
         })
 
-        // One matching digit; everything else loses. That includes silence:
-        // hesitating in a fight is an answer, and routing timeout back to the
-        // round would let a caller wait out every round it couldn't solve.
+        // One transition per move — a round is a room where you pick an exit,
+        // so each digit gets named its own destination and several may share
+        // one. Where each goes is resolveMove's call, the same function the
+        // playtest runtime asks, so the phone cannot disagree with the editor.
         const roundTransitions: Transition[] = []
-        if (digit && digit <= MAX_FIGHT_MOVES) {
+        const legend: string[] = []
+
+        moves.slice(0, MAX_FIGHT_MOVES).forEach((move, m) => {
+          const outcome = resolveMove(view, i, move.id)
+          const next =
+            outcome.via === 'advance' && outcome.nextRound !== null
+              ? roundName(slug, outcome.nextRound, 'play')
+              : fightOutcome(outcome.nodeId, slug)
           roundTransitions.push({
             event: 'keypress',
-            condition: `Digits equals ${digit}`,
-            next: advance,
+            condition: `Digits equals ${m + 1}`,
+            next,
           })
-        }
-        roundTransitions.push({ event: 'noMatch', next: loseNext })
-        roundTransitions.push({ event: 'timeout', next: loseNext })
+          legend.push(`${m + 1}=${move.slug}`)
+        })
+
+        // Silence and unmapped digits take the miss route. Routing timeout back
+        // to the round would let a caller wait out any round they couldn't
+        // solve, and the playtest engine loses on silence for the same reason.
+        roundTransitions.push({ event: 'noMatch', next: missNext })
+        roundTransitions.push({ event: 'timeout', next: missNext })
 
         widgets.push({
           name: roundName(slug, i, 'gather'),
           type: 'gather-input-on-call',
           nodeId: node.id,
           note:
-            digit && digit <= MAX_FIGHT_MOVES
-              ? `Press ${digit} (${answer?.slug}) to survive; anything else, and silence, loses.`
-              : 'Nothing counters this round — every answer loses. Fix it before exporting.',
+            legend.length > 0
+              ? `${legend.join(', ')}. Any other digit, and silence, takes the losing route.`
+              : 'This round has no moves — every answer takes the losing route.',
           transitions: roundTransitions,
         })
       })
 
-      for (const problem of fightProblems(fight, moves, rounds)) {
+      for (const problem of fightProblems(view)) {
         warnings.push(`${slug}: ${problem}`)
       }
       if (outgoing.length > 0) {

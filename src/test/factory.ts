@@ -6,6 +6,7 @@ import type {
   Fight,
   FightMove,
   FightRound,
+  FightRoundOutcome,
   Gate,
   StateVar,
   Story,
@@ -101,6 +102,7 @@ export function makeGraph(
     fights: new Map<string, Fight>(),
     fightMoves: new Map<string, FightMove>(),
     fightRounds: new Map<string, FightRound>(),
+    fightOutcomes: new Map<string, FightRoundOutcome>(),
   }
 }
 
@@ -167,6 +169,36 @@ export function addFight(
   })
 
   return fight
+}
+
+/**
+ * Name where one move goes in one round, overriding the counter rule.
+ *
+ * `round` and `move` are indexes, because that is how the keypad sees them.
+ * A null `toSlug` is a branch written but not wired.
+ */
+export function setOutcome(
+  graph: StoryGraph,
+  atSlug: string,
+  round: number,
+  move: number,
+  toSlug: string | null,
+): FightRoundOutcome {
+  const fight = [...graph.fights.values()].find((f) => f.node_id === idOf(graph, atSlug))
+  if (!fight) throw new Error(`no fight at ${atSlug}`)
+  const id = `${fight.id}-o${round}-${move}`
+  const outcome: FightRoundOutcome = {
+    id,
+    story_id: graph.story.id,
+    fight_id: fight.id,
+    round_id: `${fight.id}-r${round}`,
+    move_id: `${fight.id}-m${move}`,
+    to_node_id: toSlug ? idOf(graph, toSlug) : null,
+    created_at: STAMP,
+    updated_at: STAMP,
+  }
+  graph.fightOutcomes.set(id, outcome)
+  return outcome
 }
 
 /** Add a cast entry. */

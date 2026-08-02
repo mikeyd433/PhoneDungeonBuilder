@@ -76,6 +76,19 @@ interface DelveState {
   addFightRound: (fightId: string) => Promise<void>
   editFightRound: (id: string, patch: Partial<FightRound>) => Promise<void>
   removeFightRound: (id: string) => Promise<void>
+  /**
+   * Name where one move goes in one round.
+   *
+   * `to` distinguishes three states the UI has to be able to express:
+   *   a node id -> go there
+   *   null      -> written, but nowhere yet (a bricked branch)
+   *   undefined -> unname it, and fall back to the counter rule
+   */
+  setFightOutcome: (
+    roundId: string,
+    moveId: string,
+    to: string | null | undefined,
+  ) => Promise<void>
 
   undo: () => Promise<void>
   canUndo: () => boolean
@@ -110,7 +123,7 @@ export const useDelve = create<DelveState>((set, get) => {
    * round trip is invisible against how long it takes to type the next field,
    * and skipping the optimism means there is no rollback path to get wrong.
    */
-  const write = async <K extends 'characters' | 'dialogue' | 'fights' | 'fightMoves' | 'fightRounds'>(
+  const write = async <K extends 'characters' | 'dialogue' | 'fights' | 'fightMoves' | 'fightRounds' | 'fightOutcomes'>(
     key: K,
     run: (graph: StoryGraph) => Promise<Array<{ id: string }> | { id: string } | null>,
     undoEntry?: (graph: StoryGraph) => UndoEntry,
@@ -133,7 +146,7 @@ export const useDelve = create<DelveState>((set, get) => {
 
   /** Deletes have to drop the row locally too, which `write` can't express. */
   const wipe = async (
-    key: 'characters' | 'dialogue' | 'fights' | 'fightMoves' | 'fightRounds',
+    key: 'characters' | 'dialogue' | 'fights' | 'fightMoves' | 'fightRounds' | 'fightOutcomes',
     id: string,
     run: () => Promise<void>,
     label: string,
@@ -536,6 +549,33 @@ export const useDelve = create<DelveState>((set, get) => {
             narration: before.narration,
           })
         },
+      )
+    },
+
+    async setFightOutcome(roundId, moveId, to) {
+      const { graph } = get()
+      if (!graph) return
+
+      if (to === undefined) {
+        const existing = [...graph.fightOutcomes.values()].find(
+          (o) => o.round_id === roundId && o.move_id === moveId,
+        )
+        if (!existing) return
+        try {
+          await api.deleteFightOutcome(roundId, moveId)
+          patchGraph((g) => {
+            const fightOutcomes = new Map(g.fightOutcomes)
+            fightOutcomes.delete(existing.id)
+            return { ...g, fightOutcomes }
+          })
+        } catch (e) {
+          fail(e)
+        }
+        return
+      }
+
+      await write<'fightOutcomes'>('fightOutcomes', (g) =>
+        api.upsertFightOutcome(g.story.id, roundId, moveId, to),
       )
     },
 

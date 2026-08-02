@@ -35,7 +35,7 @@ Two rules from §0 that everything else follows from:
 | Counter clamp | 10, per story, configurable. The solver needs a ceiling or it never terminates (§11.5). |
 | Dialogue | Narration splits into attributed lines. **Audio is still one file per room** — lines exist for the script, not the flow. |
 | Characters | A cast list with voice-actor assignment. No effect on the compiled flow. |
-| Fights | A first-class kind of room (a `fights` row hung off a node, not a `node_type`). Opponent announces a move; the caller presses the move that counters it. Wrong answer, or silence, loses. |
+| Fights | A first-class kind of room (a `fights` row hung off a node, not a `node_type`). **Functionally a room where you pick an exit**: each round names where every digit goes, and several may go to the same place. The counter rule (matching move advances, everything else loses) is only the default when a round doesn't name one. Unmapped digits and silence always take the losing route. |
 
 ## Spec gaps resolved in code
 
@@ -79,9 +79,10 @@ capture. pnpm. Target device order: **tablet portrait, then phone, then desktop.
    `splitNarration` and `composeNarration` are inverses, and every line edit
    rewrites `nodes.narration` from the lines. Two independently-edited copies of
    the script would drift, and the recorded one is the one that ships.
-9. **Playtest and export must agree about fights.** Silence loses in both. Any
-   rule added to one has to be added to the other, or the bug only shows up on
-   the phone.
+9. **Playtest and export must agree about fights.** Both ask
+   `resolveMove` (`src/features/fight/model.ts`) where a digit goes — neither
+   decides for itself. Silence loses in both. A rule added to one and not the
+   other is a bug that only shows up on the phone.
 10. **Pipe-delimit inventory tests.** Studio's `contains` matches substrings, so
    `ROPE` would match `ROPEBURN`. Always wrap in `|`. Same class of bug bit the
    importer's column matching — use whole-word matching, never `includes`.

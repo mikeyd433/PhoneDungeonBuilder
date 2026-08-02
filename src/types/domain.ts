@@ -160,9 +160,13 @@ export interface DialogueLine {
  * A scripted exchange, hung off a room rather than replacing it.
  *
  * The room's own narration is the lead-in; then the opponent announces a move
- * each round and the caller must press the digit of the move that counters it.
- * A wrong answer ends the fight at `lose_node_id`; surviving every round lands
- * at `win_node_id`. This is the shape the shark fight was hand-built in.
+ * each round and the caller presses a digit. Where that digit goes is the
+ * round's business: a fight is functionally a room where you pick an exit, and
+ * a round's moves may lead three different places, or all lead to the same one.
+ *
+ * `win_node_id` and `lose_node_id` are the DEFAULTS a move falls back to when
+ * the round doesn't name a destination for it — the terse "one right answer"
+ * fight, which is the shape the shark fight was hand-built in.
  */
 export interface Fight {
   id: string
@@ -175,7 +179,13 @@ export interface Fight {
   updated_at: string
 }
 
-/** A move the caller can answer with, and the opponent move it defeats. */
+/**
+ * A move the caller can answer with, and the opponent move it defeats.
+ *
+ * More than one move may beat the same announcement. That is not a mistake —
+ * it is how "any of these gets you through" is said without naming a
+ * destination for every cell of the round.
+ */
 export interface FightMove {
   id: string
   story_id: string
@@ -186,6 +196,24 @@ export interface FightMove {
   beats: string | null
   sort_order: number
   created_at: string
+}
+
+/**
+ * Where one move goes in one round.
+ *
+ * Absent, the counter rule decides. Present with a null `to_node_id`, the
+ * branch is written but unwired — a bricked archway, reported by the validator
+ * exactly as an unwritten choice is.
+ */
+export interface FightRoundOutcome {
+  id: string
+  story_id: string
+  fight_id: string
+  round_id: string
+  move_id: string
+  to_node_id: string | null
+  created_at: string
+  updated_at: string
 }
 
 export interface FightRound {
@@ -210,7 +238,7 @@ export interface FightRound {
  * Structure is computed over these; the room's *exits* are still choices only,
  * because a fight is answered with moves rather than doors.
  */
-export type EdgeKind = 'choice' | 'fight-win' | 'fight-lose'
+export type EdgeKind = 'choice' | 'fight-win' | 'fight-lose' | 'fight-move'
 
 export interface GraphEdge {
   /** Real choice id, or `fight:<fightId>:win` / `:lose` for a fight outcome. */
@@ -259,6 +287,7 @@ export interface StoryGraph {
   fights: Map<string, Fight>
   fightMoves: Map<string, FightMove>
   fightRounds: Map<string, FightRound>
+  fightOutcomes: Map<string, FightRoundOutcome>
 }
 
 export function canWrite(role: MembershipRole | null): boolean {

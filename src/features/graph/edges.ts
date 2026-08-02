@@ -17,6 +17,8 @@ import type { GraphEdge, StoryGraph } from '@/types/domain'
 export const fightEdgeId = (fightId: string, outcome: 'win' | 'lose') =>
   `fight:${fightId}:${outcome}`
 
+export const fightMoveEdgeId = (outcomeId: string) => `fightmove:${outcomeId}`
+
 export function graphEdges(graph: StoryGraph): GraphEdge[] {
   const edges: GraphEdge[] = []
 
@@ -58,6 +60,25 @@ export function graphEdges(graph: StoryGraph): GraphEdge[] {
       digit: null,
       label: `lose to ${fight.opponent_name}`,
       sort_order: 101,
+      choice: null,
+    })
+  }
+
+  // A round that names where a move goes is a way through the dungeon like any
+  // other. Leaving these out would have the rooms they reach report as sealed —
+  // the same failure that made win/lose edges necessary in the first place.
+  for (const outcome of graph.fightOutcomes.values()) {
+    const fight = graph.fights.get(outcome.fight_id)
+    if (!fight || !graph.nodes.has(fight.node_id)) continue
+    const move = graph.fightMoves.get(outcome.move_id)
+    edges.push({
+      id: fightMoveEdgeId(outcome.id),
+      kind: 'fight-move',
+      from_node_id: fight.node_id,
+      to_node_id: outcome.to_node_id,
+      digit: null,
+      label: move ? `answer with ${move.slug}` : 'answer',
+      sort_order: 102,
       choice: null,
     })
   }

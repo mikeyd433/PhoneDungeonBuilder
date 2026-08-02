@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addFight, idOf, makeGraph } from '@/test/factory'
+import { addFight, idOf, makeGraph, setOutcome } from '@/test/factory'
 import { PlaytestEngine } from './engine'
 
 /** ENTRANCE → SHARKS (a three-round fight) → SHORE or DROWNED. */
@@ -75,6 +75,24 @@ describe('playtesting a fight', () => {
     const g = sharkGraph()
     const engine = new PlaytestEngine(g)
     expect(engine.timeout(atTheFight(engine)).next.nodeId).toBe(idOf(g, 'DROWNED'))
+  })
+
+  it('goes where the round says when every move leads to the same place', () => {
+    const g = sharkGraph()
+    for (const move of [0, 1, 2]) setOutcome(g, 'SHARKS', 0, move, 'SHORE')
+    const engine = new PlaytestEngine(g)
+    for (const digit of ['1', '2', '3']) {
+      expect(engine.press(atTheFight(engine), digit).next.nodeId).toBe(idOf(g, 'SHORE'))
+    }
+  })
+
+  it('takes a named move where it was told, not where the counter rule would', () => {
+    const g = sharkGraph()
+    setOutcome(g, 'SHARKS', 0, 1, 'SHORE') // KICK, which would otherwise lose
+    const engine = new PlaytestEngine(g)
+    expect(engine.press(atTheFight(engine), '2').next.nodeId).toBe(idOf(g, 'SHORE'))
+    // The moves left on the default still behave as they did.
+    expect(engine.press(atTheFight(engine), '3').next.nodeId).toBe(idOf(g, 'DROWNED'))
   })
 
   it('says so rather than pretending when an outcome has nowhere to go', () => {
