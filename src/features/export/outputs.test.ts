@@ -45,12 +45,25 @@ describe('build sheet', () => {
 describe('studio flow json', () => {
   it('starts at a trigger wired to the entrance', () => {
     const g = sample()
+    const entrance = g.nodes.get(idOf(g, 'ENTRANCE'))!
+    g.nodes.set(entrance.id, { ...entrance, audio_path: 'audio/ENTRANCE.mp3' })
     const flow = JSON.parse(studioFlowJson(g, compileStory(g, BASE), new Map()))
     expect(flow.initial_state).toBe('Trigger')
     const trigger = flow.states.find((s: { name: string }) => s.name === 'Trigger')
     expect(
       trigger.transitions.find((t: { event: string }) => t.event === 'incomingCall').next,
     ).toBe('ENTRANCE_play')
+  })
+
+  it('starts at the first widget that exists when the entrance is unrecorded', () => {
+    // No recording means no play widget, so wiring the trigger to `_play` by
+    // name would point the whole flow at nothing.
+    const g = sample()
+    const flow = JSON.parse(studioFlowJson(g, compileStory(g, BASE), new Map()))
+    const trigger = flow.states.find((s: { name: string }) => s.name === 'Trigger')
+    const next = trigger.transitions.find((t: { event: string }) => t.event === 'incomingCall').next
+    expect(next).toBe('ENTRANCE_gather')
+    expect(flow.states.some((s: { name: string }) => s.name === next)).toBe(true)
   })
 
   it('uses automap coordinates when given them', () => {

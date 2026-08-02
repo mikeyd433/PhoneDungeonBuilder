@@ -37,6 +37,10 @@ export default function Playtest() {
     (text: string) => {
       // F5.2 — browser TTS stands in wherever audio hasn't been recorded, so a
       // story can be playtested long before anyone books a session.
+      //
+      // REHEARSAL ONLY. The exported flow never speaks: anything unrecorded is
+      // silence on the phone. This is here so a writer can hear the shape of a
+      // scene, not so an unfinished story sounds finished.
       if (!ttsOn || !text || typeof speechSynthesis === 'undefined') return
       speechSynthesis.cancel()
       const u = new SpeechSynthesisUtterance(text)
@@ -305,7 +309,9 @@ export default function Playtest() {
       <div className="flex items-center justify-between px-4 py-2 text-xs">
         <label className="flex items-center gap-2">
           <input type="checkbox" checked={ttsOn} onChange={(e) => setTtsOn(e.target.checked)} />
-          Read unrecorded rooms aloud
+          {/* A rehearsal aid only. The exported flow never speaks — anything
+              unrecorded is silence on the phone. */}
+          Read unrecorded lines aloud (playtest only)
         </label>
         {/* F5.6 — hand a specific route to a VO performer. */}
         <button

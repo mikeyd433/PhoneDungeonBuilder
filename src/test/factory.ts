@@ -125,6 +125,8 @@ export function addFight(
     lose?: string
     opponent?: string
     patience?: number
+    /** Give every round a take, so the fight exports without gaps. */
+    recorded?: boolean
   },
 ): Fight {
   const nodeId = idOf(graph, atSlug)
@@ -165,6 +167,8 @@ export function addFight(
       sort_order: i,
       opponent_move: opponentMove,
       narration: `The shark throws a ${opponentMove}.`,
+      audio_path: opts.recorded ? `audio/round-${atSlug}-${i}.mp3` : null,
+      audio_duration_ms: opts.recorded ? 1500 : null,
       created_at: STAMP,
       updated_at: STAMP,
     })

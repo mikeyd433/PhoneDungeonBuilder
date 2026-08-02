@@ -64,32 +64,65 @@ const choiceFrom = (g: StoryGraph, slug: string, digit: string) =>
 const byName = (r: ReturnType<typeof compileStory>, n: string) =>
   r.widgets.find((w) => w.name === n)
 
+/**
+ * A graph where every room is recorded.
+ *
+ * Most of these tests are about widget SHAPE, and shape now depends on audio:
+ * nothing in the exported flow is spoken by Twilio, so an unrecorded room has
+ * no play widget at all. Recording everything is the shippable case and the one
+ * worth asserting against; the unrecorded case has tests of its own below.
+ */
+const recordedGraph = (slugs: string[], edges: string[], opts: { endings?: string[] } = {}) =>
+  makeGraph(slugs, edges, { ...opts, recorded: slugs })
+
 describe('compile — widget shapes (§6.7)', () => {
   it('emits two widgets for a plain room', () => {
-    const g = makeGraph(['A', 'B'], ['A>B'])
+    const g = recordedGraph(['A', 'B'], ['A>B'])
     const r = compileStory(g, BASE)
     expect(byName(r, 'A_play')?.type).toBe('say-play')
     expect(byName(r, 'A_gather')?.type).toBe('gather-input-on-call')
   })
 
   it('ends a story with play then hangup', () => {
-    const g = makeGraph(['A', 'FIN'], ['A>FIN'], { endings: ['FIN'] })
+    const g = recordedGraph(['A', 'FIN'], ['A>FIN'], { endings: ['FIN'] })
     const r = compileStory(g, BASE)
     expect(byName(r, 'FIN_hangup')?.type).toBe('hangup')
     expect(byName(r, 'FIN_play')?.transitions[0].next).toBe('FIN_hangup')
     expect(byName(r, 'FIN_gather')).toBeUndefined()
   })
 
-  it('plays the audio URL when a room is recorded and speaks it otherwise', () => {
+  it('plays the audio URL for a recorded room, and emits nothing for an unrecorded one', () => {
+    // No text-to-speech fallback anywhere: a robot voice next to real
+    // performances is worse than silence, and it hides what still needs a
+    // session.
     const g = makeGraph(['A', 'B'], ['A>B'], { recorded: ['A'] })
     const r = compileStory(g, BASE)
     expect(byName(r, 'A_play')?.playUrl).toBe(`${BASE}audio/A.mp3`)
     expect(byName(r, 'A_play')?.say).toBeUndefined()
-    expect(byName(r, 'B_play')?.playUrl).toBeUndefined()
+    expect(byName(r, 'B_play')).toBeUndefined()
+    expect(r.warnings.some((w) => w.includes('B has no recording'))).toBe(true)
+  })
+
+  it('routes an unrecorded room straight to its choices, not through a missing widget', () => {
+    const g = makeGraph(['A', 'B'], ['A>B'], { recorded: ['A'] })
+    const gather = byName(compileStory(g, BASE), 'A_gather')!
+    expect(gather.transitions.find((t) => t.condition?.includes('1'))?.next).toBe('B_gather')
+  })
+
+  it('never emits a say anywhere in the flow', () => {
+    // The whole rule, in one assertion: every widget either plays a file or
+    // isn't a speaking widget at all.
+    const g = makeGraph(['A', 'B', 'FIN'], ['A>B', 'B>FIN'], { endings: ['FIN'] })
+    addItem(g, 'KEY')
+    addGate(g, choiceFrom(g, 'A', '1').id, {
+      fail_behavior: 'refuse',
+      fail_narration: "The gate won't budge.",
+    })
+    expect(compileStory(g, BASE).widgets.every((w) => w.say === undefined)).toBe(true)
   })
 
   it('pays no widget for a choice with no effects (§6.2)', () => {
-    const g = makeGraph(['A', 'B'], ['A>B'])
+    const g = recordedGraph(['A', 'B'], ['A>B'])
     const r = compileStory(g, BASE)
     // The gather transition wires straight to the target's play widget.
     const gather = byName(r, 'A_gather')!
@@ -98,7 +131,7 @@ describe('compile — widget shapes (§6.7)', () => {
   })
 
   it('puts choice effects between the gather and the target (§6.2)', () => {
-    const g = makeGraph(['A', 'B'], ['A>B'])
+    const g = recordedGraph(['A', 'B'], ['A>B'])
     const v = addItem(g, 'HARPOON')
     addEffect(g, { choice_id: choiceFrom(g, 'A', '1').id }, v.id)
     const r = compileStory(g, BASE)
@@ -108,16 +141,35 @@ describe('compile — widget shapes (§6.7)', () => {
   })
 
   it('puts node effects before the play widget, so narration can use them', () => {
-    const g = makeGraph(['A', 'B'], ['A>B'])
+    const g = recordedGraph(['A', 'B'], ['A>B'])
     const v = addItem(g, 'LANTERN')
     addEffect(g, { node_id: idOf(g, 'A') }, v.id)
     const r = compileStory(g, BASE)
     expect(byName(r, 'A_fx')?.transitions[0].next).toBe('A_play')
   })
 
+  it('routes callers THROUGH the arrival effects rather than around them', () => {
+    // Pointing an inbound transition at the play widget skipped the fx widget
+    // entirely, so an item granted on arrival was never actually granted.
+    const g = recordedGraph(['A', 'B'], ['A>B'])
+    const v = addItem(g, 'LANTERN')
+    addEffect(g, { node_id: idOf(g, 'B') }, v.id)
+    const gather = byName(compileStory(g, BASE), 'A_gather')!
+    expect(gather.transitions.find((t) => t.condition?.includes('1'))?.next).toBe('B_fx')
+  })
+
+  it('does not re-run arrival effects when a room repeats on silence', () => {
+    // Hesitating should not hand the caller the same item twice.
+    const g = recordedGraph(['A', 'B'], ['A>B'])
+    const v = addItem(g, 'LANTERN')
+    addEffect(g, { node_id: idOf(g, 'A') }, v.id)
+    const gather = byName(compileStory(g, BASE), 'A_gather')!
+    expect(gather.transitions.find((t) => t.event === 'timeout')?.next).toBe('A_play')
+  })
+
   it('folds several inventory changes into one inv key rather than colliding', () => {
     // Two set-variables rows both named `inv` would silently drop one.
-    const g = makeGraph(['A', 'B'], ['A>B'])
+    const g = recordedGraph(['A', 'B'], ['A>B'])
     const h = addItem(g, 'HARPOON')
     const l = addItem(g, 'LANTERN')
     addEffect(g, { choice_id: choiceFrom(g, 'A', '1').id }, h.id)
@@ -132,7 +184,7 @@ describe('compile — widget shapes (§6.7)', () => {
 
 describe('compile — gates (§6.3)', () => {
   it('batches every gate on a node into ONE set-variables widget', () => {
-    const g = makeGraph(['A', 'B', 'C'], ['A>B', 'A>C'])
+    const g = recordedGraph(['A', 'B', 'C'], ['A>B', 'A>C'])
     addItem(g, 'KEY')
     addGate(g, choiceFrom(g, 'A', '1').id, {})
     addGate(g, choiceFrom(g, 'A', '2').id, {})
@@ -144,35 +196,52 @@ describe('compile — gates (§6.3)', () => {
     expect(r.widgets.filter((w) => w.type === 'split-based-on')).toHaveLength(2)
   })
 
-  it('evaluates gates BEFORE the play widget so a hide gate can be conditional', () => {
-    const g = makeGraph(['A', 'B'], ['A>B'])
+  it('evaluates gates BEFORE the room plays, and costs no split', () => {
+    const g = recordedGraph(['A', 'B'], ['A>B'])
     addItem(g, 'KEY')
     addGate(g, choiceFrom(g, 'A', '1').id, { fail_behavior: 'hide' })
     const r = compileStory(g, BASE)
     expect(byName(r, 'A_gates')?.transitions[0].next).toBe('A_play')
-    // A hidden choice is never read aloud; its line is wrapped in a conditional.
-    expect(byName(r, 'A_play')?.say).toContain('{% if flow.variables.gate_A_d1 == "pass" %}')
-    // hide costs no split at all.
     expect(r.widgets.some((w) => w.type === 'split-based-on')).toBe(false)
+    // Recorded audio has no text to hide a Liquid conditional in, so the door
+    // works but is never announced. Said out loud rather than left to surprise.
+    expect(r.warnings.some((w) => w.includes('nothing announces them'))).toBe(true)
   })
 
   it('returns a refusal to the GATHER, not the play widget', () => {
     // §6.3 — so the caller doesn't re-hear the whole scene.
-    const g = makeGraph(['A', 'B'], ['A>B'])
+    const g = recordedGraph(['A', 'B'], ['A>B'])
+    addItem(g, 'KEY')
+    addGate(g, choiceFrom(g, 'A', '1').id, {
+      fail_behavior: 'refuse',
+      fail_narration: "The gate won't budge.",
+      fail_audio_path: 'audio/refuse.mp3',
+    })
+    const r = compileStory(g, BASE)
+    const refuse = byName(r, 'A_d1_refuse')!
+    expect(refuse.playUrl).toBe(`${BASE}audio/refuse.mp3`)
+    expect(refuse.say).toBeUndefined()
+    expect(refuse.transitions[0].next).toBe('A_gather')
+    expect(refuse.note).toContain('8th attempt')
+  })
+
+  it('bounces a caller back rather than reading an unrecorded refusal aloud', () => {
+    const g = recordedGraph(['A', 'B'], ['A>B'])
     addItem(g, 'KEY')
     addGate(g, choiceFrom(g, 'A', '1').id, {
       fail_behavior: 'refuse',
       fail_narration: "The gate won't budge.",
     })
     const r = compileStory(g, BASE)
-    const refuse = byName(r, 'A_d1_refuse')!
-    expect(refuse.say).toBe("The gate won't budge.")
-    expect(refuse.transitions[0].next).toBe('A_gather')
-    expect(refuse.note).toContain('8th attempt')
+    expect(byName(r, 'A_d1_refuse')).toBeUndefined()
+    expect(byName(r, 'A_d1_gate')!.transitions.find((t) => t.event === 'noMatch')?.next).toBe(
+      'A_gather',
+    )
+    expect(r.warnings.some((w) => w.includes('without being told why'))).toBe(true)
   })
 
   it('sends a failed divert to its target', () => {
-    const g = makeGraph(['A', 'VAULT', 'PIT'], ['A>VAULT', 'A>PIT'])
+    const g = recordedGraph(['A', 'VAULT', 'PIT'], ['A>VAULT', 'A>PIT'])
     addItem(g, 'KEY')
     addGate(g, choiceFrom(g, 'A', '1').id, {
       fail_behavior: 'divert',
@@ -184,7 +253,7 @@ describe('compile — gates (§6.3)', () => {
   })
 
   it('orders gate split before choice effects, so a blocked caller gains nothing', () => {
-    const g = makeGraph(['A', 'VAULT'], ['A>VAULT'])
+    const g = recordedGraph(['A', 'VAULT'], ['A>VAULT'])
     const v = addItem(g, 'TREASURE')
     addItem(g, 'KEY')
     addEffect(g, { choice_id: choiceFrom(g, 'A', '1').id }, v.id)
@@ -200,14 +269,14 @@ describe('compile — gates (§6.3)', () => {
 
 describe('compile — timeout, invalid and warnings', () => {
   it('repeats the room when no timeout or invalid target is set', () => {
-    const g = makeGraph(['A', 'B'], ['A>B'])
+    const g = recordedGraph(['A', 'B'], ['A>B'])
     const gather = byName(compileStory(g, BASE), 'A_gather')!
     expect(gather.transitions.find((t) => t.event === 'timeout')?.next).toBe('A_play')
     expect(gather.transitions.find((t) => t.event === 'noMatch')?.next).toBe('A_play')
   })
 
   it('follows explicit timeout and invalid targets', () => {
-    const g = makeGraph(['A', 'B', 'LOBBY'], ['A>B'])
+    const g = recordedGraph(['A', 'B', 'LOBBY'], ['A>B'])
     const a = g.nodes.get(idOf(g, 'A'))!
     g.nodes.set(a.id, { ...a, timeout_target_id: idOf(g, 'LOBBY'), invalid_target_id: idOf(g, 'LOBBY') })
     const gather = byName(compileStory(g, BASE), 'A_gather')!
@@ -231,7 +300,7 @@ describe('compile — timeout, invalid and warnings', () => {
 
 describe('compile — budget (§6.5)', () => {
   it('counts two widgets per plain room', () => {
-    const g = makeGraph(['A', 'B', 'FIN'], ['A>B', 'B>FIN'], { endings: ['FIN'] })
+    const g = recordedGraph(['A', 'B', 'FIN'], ['A>B', 'B>FIN'], { endings: ['FIN'] })
     expect(compileStory(g, BASE).budget.total).toBe(6)
   })
 
@@ -240,7 +309,7 @@ describe('compile — budget (§6.5)', () => {
     // 550–650 widgets — comfortable."
     const slugs = Array.from({ length: 200 }, (_, i) => `N${i}`)
     const edges = slugs.slice(0, -1).map((s, i) => `${s}>N${i + 1}`)
-    const g = makeGraph(slugs, edges)
+    const g = makeGraph(slugs, edges, { recorded: slugs })
     const r = compileStory(g, BASE)
     expect(r.budget.total).toBeLessThan(WIDGET_LIMIT)
     expect(r.budget.warn).toBe(false)
@@ -250,7 +319,7 @@ describe('compile — budget (§6.5)', () => {
     const count = 900 // 2 widgets each = 1800 = 90% of 2000
     const slugs = Array.from({ length: count }, (_, i) => `N${i}`)
     const edges = slugs.slice(0, -1).map((s, i) => `${s}>N${i + 1}`)
-    const r = compileStory(makeGraph(slugs, edges), BASE)
+    const r = compileStory(makeGraph(slugs, edges, { recorded: slugs }), BASE)
     expect(r.budget.total).toBeGreaterThan(WIDGET_LIMIT * 0.8)
     expect(r.budget.warn).toBe(true)
   })

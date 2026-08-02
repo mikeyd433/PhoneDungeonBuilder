@@ -107,6 +107,11 @@ export interface Gate {
   expression: GateExpression
   fail_behavior: GateFailBehavior
   fail_narration: string | null
+  /** A refusal is read aloud like anything else, so it gets its own take.
+   *  Without one the exported flow simply doesn't say it — the caller is
+   *  bounced back to the choices with no explanation. */
+  fail_audio_path: string | null
+  fail_audio_duration_ms: number | null
   fail_node_id: string | null
   consume_on_pass: boolean
   created_at: string
@@ -234,6 +239,10 @@ export interface FightRound {
   sort_order: number
   opponent_move: string
   narration: string
+  /** A round is a performance. Nothing in the exported flow is spoken by
+   *  Twilio, so a round with no take is not read out at all. */
+  audio_path: string | null
+  audio_duration_ms: number | null
   created_at: string
   updated_at: string
 }

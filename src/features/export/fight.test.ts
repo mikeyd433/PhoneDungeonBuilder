@@ -3,15 +3,17 @@ import { addCharacter, addFight, addLines, makeGraph, setOutcome } from '@/test/
 import { compileStory } from './compile'
 import { castManifestCsv, printableScript } from './outputs'
 
+/** Everything recorded — the shippable case, and the only one that emits play
+ *  widgets now that nothing in the flow is spoken by Twilio. */
 function sharkGraph() {
-  const g = makeGraph(['ENTRANCE', 'SHARKS', 'SHORE', 'DROWNED'], ['ENTRANCE>SHARKS'], {
-    endings: ['DROWNED'],
-  })
+  const slugs = ['ENTRANCE', 'SHARKS', 'SHORE', 'DROWNED']
+  const g = makeGraph(slugs, ['ENTRANCE>SHARKS'], { endings: ['DROWNED'], recorded: slugs })
   addFight(g, 'SHARKS', {
     moves: ['PUNCH beats Kick', 'KICK beats Block', 'BLOCK beats Punch'],
     rounds: ['Kick', 'Block', 'Punch'],
     win: 'SHORE',
     lose: 'DROWNED',
+    recorded: true,
   })
   return g
 }
@@ -73,13 +75,15 @@ describe('compiling a fight', () => {
   })
 
   it('honours a fight’s own patience', () => {
-    const g = makeGraph(['SHARKS', 'SHORE', 'DROWNED'], [], { endings: ['DROWNED'] })
+    const slugs = ['SHARKS', 'SHORE', 'DROWNED']
+    const g = makeGraph(slugs, [], { endings: ['DROWNED'], recorded: slugs })
     addFight(g, 'SHARKS', {
       moves: ['PUNCH beats Kick'],
       rounds: ['Kick'],
       win: 'SHORE',
       lose: 'DROWNED',
       patience: 1,
+      recorded: true,
     })
     const patience = compileStory(g, 'https://audio/').widgets.find(
       (w) => w.name === 'SHARKS_r1_patience',
@@ -112,8 +116,13 @@ describe('compiling a fight', () => {
   })
 
   it('warns when a round leads nowhere at all', () => {
-    const g = makeGraph(['A', 'WIN', 'LOSE'], [])
-    addFight(g, 'A', { moves: ['PUNCH beats Kick'], rounds: ['Headbutt'], win: 'WIN' })
+    const g = makeGraph(['A', 'WIN', 'LOSE'], [], { recorded: ['A', 'WIN', 'LOSE'] })
+    addFight(g, 'A', {
+      moves: ['PUNCH beats Kick'],
+      rounds: ['Headbutt'],
+      win: 'WIN',
+      recorded: true,
+    })
     const { warnings, widgets } = compileStory(g, 'https://audio/')
     expect(warnings.join(' ')).toContain('nothing gets past this')
     // Emitted anyway, pointing back at the room, so the flow stays connected
@@ -126,14 +135,34 @@ describe('compiling a fight', () => {
     ).toBe(true)
   })
 
+  it('says nothing rather than reading an unrecorded round aloud', () => {
+    const slugs = ['SHARKS', 'SHORE', 'DROWNED']
+    const g = makeGraph(slugs, [], { endings: ['DROWNED'], recorded: slugs })
+    addFight(g, 'SHARKS', {
+      moves: ['PUNCH beats Kick'],
+      rounds: ['Kick'],
+      win: 'SHORE',
+      lose: 'DROWNED',
+    })
+    const { warnings, widgets } = compileStory(g, 'https://audio/')
+    expect(widgets.find((w) => w.name === 'SHARKS_r1_play')).toBeUndefined()
+    // The reset skips the missing announcement and goes straight to the keypad.
+    expect(widgets.find((w) => w.name === 'SHARKS_reset')!.transitions[0].next).toBe(
+      'SHARKS_r1_gather',
+    )
+    expect(warnings.join(' ')).toContain('round 1 has no recording')
+  })
+
   it('does not complain about several moves countering the same announcement', () => {
     // "Any of these gets you through" is a legitimate round, not a mistake.
-    const g = makeGraph(['A', 'WIN', 'LOSE'], [])
+    const slugs = ['A', 'WIN', 'LOSE']
+    const g = makeGraph(slugs, [], { recorded: slugs })
     addFight(g, 'A', {
       moves: ['PUNCH beats Kick', 'JAB beats Kick'],
       rounds: ['Kick'],
       win: 'WIN',
       lose: 'LOSE',
+      recorded: true,
     })
     const { warnings, widgets } = compileStory(g, 'https://audio/')
     expect(warnings.filter((w) => w.startsWith('A:'))).toEqual([])
@@ -142,7 +171,8 @@ describe('compiling a fight', () => {
   })
 
   it('warns when a fight room also has doors', () => {
-    const g = makeGraph(['A', 'B', 'WIN', 'LOSE'], ['A>B'])
+    const slugs = ['A', 'B', 'WIN', 'LOSE']
+    const g = makeGraph(slugs, ['A>B'], { recorded: slugs })
     addFight(g, 'A', { moves: ['P beats K'], rounds: ['K'], win: 'WIN', lose: 'LOSE' })
     expect(compileStory(g, 'https://audio/').warnings.join(' ')).toContain('not exported')
   })

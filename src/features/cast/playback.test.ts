@@ -74,18 +74,26 @@ describe('compiling a conversation', () => {
   })
 
   it('stays one widget when the room records as one file', () => {
-    const { widgets } = compileStory(conversation(), 'https://audio/')
+    const g = conversation()
+    // Give the room itself a take, so it plays as a single file.
+    const node = g.nodes.get(idOf(g, 'SCENE'))!
+    g.nodes.set(node.id, { ...node, audio_path: 'audio/SCENE.mp3' })
+    const { widgets } = compileStory(g, 'https://audio/')
     expect(widgets.find((w) => w.name === 'SCENE_line2')).toBeUndefined()
     expect(widgets.find((w) => w.name === 'SCENE_play')!.transitions[0].next).toBe('SCENE_gather')
   })
 
-  it('warns about a line with no take rather than exporting a silence', () => {
+  it('skips a line with no take rather than reading it in a robot voice', () => {
     const g = conversation({ recorded: true })
     const [carters] = [...g.dialogue.values()]
     g.dialogue.set(carters.id, { ...carters, audio_path: null })
     const { warnings, widgets } = compileStory(g, 'https://audio/')
     expect(warnings.join(' ')).toContain('1 of its 2 lines have no take')
-    // Still exported — Studio reads it, so the scene is playable meanwhile.
-    expect(widgets.find((w) => w.name === 'SCENE_play')!.say).toBe('get in')
+    // Only Mike's take is emitted, and it takes the first widget's name so
+    // everything pointing at this room still lands somewhere real.
+    const play = widgets.find((w) => w.name === 'SCENE_play')!
+    expect(play.say).toBeUndefined()
+    expect(play.playUrl).toContain('line-SCENE-1')
+    expect(widgets.find((w) => w.name === 'SCENE_line2')).toBeUndefined()
   })
 })

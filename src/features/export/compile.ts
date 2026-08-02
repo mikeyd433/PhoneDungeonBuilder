@@ -1,4 +1,4 @@
-import type { StoryGraph } from '@/types/domain'
+import type { StoryGraph, StoryNode } from '@/types/domain'
 import { graphEdges } from '@/features/graph/edges'
 import { playbackFor } from '@/features/cast/dialogue'
 import {
@@ -80,6 +80,10 @@ export interface CompileResult {
   /** §6.5's separate step-depth check against the 1,000-step execution cap. */
   longestPathSteps: number
   stepCapRisk: boolean
+  /** The widget an incoming call starts at. Not always `<root>_play`: an
+   *  unrecorded entrance has no play widget, and one with arrival effects
+   *  starts at those. */
+  entryWidget: string | null
 }
 
 /** §6.0 — 2,000 widgets across the parent flow and all linked subflows. */
@@ -161,14 +165,53 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
   const roundName = (slug: string, index: number, part: 'play' | 'gather') =>
     `${slug}_r${index + 1}_${part}`
 
+  /** Entering a round: its recording if it has one, otherwise the keypad. */
+  const roundEntry = (slug: string, rounds: Array<{ audio_path: string | null }>, i: number) =>
+    rounds[i]?.audio_path ? roundName(slug, i, 'play') : roundName(slug, i, 'gather')
+
+  /**
+   * What a room does once its audio has finished — or straight away, when it
+   * has none.
+   *
+   * Only local names, so this can never recurse into another node.
+   */
+  const afterAudioName = (n: StoryNode): string => {
+    if (n.node_type === 'ending') return wname(n.slug, 'hangup')
+    if (fights.has(n.id)) return `${n.slug}_reset`
+    return wname(n.slug, 'gather')
+  }
+
+  /** Replaying a room: its audio again if it has any, else its choices. Used by
+   *  the timeout and wrong-keypress defaults, which must NOT re-run arrival
+   *  effects — granting the same item twice for hesitating would be a gift. */
+  const replayName = (n: StoryNode): string =>
+    playbackFor(graph, n.id).some((p) => p.audioPath) ? playName(n.slug) : afterAudioName(n)
+
+  /**
+   * The first widget a caller ENTERING this room actually runs.
+   *
+   * Everything that points at a room points here. Targeting the play widget
+   * directly — which is what this used to do — skipped the arrival effects and
+   * the batched gate evaluation entirely, so an item granted on arrival was
+   * never granted and a gate was tested against a variable nothing had set.
+   * It also breaks outright now that an unrecorded room has no play widget.
+   */
+  const entryName = (n: StoryNode): string => {
+    if (effectsFor((e) => e.node_id === n.id).length > 0) return wname(n.slug, 'fx')
+    if (choicesFrom(n.id).some((c) => gateByChoice.has(c.id))) return wname(n.slug, 'gates')
+    return replayName(n)
+  }
+
   /**
    * Where a fight outcome leads. An outcome with nowhere set falls back to the
    * fight's own room, so the flow is still connected — the warning is what tells
    * the author it needs finishing, not a dangling transition Studio would refuse
    * to import.
    */
-  const fightOutcome = (targetId: string | null, fallbackSlug: string) =>
-    playName(targetId ? (graph.nodes.get(targetId)?.slug ?? fallbackSlug) : fallbackSlug)
+  const fightOutcome = (targetId: string | null, fallback: StoryNode) => {
+    const target = targetId ? graph.nodes.get(targetId) : null
+    return entryName(target ?? fallback)
+  }
 
   for (const node of nodes) {
     const slug = node.slug
@@ -181,11 +224,9 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
 
     // ---- arrival effects, before play so narration can reference them (§6.2)
     const arrival = effectsFor((e) => e.node_id === node.id)
-    let entry = playName(slug)
     if (arrival.length > 0) {
-      entry = wname(slug, 'fx')
       widgets.push({
-        name: entry,
+        name: wname(slug, 'fx'),
         type: 'set-variables',
         nodeId: node.id,
         note: 'Arrival effects — fire before the room is described.',
@@ -207,17 +248,16 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
           const gate = gateByChoice.get(c.id)!
           return { key: gateVarName(slug, c.digit), value: gateAssignmentLiquid(gate.expression) }
         }),
-        transitions: [{ event: 'next', next: playName(slug) }],
+        transitions: [{ event: 'next', next: replayName(node) }],
       })
       if (arrival.length > 0) {
         widgets.find((w) => w.name === wname(slug, 'fx'))!.transitions = [
           { event: 'next', next: gateWidget },
         ]
       }
-      entry = arrival.length > 0 ? wname(slug, 'fx') : gateWidget
     } else if (arrival.length > 0) {
       widgets.find((w) => w.name === wname(slug, 'fx'))!.transitions = [
-        { event: 'next', next: playName(slug) },
+        { event: 'next', next: replayName(node) },
       ]
     }
 
@@ -238,51 +278,53 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
     // lead-in, so it hands off to round one rather than to a gather.
     const roomExit = () => {
       if (node.node_type === 'ending') return wname(slug, 'hangup')
-      if (!fight) return wname(slug, 'gather')
-      return rounds.length > 0 ? `${slug}_reset` : fightOutcome(fight.win_node_id, slug)
+      return afterAudioName(node)
     }
 
     // The room's audio. Usually one widget; a conversation assembled from
     // separately-booked actors is one widget per line, played back to back and
     // landing on the same exit — which is what makes "hold the conversation,
     // then offer the choice" a single room rather than a chain of them.
+    //
+    // ONLY RECORDED PARTS ARE EMITTED. There is no text-to-speech fallback
+    // anywhere in this exporter: a robot voice sitting next to real
+    // performances is worse than silence, because it ships and it hides which
+    // rooms still need a session. An unrecorded part is skipped and reported.
     const parts = playbackFor(graph, node.id)
+    const recorded = parts.filter((p) => p.audioPath)
     const partName = (i: number) => (i === 0 ? playName(slug) : `${slug}_line${i + 1}`)
 
-    parts.forEach((part, i) => {
-      const last = i === parts.length - 1
-      // Hidden choices are appended to whatever is read last, so the Liquid
-      // conditional still runs immediately before the gather.
-      const text = last ? `${part.say}${hiddenLines}` : part.say
+    recorded.forEach((part, i) => {
+      const last = i === recorded.length - 1
       widgets.push({
         name: partName(i),
         type: 'say-play',
         nodeId: node.id,
-        note: part.audioPath
-          ? `Play the recorded audio.${part.speaker ? ` — ${part.speaker}` : ''}`
-          : `No audio yet — Studio will speak this.${part.speaker ? ` — ${part.speaker}` : ''}`,
-        say: part.audioPath ? undefined : text,
-        playUrl: part.audioPath ? `${audioBaseUrl}${part.audioPath}` : undefined,
+        note: `Play the recorded audio.${part.speaker ? ` — ${part.speaker}` : ''}`,
+        playUrl: `${audioBaseUrl}${part.audioPath}`,
         transitions: [{ event: 'audioComplete', next: last ? roomExit() : partName(i + 1) }],
       })
     })
 
-    if (parts.length > 1) {
-      // A hidden choice is spoken by a Liquid conditional inside a Say widget,
-      // and a Play widget has no text to hide it in. Silently dropping the line
-      // would make the door invisible on the phone but present in the editor.
-      const lastPart = parts[parts.length - 1]
-      if (hiddenLines && lastPart.audioPath) {
-        warnings.push(
-          `${slug} hides ${hideGated.length} choice(s) behind a gate, but its last line is recorded audio — a hidden choice can only be spoken by a Say widget, so it will never be offered.`,
-        )
-      }
-      const unrecorded = parts.filter((p) => !p.audioPath).length
-      if (unrecorded > 0) {
-        warnings.push(
-          `${slug} plays line by line but ${unrecorded} of its ${parts.length} lines have no take — those will be read by Studio's voice in the middle of the scene.`,
-        )
-      }
+    const missingParts = parts.length - recorded.length
+    if (missingParts > 0) {
+      warnings.push(
+        parts.length === 1
+          ? `${slug} has no recording, so the caller hears nothing before the choices.`
+          : `${slug} plays line by line and ${missingParts} of its ${parts.length} lines have no take — those lines are silent.`,
+      )
+    }
+
+    // A hidden choice is spoken by a Liquid conditional, and a Liquid
+    // conditional needs text for Studio to read. With recorded audio there is
+    // nowhere to put it. The digit still WORKS — the gather accepts it and the
+    // gate still routes — it simply is not announced, which for a `hide` gate
+    // is arguably the point. Said out loud either way, because the alternative
+    // is an author wondering why their line never plays.
+    if (hiddenLines && recorded.length > 0) {
+      warnings.push(
+        `${slug} hides ${hideGated.length} choice(s) behind a gate, but the room is recorded audio — nothing announces them, so a caller has to already know the digit.`,
+      )
     }
 
     if (node.node_type === 'ending') {
@@ -299,17 +341,27 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
     // ---- a fight: two widgets per round, and no gather for the room itself
     if (fight) {
       const view = { fight, moves, rounds, outcomes }
-      const missNext = fightOutcome(resolveMiss(view), slug)
+      const missNext = fightOutcome(resolveMiss(view), node)
 
       rounds.forEach((round, i) => {
-        widgets.push({
-          name: roundName(slug, i, 'play'),
-          type: 'say-play',
-          nodeId: node.id,
-          note: `Round ${i + 1}: ${fight.opponent_name} throws ${round.opponent_move || '(nothing set)'}.`,
-          say: round.narration || `${fight.opponent_name}: ${round.opponent_move}`,
-          transitions: [{ event: 'audioComplete', next: roundName(slug, i, 'gather') }],
-        })
+        // A round is a performance, and mid-fight is the last place a robot
+        // voice belongs. With no take the round says nothing and goes straight
+        // to the keypad — which is wrong for the caller and reported as such,
+        // but it is at least not wrong in a text-to-speech voice.
+        if (round.audio_path) {
+          widgets.push({
+            name: roundName(slug, i, 'play'),
+            type: 'say-play',
+            nodeId: node.id,
+            note: `Round ${i + 1}: ${fight.opponent_name} throws ${round.opponent_move || '(nothing set)'}.`,
+            playUrl: `${audioBaseUrl}${round.audio_path}`,
+            transitions: [{ event: 'audioComplete', next: roundName(slug, i, 'gather') }],
+          })
+        } else {
+          warnings.push(
+            `${slug} round ${i + 1} has no recording, so the caller hears nothing before answering it.`,
+          )
+        }
 
         // One transition per move — a round is a room where you pick an exit,
         // so each digit gets named its own destination and several may share
@@ -322,8 +374,8 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
           const outcome = resolveMove(view, i, move.id)
           const next =
             outcome.via === 'advance' && outcome.nextRound !== null
-              ? roundName(slug, outcome.nextRound, 'play')
-              : fightOutcome(outcome.nodeId, slug)
+              ? roundEntry(slug, rounds, outcome.nextRound)
+              : fightOutcome(outcome.nodeId, node)
           roundTransitions.push({
             event: 'keypress',
             condition: `Digits equals ${m + 1}`,
@@ -377,7 +429,7 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
             {
               event: 'match',
               condition: `Less than ${fight.silence_patience}`,
-              next: roundName(slug, i, 'play'),
+              next: roundEntry(slug, rounds, i),
             },
             { event: 'noMatch', next: missNext },
           ],
@@ -393,7 +445,7 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
           nodeId: node.id,
           note: 'Clear the silence counters, so re-entering this fight starts fresh.',
           variables: rounds.map((_, i) => ({ key: `${slug}_r${i + 1}_silence`, value: '0' })),
-          transitions: [{ event: 'next', next: roundName(slug, 0, 'play') }],
+          transitions: [{ event: 'next', next: roundEntry(slug, rounds, 0) }],
         })
       }
 
@@ -416,7 +468,7 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
       const target = choice.to_node_id ? graph.nodes.get(choice.to_node_id) : null
 
       // Where this digit ultimately lands, before any gate split.
-      let dest: string | null = target ? playName(target.slug) : null
+      let dest: string | null = target ? entryName(target) : null
       if (!target) {
         warnings.push(
           `${slug} digit ${choice.digit} ("${choice.label}") is an unwritten branch — it has nowhere to go and is exported as a repeat.`,
@@ -444,9 +496,11 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
         const failNext =
           gate.fail_behavior === 'divert'
             ? gate.fail_node_id
-              ? playName(graph.nodes.get(gate.fail_node_id)?.slug ?? slug)
+              ? entryName(graph.nodes.get(gate.fail_node_id) ?? node)
               : wname(slug, 'gather')
-            : `${slug}_d${digitToken(choice.digit)}_refuse`
+            : gate.fail_audio_path
+              ? `${slug}_d${digitToken(choice.digit)}_refuse`
+              : wname(slug, 'gather')
 
         widgets.push({
           name: splitName,
@@ -461,16 +515,25 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
         })
 
         if (gate.fail_behavior === 'refuse') {
-          widgets.push({
-            name: failNext,
-            type: 'say-play',
-            nodeId: node.id,
-            note:
-              'Refusal. Returns to the GATHER, not the play widget, so the caller ' +
-              `doesn't re-hear the whole scene. Route the ${PATIENCE_VALVE_AT}th attempt to an escape.`,
-            say: gate.fail_narration ?? "You can't do that yet.",
-            transitions: [{ event: 'audioComplete', next: wname(slug, 'gather') }],
-          })
+          // A refusal is a line like any other. Unrecorded, it isn't spoken —
+          // the caller is simply bounced back to the choices, which is a poor
+          // experience but not a robot voice mid-scene.
+          if (gate.fail_audio_path) {
+            widgets.push({
+              name: failNext,
+              type: 'say-play',
+              nodeId: node.id,
+              note:
+                'Refusal. Returns to the GATHER, not the play widget, so the caller ' +
+                `doesn't re-hear the whole scene. Route the ${PATIENCE_VALVE_AT}th attempt to an escape.`,
+              playUrl: `${audioBaseUrl}${gate.fail_audio_path}`,
+              transitions: [{ event: 'audioComplete', next: wname(slug, 'gather') }],
+            })
+          } else {
+            warnings.push(
+              `${slug} digit ${choice.digit} refuses the caller with no recording, so they are sent back to the choices without being told why.`,
+            )
+          }
         }
         dest = splitName
       }
@@ -478,12 +541,15 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
       transitions.push({ event: 'keypress', condition: `Digits equals ${choice.digit}`, next: dest })
     }
 
-    const timeoutTarget = node.timeout_target_id
-      ? playName(graph.nodes.get(node.timeout_target_id)?.slug ?? slug)
-      : playName(slug)
-    const invalidTarget = node.invalid_target_id
-      ? playName(graph.nodes.get(node.invalid_target_id)?.slug ?? slug)
-      : playName(slug)
+    // An explicit target is a room the caller ENTERS; the default is this room
+    // replayed, which must not re-run its arrival effects.
+    const nodeAt = (id: string | null) => (id ? graph.nodes.get(id) : null)
+    const timeoutTarget = nodeAt(node.timeout_target_id)
+      ? entryName(nodeAt(node.timeout_target_id)!)
+      : replayName(node)
+    const invalidTarget = nodeAt(node.invalid_target_id)
+      ? entryName(nodeAt(node.invalid_target_id)!)
+      : replayName(node)
 
     transitions.push({ event: 'timeout', next: timeoutTarget })
     transitions.push({ event: 'noMatch', next: invalidTarget })
@@ -507,12 +573,15 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
   const total = widgets.length
   const longestPathSteps = estimateLongestPath(graph)
 
+  const root = graph.story.root_node_id ? graph.nodes.get(graph.story.root_node_id) : null
+
   return {
     widgets,
     warnings,
     budget: { total, limit: WIDGET_LIMIT, warn: total >= WIDGET_LIMIT * 0.8 },
     longestPathSteps,
     stepCapRisk: longestPathSteps >= STEP_LIMIT * 0.8,
+    entryWidget: root ? entryName(root) : null,
   }
 }
 

@@ -27,6 +27,7 @@ Two rules from §0 that everything else follows from:
 | Repo / hosting | Source lives here; Dabingabongo's Netlify config serves it at `dabingabongo.com/delve`. Vite `base` is `/delve/`. |
 | Art direction | Flat vector, behind a renderer seam so a sprite pack can drop in later (§11.4). |
 | Audio hosting | Supabase Storage public bucket. The exporter emits those URLs into Twilio Play widgets. |
+| Text-to-speech | **Never in the exported flow.** Anything without a recording is not emitted at all — a room, line, fight round or refusal with no take is silence on the phone, and the export says so. The playtest still speaks unrecorded lines; that's a rehearsal aid, clearly labelled. |
 | Twilio export | Build sheet (§6.6 path B) first, then flow-definition JSON (path A). **No REST push, no writes to the Twilio account.** |
 | `node_type` | `room \| ending`. `hub` was cut — the spec listed it but never defined its behaviour. |
 | Exits per room | 3 on the walls; digits 4–9 render as a stacked list (F1.13). |
@@ -81,6 +82,10 @@ capture. pnpm. Target device order: **tablet portrait, then phone, then desktop.
    the script would drift, and the recorded one is the one that ships.
    What a room *plays* is `playbackFor` — one file, or a line take each. The
    torch is lit only when every part has audio.
+11. **Everything points at `entryName`, never at `<slug>_play`.** A room's first
+   widget is its arrival effects, then its batched gates, then its audio — and
+   an unrecorded room has no audio widget at all. Targeting `_play` by name
+   skipped the effects and the gates outright, and now would point at nothing.
 9. **Playtest and export must agree about fights.** Both ask
    `resolveMove` (`src/features/fight/model.ts`) where a digit goes — neither
    decides for itself, and both count silence against the same

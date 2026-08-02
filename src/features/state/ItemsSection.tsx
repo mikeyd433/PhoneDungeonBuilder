@@ -5,6 +5,7 @@ import { slugify } from '@/lib/slug'
 import GateBuilder from './GateBuilder'
 import { fromFlat, toFlat, type FlatGate } from './gateShape'
 import type { Choice, Effect, EffectOperation, StateVar } from '@/types/domain'
+import TakeRecorder from '@/features/audio/TakeRecorder'
 
 /**
  * F8.1–F8.5, in the editor sheet.
@@ -182,17 +183,35 @@ export default function ItemsSection({ nodeId }: { nodeId: string }) {
         </label>
 
         {gate.fail_behavior === 'refuse' && (
-          <input
-            defaultValue={gate.fail_narration ?? ''}
-            placeholder="The gate won't budge — you'd need something to pry it."
-            onBlur={(e) =>
-              e.target.value !== (gate.fail_narration ?? '') &&
-              void run(() =>
-                api.upsertGate(story.id, choice.id, { fail_narration: e.target.value }),
-              )
-            }
-            className={`${field} w-full`}
-          />
+          <>
+            <input
+              defaultValue={gate.fail_narration ?? ''}
+              placeholder="The gate won't budge — you'd need something to pry it."
+              onBlur={(e) =>
+                e.target.value !== (gate.fail_narration ?? '') &&
+                void run(() =>
+                  api.upsertGate(story.id, choice.id, { fail_narration: e.target.value }),
+                )
+              }
+              className={`${field} w-full`}
+            />
+            {/* A refusal is read aloud like anything else. Without a take the
+                exported flow says nothing and bounces the caller back to the
+                choices with no explanation. */}
+            <TakeRecorder
+              name={`${graph.nodes.get(nodeId)?.slug ?? 'room'}-d${choice.digit}-refuse`}
+              path={gate.fail_audio_path}
+              durationMs={gate.fail_audio_duration_ms}
+              onSaved={(path, ms) =>
+                run(() =>
+                  api.upsertGate(story.id, choice.id, {
+                    fail_audio_path: path,
+                    fail_audio_duration_ms: ms,
+                  }),
+                )
+              }
+            />
+          </>
         )}
 
         {gate.fail_behavior === 'divert' && (

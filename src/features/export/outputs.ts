@@ -53,6 +53,11 @@ export function buildSheet(
   out.push('first and wire the whole flow afterwards.')
   out.push('')
 
+  out.push('Nothing in this flow is spoken by Twilio. Anything without a recording is')
+  out.push('simply not emitted, so a room, round or refusal with no take is silence on')
+  out.push('the phone. The audio manifest lists every one of them.')
+  out.push('')
+
   if (compiled.warnings.length > 0) {
     out.push('BEFORE YOU START — things to check:')
     for (const w of compiled.warnings) out.push(`  ! ${w}`)
@@ -149,10 +154,6 @@ export function studioFlowJson(
     }
   })
 
-  const rootSlug = graph.story.root_node_id
-    ? graph.nodes.get(graph.story.root_node_id)?.slug
-    : undefined
-
   return JSON.stringify(
     {
       description: graph.story.title,
@@ -162,7 +163,9 @@ export function studioFlowJson(
           type: 'trigger',
           properties: { offset: { x: 0, y: -150 } },
           transitions: [
-            { event: 'incomingCall', next: rootSlug ? `${rootSlug}_play` : undefined },
+            // The compiler decides where a call starts. An unrecorded entrance
+            // has no play widget, and one with arrival effects starts at those.
+            { event: 'incomingCall', next: compiled.entryWidget ?? undefined },
             { event: 'incomingMessage' },
             { event: 'incomingRequest' },
           ],
@@ -177,22 +180,94 @@ export function studioFlowJson(
   )
 }
 
-/** F6.2 — audio manifest for tracking VO sessions. */
+/**
+ * F6.2 — audio manifest for tracking VO sessions.
+ *
+ * Every recordable thing, not just rooms. Nothing in the exported flow is
+ * spoken by Twilio, so a fight round or a refusal without a take is simply
+ * silence on the phone — and a manifest that only listed rooms would make that
+ * silence invisible right up until somebody called the number.
+ */
 export function audioManifestCsv(graph: StoryGraph): string {
   const esc = (s: string) => `"${String(s).replace(/"/g, '""')}"`
-  const rows = [['slug', 'title', 'status', 'filename', 'duration', 'words'].join(',')]
-  for (const n of [...graph.nodes.values()].sort((a, b) => a.slug.localeCompare(b.slug))) {
+  const words = (text: string) => String(text.trim() ? text.trim().split(/\s+/).length : 0)
+  const rows = [['kind', 'slug', 'title', 'status', 'filename', 'duration', 'words'].join(',')]
+
+  const push = (
+    kind: string,
+    slug: string,
+    title: string,
+    status: string,
+    path: string | null,
+    ms: number | null,
+    text: string,
+  ) =>
     rows.push(
       [
-        esc(n.slug),
-        esc(n.title),
-        esc(n.status),
-        esc(n.audio_path ?? ''),
-        esc(n.audio_duration_ms ? formatDuration(n.audio_duration_ms) : ''),
-        String(n.narration.trim() ? n.narration.trim().split(/\s+/).length : 0),
+        esc(kind),
+        esc(slug),
+        esc(title),
+        esc(status),
+        esc(path ?? ''),
+        esc(ms ? formatDuration(ms) : ''),
+        words(text),
       ].join(','),
     )
+
+  for (const n of [...graph.nodes.values()].sort((a, b) => a.slug.localeCompare(b.slug))) {
+    const lines = linesFor(graph, n.id)
+    const split = lines.some((l) => l.audio_path)
+
+    // A room recorded line by line has no take of its own worth chasing.
+    if (!split) {
+      push('room', n.slug, n.title, n.status, n.audio_path, n.audio_duration_ms, n.narration)
+    }
+    if (split) {
+      lines.forEach((line, i) => {
+        const who = line.character_id ? graph.characters.get(line.character_id) : null
+        push(
+          'line',
+          `${n.slug}#${i + 1}`,
+          who?.name ?? '',
+          line.audio_path ? 'recorded' : 'missing',
+          line.audio_path,
+          line.audio_duration_ms,
+          line.text,
+        )
+      })
+    }
+
+    const fight = buildFightView(graph, n.id)
+    if (fight) {
+      fight.rounds.forEach((round, i) => {
+        push(
+          'fight round',
+          `${n.slug}#r${i + 1}`,
+          fight.fight.opponent_name,
+          round.audio_path ? 'recorded' : 'missing',
+          round.audio_path,
+          round.audio_duration_ms,
+          round.narration,
+        )
+      })
+    }
   }
+
+  for (const gate of graph.gates.values()) {
+    if (gate.fail_behavior !== 'refuse') continue
+    const choice = graph.choices.get(gate.choice_id)
+    const from = choice ? graph.nodes.get(choice.from_node_id) : null
+    push(
+      'refusal',
+      `${from?.slug ?? '?'}#d${choice?.digit ?? '?'}`,
+      'refusal',
+      gate.fail_audio_path ? 'recorded' : 'missing',
+      gate.fail_audio_path,
+      gate.fail_audio_duration_ms,
+      gate.fail_narration ?? '',
+    )
+  }
+
   return rows.join('\n')
 }
 

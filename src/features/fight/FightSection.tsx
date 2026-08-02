@@ -2,6 +2,7 @@ import { useDelve } from '@/features/graph/store'
 import { slugify } from '@/lib/slug'
 import { canWrite } from '@/types/domain'
 import { buildFightView, MAX_FIGHT_MOVES, outcomeKey, resolveMove } from './model'
+import TakeRecorder from '@/features/audio/TakeRecorder'
 
 /**
  * The fight editor, inside the room's sheet (§4.2).
@@ -178,6 +179,20 @@ export default function FightSection({ nodeId }: { nodeId: string }) {
               }
               className={field}
             />
+
+            {/* A round is read aloud, and nothing in the exported flow is
+                spoken by Twilio — so without a take the caller answers a round
+                they never heard announced. */}
+            <div className="mt-2">
+              <TakeRecorder
+                name={`${graph.nodes.get(nodeId)?.slug ?? 'fight'}-round${i + 1}`}
+                path={round.audio_path}
+                durationMs={round.audio_duration_ms}
+                onSaved={(path, ms) =>
+                  editFightRound(round.id, { audio_path: path, audio_duration_ms: ms })
+                }
+              />
+            </div>
 
             {/* Where each digit goes. Left on "default" the counter rule
                 decides, which is what keeps a plain fight a two-column table
