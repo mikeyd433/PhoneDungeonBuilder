@@ -1,0 +1,46 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-depth text-parchment font-voice antialiased;
+    /* The room view is designed for a thumb on a tablet held in portrait;
+       rubber-band scrolling fights the swipe-to-retreat gesture. */
+    overscroll-behavior: none;
+  }
+
+  /* Tap targets stay finger-sized — this is used one-handed, standing up. */
+  button,
+  [role='button'] {
+    min-height: 44px;
+    touch-action: manipulation;
+  }
+
+  h1,
+  h2,
+  h3 {
+    @apply font-carved uppercase tracking-[0.12em];
+  }
+}
+
+@layer utilities {
+  /* F7.6 (P0): prefers-reduced-motion kills the flicker and the slide
+     transitions outright, rather than merely shortening them. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}

@@ -1,0 +1,113 @@
+# CLAUDE.md — The Delve
+
+Project context for Claude Code. Read this first, every session. The full product
+spec is the source of truth at **`docs/delve-spec.md`** — when this file and the
+spec disagree, the spec wins; update this file to match.
+
+## What we're building
+
+**The Delve** is a dungeon-crawl authoring tool for a Twilio Studio
+choose-your-own-adventure IVR. You stand in a room, the exits are your choices,
+and a graph-paper automap shows the structure. It compiles to a Twilio Studio
+flow. See spec §0.
+
+Two rules from §0 that everything else follows from:
+
+1. **Every visual element encodes real data.** A lit torch means recorded audio
+   exists. A bricked archway means an unwritten branch. Nothing is atmosphere
+   for its own sake.
+2. **You never position anything.** Layout is derived — the automap auto-lays-out
+   from the node graph, the room view renders from one node's record. **There is
+   no dragging anywhere in this app.**
+
+## Decisions (settled during spec review — don't re-litigate)
+
+| Question | Decision |
+|---|---|
+| Repo / hosting | Source lives here; Dabingabongo's Netlify config serves it at `dabingabongo.com/delve`. Vite `base` is `/delve/`. |
+| Art direction | Flat vector, behind a renderer seam so a sprite pack can drop in later (§11.4). |
+| Audio hosting | Supabase Storage public bucket. The exporter emits those URLs into Twilio Play widgets. |
+| Twilio export | Build sheet (§6.6 path B) first, then flow-definition JSON (path A). **No REST push, no writes to the Twilio account.** |
+| `node_type` | `room \| ending`. `hub` was cut — the spec listed it but never defined its behaviour. |
+| Exits per room | 3 on the walls; digits 4–9 render as a stacked list (F1.13). |
+| Flat vs subflows | Stay flat. The widget budget meter says when to revisit (§11.2). |
+| Default gate fail | `refuse` — it teaches the player the item exists (§11.3). |
+| Counter clamp | 10, per story, configurable. The solver needs a ceiling or it never terminates (§11.5). |
+
+## Spec gaps resolved in code
+
+- §4.4 says playtest enforces `requires_item`; no such field exists. It's `gates`.
+- F5.4 enforces a per-node timeout with no column for it → added `nodes.timeout_seconds`.
+- §2's `effects` used a polymorphic `owner_type`/`owner_id`; implemented as two
+  nullable FKs with a CHECK, which buys referential integrity and cascade deletes.
+
+## Stack
+
+React + Vite + TypeScript, Tailwind, **Zustand** (one graph in memory), Supabase
+(Postgres + Auth + Storage), `elkjs` for automap layout, `MediaRecorder` for
+capture. pnpm. Target device order: **tablet portrait, then phone, then desktop.**
+
+## Architecture principles
+
+1. **Derived, never stored.** Depth, orphans, back-edges, reachability are all
+   recomputed from the graph (`src/features/graph/derived.ts`). Never persist them.
+2. **Back-edges need a DFS colour map, not a depth compare.** A cross-edge to a
+   shallower node is reconvergence (a door); only an edge to a node still open on
+   the stack is a portal (a stairwell). Getting this wrong was the flowchart's
+   worst failing.
+3. **The room model is pure.** `src/features/room/roomModel.ts` turns
+   (graph, derived, nodeId) into a `RoomView` with no React in it. Renderers
+   consume that and nothing else — that's the seam sprites would slot into.
+4. **RLS-first.** Every table has Row Level Security from the migration that
+   creates it. The `voice` role's column restriction is a trigger, because
+   row-level policies cannot scope an UPDATE to specific columns.
+5. **Optimistic writes with rollback.** Autosave-on-blur applies locally first,
+   then reconciles; a rejected write rolls back so the UI never claims a save
+   that didn't happen.
+6. **Undo replays inverse operations against the database**, not local snapshots.
+   Every mutation is already persisted, so a snapshot-restore would be undone by
+   the next read.
+7. **Pipe-delimit inventory tests.** Studio's `contains` matches substrings, so
+   `ROPE` would match `ROPEBURN`. Always wrap in `|`. Same class of bug bit the
+   importer's column matching — use whole-word matching, never `includes`.
+
+## Repo layout
+
+```
+src/
+  features/
+    graph/      store (zustand) + derived structure
+    room/       roomModel (pure) + RoomStage (renderer seam) + EditorSheet
+    import/     CSV parse -> column mapping -> plan -> commit
+    auth/       session hook
+  lib/          supabase client, slug, speech estimates, api
+  routes/       one file per screen
+  types/        domain types — mirror the migrations
+supabase/migrations/
+docs/delve-spec.md
+```
+
+## Build phases (spec §10)
+
+1 skeleton walker + import · 2 dungeon dressing · 3 audio · 4 structure ·
+4.5 items & state solver · 5 playtest · 5.5 collaboration · 6 export · 7 polish.
+
+Build one phase at a time; resist pulling later phases forward. Each phase ends
+with `pnpm typecheck && pnpm lint && pnpm test` clean and a commit.
+
+## Commands
+
+```
+pnpm dev | build | preview | typecheck | lint | test
+```
+
+## Environment
+
+`.env` (gitignored) and the Netlify UI need:
+
+```
+VITE_SUPABASE_URL
+VITE_SUPABASE_PUBLISHABLE_KEY
+```
+
+Supabase project: **the-delve** (`tzfkylvtndgaugbgxbuc`).
