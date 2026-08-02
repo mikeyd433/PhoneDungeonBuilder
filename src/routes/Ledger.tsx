@@ -2,9 +2,10 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useDelve } from '@/features/graph/store'
 import { darkRooms, trapNodes, unwrittenBranches } from '@/features/graph/derived'
+import { buildFightView } from '@/features/fight/model'
 import type { StoryNode } from '@/types/domain'
 
-type Tab = 'unexplored' | 'sealed' | 'dark' | 'traps' | 'all'
+type Tab = 'unexplored' | 'sealed' | 'dark' | 'traps' | 'fights' | 'all'
 
 const TABS: Array<{ id: Tab; label: string; help: string }> = [
   { id: 'unexplored', label: 'Unexplored passages', help: 'Choices with no destination — your to-write list.' },
@@ -14,6 +15,11 @@ const TABS: Array<{ id: Tab; label: string; help: string }> = [
     id: 'traps',
     label: 'Traps',
     help: 'Reachable rooms from which no ending can ever be reached — a caller who walks in can never finish (F4.9).',
+  },
+  {
+    id: 'fights',
+    label: 'Fights',
+    help: 'Every fight, and anything wrong with it. A round nothing counters kills every caller who reaches it.',
   },
   { id: 'all', label: 'All rooms', help: 'The whole dungeon.' },
 ]
@@ -69,6 +75,24 @@ export default function Ledger() {
     }
     if (tab === 'dark') {
       return nodeRows(darkRooms(graph, derived))
+    }
+    if (tab === 'fights') {
+      return [...graph.fights.values()]
+        .map((f) => {
+          const node = graph.nodes.get(f.node_id)
+          const view = node ? buildFightView(graph, node.id) : null
+          return {
+            id: f.id,
+            nodeId: f.node_id,
+            primary: `${node?.slug ?? '?'} · ${f.opponent_name}`,
+            secondary: view
+              ? view.problems[0] ??
+                `${view.rounds.length} round(s), ${view.moves.length} move(s) — sound.`
+              : '',
+          }
+        })
+        .filter((r) => matches(r.primary + r.secondary))
+        .sort((a, b) => a.primary.localeCompare(b.primary))
     }
     if (tab === 'traps') {
       const traps = trapNodes(graph, derived)

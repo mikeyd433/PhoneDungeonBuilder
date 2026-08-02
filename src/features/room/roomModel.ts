@@ -8,6 +8,8 @@ import type {
   StoryNode,
 } from '@/types/domain'
 import { WALL_EXITS } from '@/types/domain'
+import { buildFightView, type FightView } from '@/features/fight/model'
+import { linesFor } from '@/features/cast/dialogue'
 
 /**
  * What one room shows, derived from a single node's record.
@@ -52,8 +54,9 @@ export interface RoomView {
   exits: ExitView[]
   /** F1.13 — digits 4–9 render as a stacked list rather than walls. */
   overflowExits: ExitView[]
-  /** F1.4 / F1.12 — inbound choices. More than one means a retreat chooser. */
-  retreats: Array<{ choiceId: string; fromId: string; fromTitle: string }>
+  /** F1.4 / F1.12 — every way in, fight outcomes included. More than one means a
+   *  retreat chooser. */
+  retreats: Array<{ edgeId: string; fromId: string; fromTitle: string }>
   /** F1.11 — rooms sharing a parent with this one, in digit order, including
    *  this room. Swiping the floor plaque cycles them, so a whole choice set can
    *  be reviewed without walking back up. */
@@ -74,6 +77,14 @@ export interface RoomView {
   isUnreachable: boolean
   /** An ending that still has exits — §2 says enforce in the app, not the DB. */
   endingWithExits: boolean
+  /** Set when this room is a fight. The walls give way to the arena. */
+  fight: FightView | null
+  /** A fight room that also has doors: the doors are never offered, because the
+   *  fight decides where the caller goes. */
+  fightWithExits: boolean
+  /** F1.14 — the narration, split by who says it. Empty when nobody has split
+   *  this room's text into lines yet. */
+  lines: Array<{ id: string; speaker: string | null; color: string; text: string }>
 }
 
 function varSlug(graph: StoryGraph, effect: Effect): string {
@@ -142,11 +153,15 @@ export function buildRoomView(
     .slice(WALL_EXITS)
     .map((c, i) => toExit(c, WALL_EXITS + i))
 
+  const fight = buildFightView(graph, nodeId)
+
   // Pad the walls out to three so empty slots render as bricked archways you can
-  // chisel through — the primary way new rooms get made (F1.3).
+  // chisel through — the primary way new rooms get made (F1.3). A fight room is
+  // not padded: its way onward is won, not chosen, so offering a bricked arch
+  // there would invite the author to build a door the caller never sees.
   const usedDigits = new Set(outgoing.map((c) => c.digit))
   const isEnding = node.node_type === 'ending'
-  if (!isEnding) {
+  if (!isEnding && !fight) {
     let nextDigit = 1
     while (exits.length < WALL_EXITS) {
       while (nextDigit <= 9 && usedDigits.has(String(nextDigit) as Digit)) nextDigit++
@@ -171,11 +186,11 @@ export function buildRoomView(
 
   const arrival = effectsFor((e) => e.node_id === nodeId)
 
-  const retreats = (derived.parents.get(nodeId) ?? []).map((c) => {
-    const from = graph.nodes.get(c.from_node_id)
+  const retreats = (derived.edgesTo.get(nodeId) ?? []).map((e) => {
+    const from = graph.nodes.get(e.from_node_id)
     return {
-      choiceId: c.id,
-      fromId: c.from_node_id,
+      edgeId: e.id,
+      fromId: e.from_node_id,
       fromTitle: from?.title || from?.slug || 'somewhere',
     }
   })
@@ -208,6 +223,19 @@ export function buildRoomView(
     isOrphan: derived.orphans.has(nodeId),
     isUnreachable: derived.unreachable.has(nodeId),
     endingWithExits: isEnding && outgoing.length > 0,
+    fight,
+    fightWithExits: Boolean(fight) && outgoing.length > 0,
+    lines: linesFor(graph, nodeId).map((l) => {
+      const character = l.character_id ? graph.characters.get(l.character_id) : null
+      return {
+        id: l.id,
+        speaker: character?.name ?? null,
+        // Unattributed lines take the parchment default, so the colour always
+        // means "this particular person", never "this is dialogue".
+        color: character?.color ?? 'parchment',
+        text: l.text,
+      }
+    }),
   }
 }
 

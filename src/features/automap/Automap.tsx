@@ -158,19 +158,23 @@ export default function Automap({ layout, currentId, onTeleport, thumbnail }: Pr
           fill="url(#graphpaper)"
         />
 
-        {/* Corridors. Back-edges dashed, so a loop never reads as a new branch. */}
+        {/* Corridors. Back-edges dashed, so a loop never reads as a new branch.
+            A fight's two outcomes are inked in red and told apart by weight:
+            the way out you earn is drawn solid, the way out you fall through
+            is drawn thin and broken. */}
         {layout.edges.map((edge) => {
           if (edge.points.length < 2) return null
           const d = edge.points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')
+          const lost = edge.outcome === 'lose'
           return (
             <path
               key={edge.id}
               d={d}
               fill="none"
-              stroke="#1F3A4A"
-              strokeWidth={edge.isPortal ? 1.5 : 2}
-              strokeDasharray={edge.isPortal ? '6 4' : undefined}
-              opacity={edge.isPortal ? 0.75 : 1}
+              stroke={edge.outcome ? '#8C2F22' : '#1F3A4A'}
+              strokeWidth={lost || edge.isPortal ? 1.5 : 2}
+              strokeDasharray={lost ? '2 4' : edge.isPortal ? '6 4' : undefined}
+              opacity={lost || edge.isPortal ? 0.75 : 1}
               markerEnd="url(#arrow)"
             />
           )
@@ -211,8 +215,8 @@ export default function Automap({ layout, currentId, onTeleport, thumbnail }: Pr
             role={interactive ? 'button' : undefined}
             tabIndex={interactive ? 0 : undefined}
             aria-label={`${room.slug}${room.isEnding ? ', an ending' : ''}${
-              room.recorded ? ', recorded' : ''
-            }`}
+              room.isFight ? ', a fight' : ''
+            }${room.recorded ? ', recorded' : ''}`}
             onClick={interactive ? () => onTeleport(room.id) : undefined}
             onKeyDown={
               interactive
@@ -263,6 +267,18 @@ export default function Automap({ layout, currentId, onTeleport, thumbnail }: Pr
                   x2={room.x + 6}
                   y2={room.y + room.h - 6}
                 />
+              </g>
+            )}
+
+            {/* Crossed blades in the top-left corner: a fight. Deliberately not
+                the ending's X — that one is heavy, centred and means "stop",
+                and two marks meaning different things must not look alike. */}
+            {room.isFight && (
+              <g stroke="#8C2F22" strokeWidth={2} strokeLinecap="round">
+                <line x1={room.x + 5} y1={room.y + 5} x2={room.x + 19} y2={room.y + 19} />
+                <line x1={room.x + 19} y1={room.y + 5} x2={room.x + 5} y2={room.y + 19} />
+                <circle cx={room.x + 5} cy={room.y + 19} r={2} fill="#8C2F22" strokeWidth={0} />
+                <circle cx={room.x + 19} cy={room.y + 19} r={2} fill="#8C2F22" strokeWidth={0} />
               </g>
             )}
 

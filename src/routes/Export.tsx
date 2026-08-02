@@ -6,10 +6,12 @@ import { compileStory } from '@/features/export/compile'
 import {
   audioManifestCsv,
   buildSheet,
+  castManifestCsv,
   printableScript,
   storyJson,
   studioFlowJson,
 } from '@/features/export/outputs'
+import { workloads } from '@/features/cast/dialogue'
 import { publicAudioUrl } from '@/features/audio/storage'
 
 function download(name: string, body: string, type = 'text/plain') {
@@ -133,10 +135,28 @@ export default function Export() {
           },
           {
             label: 'Printable script',
-            help: 'One room per section, for VO talent.',
+            help: 'One room per section, for VO talent. Fight rounds included — they live on the fight, not in the narration, and are the easiest lines to forget to record.',
             file: `${graph.story.title}-script.txt`,
             body: printableScript(graph),
             type: 'text/plain',
+          },
+          // One per voice actor. Named actors only: an "unassigned" script would
+          // just be the full script again under a misleading name.
+          ...workloads(graph)
+            .filter((w) => w.actor)
+            .map((w) => ({
+              label: `Script — ${w.actor}`,
+              help: `${w.lines} line(s) as ${w.characters.join(', ') || 'unattributed'}. Their lines are marked; the rest is cues.`,
+              file: `${graph.story.title}-script-${w.actor}.txt`,
+              body: printableScript(graph, w.actor ?? undefined),
+              type: 'text/plain',
+            })),
+          {
+            label: 'Cast manifest',
+            help: 'CSV of who speaks, who records them, and how many of their rooms are still dark.',
+            file: `${graph.story.title}-cast.csv`,
+            body: castManifestCsv(graph),
+            type: 'text/csv',
           },
           {
             label: 'Story JSON',

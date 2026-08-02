@@ -1,11 +1,12 @@
-import type { Choice, DerivedGraph, StoryGraph } from '@/types/domain'
+import type { Choice, DerivedGraph, GraphEdge, StoryGraph } from '@/types/domain'
 import { DIGITS } from '@/types/domain'
+import { graphEdges } from './edges'
 
 const digitOrder = new Map(DIGITS.map((d, i) => [d as string, i]))
 
-function byDigit(a: Choice, b: Choice): number {
+function byDigit(a: { digit: string | null; sort_order: number }, b: { digit: string | null; sort_order: number }): number {
   if (a.sort_order !== b.sort_order) return a.sort_order - b.sort_order
-  return (digitOrder.get(a.digit) ?? 99) - (digitOrder.get(b.digit) ?? 99)
+  return (digitOrder.get(a.digit ?? '') ?? 99) - (digitOrder.get(b.digit ?? '') ?? 99)
 }
 
 /**
@@ -16,18 +17,26 @@ function byDigit(a: Choice, b: Choice): number {
 export function deriveGraph(graph: StoryGraph): DerivedGraph {
   const parents = new Map<string, Choice[]>()
   const children = new Map<string, Choice[]>()
+  const edgesFrom = new Map<string, GraphEdge[]>()
+  const edgesTo = new Map<string, GraphEdge[]>()
 
   for (const node of graph.nodes.values()) {
     parents.set(node.id, [])
     children.set(node.id, [])
+    edgesFrom.set(node.id, [])
+    edgesTo.set(node.id, [])
   }
 
-  for (const choice of graph.choices.values()) {
-    children.get(choice.from_node_id)?.push(choice)
-    if (choice.to_node_id) parents.get(choice.to_node_id)?.push(choice)
+  for (const edge of graphEdges(graph)) {
+    edgesFrom.get(edge.from_node_id)?.push(edge)
+    if (edge.to_node_id) edgesTo.get(edge.to_node_id)?.push(edge)
+    if (!edge.choice) continue
+    children.get(edge.from_node_id)?.push(edge.choice)
+    if (edge.to_node_id) parents.get(edge.to_node_id)?.push(edge.choice)
   }
 
   for (const list of children.values()) list.sort(byDigit)
+  for (const list of edgesFrom.values()) list.sort(byDigit)
 
   const rootId = graph.story.root_node_id
 
@@ -39,8 +48,8 @@ export function deriveGraph(graph: StoryGraph): DerivedGraph {
     for (let i = 0; i < queue.length; i++) {
       const id = queue[i]
       const d = depth.get(id)!
-      for (const choice of children.get(id) ?? []) {
-        const next = choice.to_node_id
+      for (const edge of edgesFrom.get(id) ?? []) {
+        const next = edge.to_node_id
         if (!next || depth.has(next)) continue
         depth.set(next, d + 1)
         queue.push(next)
@@ -53,9 +62,10 @@ export function deriveGraph(graph: StoryGraph): DerivedGraph {
     if (!depth.has(id)) unreachable.add(id)
   }
 
-  // Orphans: no inbound choices and not the root.
+  // Orphans: nothing leads here, and it isn't the root. A room reached only by
+  // winning a fight has no inbound *choice*, but plenty leads to it.
   const orphans = new Set<string>()
-  for (const [id, inbound] of parents) {
+  for (const [id, inbound] of edgesTo) {
     if (id !== rootId && inbound.length === 0) orphans.add(id)
   }
 
@@ -75,18 +85,18 @@ export function deriveGraph(graph: StoryGraph): DerivedGraph {
     state.set(rootId, OPEN)
     while (stack.length) {
       const frame = stack[stack.length - 1]
-      const outgoing = children.get(frame.id) ?? []
+      const outgoing = edgesFrom.get(frame.id) ?? []
       if (frame.next >= outgoing.length) {
         state.set(frame.id, DONE)
         stack.pop()
         continue
       }
-      const choice = outgoing[frame.next++]
-      const target = choice.to_node_id
+      const edge = outgoing[frame.next++]
+      const target = edge.to_node_id
       if (!target || !graph.nodes.has(target)) continue
       const seen = state.get(target)
       if (seen === OPEN) {
-        portals.add(choice.id)
+        portals.add(edge.id)
       } else if (seen === undefined) {
         state.set(target, OPEN)
         stack.push({ id: target, next: 0 })
@@ -94,7 +104,7 @@ export function deriveGraph(graph: StoryGraph): DerivedGraph {
     }
   }
 
-  return { depth, orphans, portals, unreachable, parents, children }
+  return { depth, orphans, portals, unreachable, parents, children, edgesFrom, edgesTo }
 }
 
 /** Choices with no destination — the to-write list behind the ledger's
@@ -134,7 +144,7 @@ export function trapNodes(graph: StoryGraph, derived: DerivedGraph): Set<string>
     }
   }
   for (let i = 0; i < queue.length; i++) {
-    for (const inbound of derived.parents.get(queue[i]) ?? []) {
+    for (const inbound of derived.edgesTo.get(queue[i]) ?? []) {
       if (!canFinish.has(inbound.from_node_id)) {
         canFinish.add(inbound.from_node_id)
         queue.push(inbound.from_node_id)

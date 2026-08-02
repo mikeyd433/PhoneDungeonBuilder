@@ -120,7 +120,110 @@ export interface Membership {
   created_at: string
 }
 
+// ------------------------------------------------------------ cast & dialogue
+
+/**
+ * Somebody who speaks. Cast entries are a production concern only — they group
+ * lines by who says them and by who records them, and have no effect at all on
+ * the compiled flow, because audio is still one file per room.
+ */
+export interface Character {
+  id: string
+  story_id: string
+  slug: string
+  name: string
+  /** A character the caller can *be* — the Mike/Carter choice at the entrance. */
+  is_playable: boolean
+  voice_actor: string | null
+  color: string
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
+/** One attributed line of a room's narration. `character_id` null = narration
+ *  with nobody speaking it. */
+export interface DialogueLine {
+  id: string
+  story_id: string
+  node_id: string
+  character_id: string | null
+  text: string
+  sort_order: number
+  created_at: string
+  updated_at: string
+}
+
+// ------------------------------------------------------------ fights
+
+/**
+ * A scripted exchange, hung off a room rather than replacing it.
+ *
+ * The room's own narration is the lead-in; then the opponent announces a move
+ * each round and the caller must press the digit of the move that counters it.
+ * A wrong answer ends the fight at `lose_node_id`; surviving every round lands
+ * at `win_node_id`. This is the shape the shark fight was hand-built in.
+ */
+export interface Fight {
+  id: string
+  story_id: string
+  node_id: string
+  opponent_name: string
+  win_node_id: string | null
+  lose_node_id: string | null
+  created_at: string
+  updated_at: string
+}
+
+/** A move the caller can answer with, and the opponent move it defeats. */
+export interface FightMove {
+  id: string
+  story_id: string
+  fight_id: string
+  slug: string
+  label: string
+  /** Matched against `FightRound.opponent_move`. Null while undecided. */
+  beats: string | null
+  sort_order: number
+  created_at: string
+}
+
+export interface FightRound {
+  id: string
+  story_id: string
+  fight_id: string
+  sort_order: number
+  opponent_move: string
+  narration: string
+  created_at: string
+  updated_at: string
+}
+
 // ------------------------------------------------------------ derived, never stored
+
+/**
+ * Every way a caller can get from one room to another.
+ *
+ * A choice is the usual one, but a fight's two outcomes are edges too: the room
+ * after a won fight is genuinely reachable, and treating it as anything else
+ * would have the ledger call it an orphan and the automap draw it floating.
+ * Structure is computed over these; the room's *exits* are still choices only,
+ * because a fight is answered with moves rather than doors.
+ */
+export type EdgeKind = 'choice' | 'fight-win' | 'fight-lose'
+
+export interface GraphEdge {
+  /** Real choice id, or `fight:<fightId>:win` / `:lose` for a fight outcome. */
+  id: string
+  kind: EdgeKind
+  from_node_id: string
+  to_node_id: string | null
+  digit: Digit | null
+  label: string
+  sort_order: number
+  /** The underlying row, when this edge is a real choice. */
+  choice: Choice | null
+}
 
 /** Spec §2 "Derived, never stored". Recomputed from the graph, never persisted. */
 export interface DerivedGraph {
@@ -137,6 +240,10 @@ export interface DerivedGraph {
   parents: Map<string, Choice[]>
   /** node id -> outbound choices, digit-ordered. */
   children: Map<string, Choice[]>
+  /** node id -> every outbound edge, fight outcomes included. */
+  edgesFrom: Map<string, GraphEdge[]>
+  /** node id -> every inbound edge, fight outcomes included. */
+  edgesTo: Map<string, GraphEdge[]>
 }
 
 /** Everything about one story, held in memory as a single graph (§1 Stack). */
@@ -147,6 +254,11 @@ export interface StoryGraph {
   stateVars: Map<string, StateVar>
   effects: Map<string, Effect>
   gates: Map<string, Gate>
+  characters: Map<string, Character>
+  dialogue: Map<string, DialogueLine>
+  fights: Map<string, Fight>
+  fightMoves: Map<string, FightMove>
+  fightRounds: Map<string, FightRound>
 }
 
 export function canWrite(role: MembershipRole | null): boolean {

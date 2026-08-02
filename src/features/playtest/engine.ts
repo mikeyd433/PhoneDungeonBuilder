@@ -1,4 +1,5 @@
 import type { Choice, StoryGraph } from '@/types/domain'
+import { buildFightView, counterFor, type FightView } from '@/features/fight/model'
 import {
   applyEffects,
   buildVarIndex,
@@ -41,6 +42,15 @@ export interface PlaytestState {
   /** Consecutive failed attempts at this node, for the patience valve (§6.3). */
   failedAttempts: number
   finished: boolean
+  /** Which round of the fight the caller is in, or null when this isn't one. */
+  fightRound: number | null
+}
+
+/** One move the caller can answer a round with, as the keypad hint shows it. */
+export interface FightOption {
+  digit: string
+  slug: string
+  label: string
 }
 
 export class PlaytestEngine {
@@ -59,7 +69,14 @@ export class PlaytestEngine {
     const rootId = this.graph.story.root_node_id
     const node = rootId ? this.graph.nodes.get(rootId) : undefined
     if (!rootId || !node) {
-      return { nodeId: '', caller: emptyState(this.index), path: [], failedAttempts: 0, finished: true }
+      return {
+        nodeId: '',
+        caller: emptyState(this.index),
+        path: [],
+        failedAttempts: 0,
+        finished: true,
+        fightRound: null,
+      }
     }
     return {
       nodeId: rootId,
@@ -67,7 +84,14 @@ export class PlaytestEngine {
       path: [node.slug],
       failedAttempts: 0,
       finished: node.node_type === 'ending',
+      fightRound: this.openingRound(rootId),
     }
+  }
+
+  /** 0 when the room is a fight with something to answer, null otherwise. */
+  private openingRound(nodeId: string): number | null {
+    const view = buildFightView(this.graph, nodeId)
+    return view && view.rounds.length > 0 ? 0 : null
   }
 
   private nodeEffects(nodeId: string): EffectLike[] {
@@ -90,8 +114,38 @@ export class PlaytestEngine {
       .filter((e) => e.varSlug)
   }
 
-  /** What the caller is offered here, in digit order. */
+  /** The fight in the room the caller is standing in, if there is one. */
+  fightAt(state: PlaytestState): FightView | null {
+    return buildFightView(this.graph, state.nodeId)
+  }
+
+  /** What the opponent just did — read after the room's own narration. */
+  roundPrompt(state: PlaytestState): string | null {
+    const view = this.fightAt(state)
+    if (!view || state.fightRound === null) return null
+    const round = view.rounds[state.fightRound]
+    if (!round) return null
+    return round.narration || `${view.fight.opponent_name}: ${round.opponent_move}`
+  }
+
+  /** The moves on offer this round, in keypad order. */
+  fightOptions(state: PlaytestState): FightOption[] {
+    const view = this.fightAt(state)
+    if (!view || state.fightRound === null) return []
+    return view.moves
+      .slice(0, 9)
+      .map((m, i) => ({ digit: String(i + 1), slug: m.slug, label: m.label || m.slug }))
+  }
+
+  /**
+   * What the caller is offered here, in digit order.
+   *
+   * A fight room offers nothing: whatever doors it happens to have, the fight
+   * decides where the caller goes, and listing them would let the playtest walk
+   * a route the phone never allows.
+   */
   offered(state: PlaytestState): OfferedChoice[] {
+    if (state.fightRound !== null) return []
     const out: OfferedChoice[] = []
     for (const choice of this.graph.choices.values()) {
       if (choice.from_node_id !== state.nodeId) continue
@@ -123,6 +177,8 @@ export class PlaytestEngine {
    * way — a refusal has narration of its own before they land back here.
    */
   press(state: PlaytestState, digit: string): { next: PlaytestState; spoken: string | null } {
+    if (state.fightRound !== null) return this.pressInFight(state, digit)
+
     const offer = this.offered(state).find((o) => o.choice.digit === digit)
 
     if (!offer) {
@@ -172,8 +228,69 @@ export class PlaytestEngine {
     return this.enter({ ...state, caller }, offer.choice.to_node_id)
   }
 
+  /**
+   * A digit pressed mid-fight.
+   *
+   * There is no "that isn't one of the options" here. Every wrong answer loses,
+   * including a digit no move is mapped to — a fight that let you retry until
+   * you guessed right would not be a fight.
+   */
+  private pressInFight(
+    state: PlaytestState,
+    digit: string,
+  ): { next: PlaytestState; spoken: string | null } {
+    const view = this.fightAt(state)
+    if (!view || state.fightRound === null) return { next: state, spoken: null }
+
+    const round = view.rounds[state.fightRound]
+    if (!round) return this.endFight(state, view, true)
+
+    const move = view.moves[Number(digit) - 1]
+    const right = move && counterFor(view.moves, round)?.id === move.id
+    if (!right) return this.endFight(state, view, false)
+
+    const nextRound = state.fightRound + 1
+    if (nextRound >= view.rounds.length) return this.endFight(state, view, true)
+
+    const upcoming = view.rounds[nextRound]
+    return {
+      next: { ...state, fightRound: nextRound, failedAttempts: 0 },
+      spoken:
+        upcoming.narration || `${view.fight.opponent_name}: ${upcoming.opponent_move}`,
+    }
+  }
+
+  private endFight(
+    state: PlaytestState,
+    view: FightView,
+    won: boolean,
+  ): { next: PlaytestState; spoken: string | null } {
+    const opponent = view.fight.opponent_name
+    const spoken = won ? `${opponent} goes down.` : `${opponent} puts you down.`
+    const target = won ? view.fight.win_node_id : view.fight.lose_node_id
+
+    if (!target || !this.graph.nodes.has(target)) {
+      // The author hasn't said where this outcome leads. Say so rather than
+      // silently repeating the round, which would read as the fight ignoring
+      // a correct answer.
+      return {
+        next: { ...state, fightRound: null, failedAttempts: state.failedAttempts + 1 },
+        spoken: `${spoken} (Nowhere is set for ${won ? 'winning' : 'losing'} — this branch is unwritten.)`,
+      }
+    }
+    return { next: this.enter(state, target).next, spoken }
+  }
+
   /** F5.4 — the caller said nothing in time. */
   timeout(state: PlaytestState): { next: PlaytestState; spoken: string | null } {
+    // Hesitating in a fight is an answer. The exporter routes a round's timeout
+    // to the losing room for the same reason — otherwise a caller could wait
+    // out any round they couldn't solve — and the two must not disagree.
+    if (state.fightRound !== null) {
+      const view = this.fightAt(state)
+      if (view) return this.endFight(state, view, false)
+    }
+
     const node = this.graph.nodes.get(state.nodeId)
     const target = node?.timeout_target_id
     if (target && this.graph.nodes.has(target)) return this.enter(state, target)
@@ -192,6 +309,7 @@ export class PlaytestEngine {
         path: [...state.path, node.slug],
         failedAttempts: 0,
         finished: node.node_type === 'ending',
+        fightRound: this.openingRound(nodeId),
       },
       spoken: null,
     }

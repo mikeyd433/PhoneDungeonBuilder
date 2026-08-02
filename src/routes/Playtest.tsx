@@ -51,7 +51,13 @@ export default function Playtest() {
     const start = engine.start()
     setState(start)
     const first = graph.nodes.get(start.nodeId)
-    setLines(first ? [{ who: 'story', text: first.narration || `(${first.slug} has no script yet)` }] : [])
+    const opening: Line[] = first
+      ? [{ who: 'story', text: first.narration || `(${first.slug} has no script yet)` }]
+      : []
+    // A fight room reads its lead-in, then the first round.
+    const round = engine.roundPrompt(start)
+    if (round) opening.push({ who: 'story', text: round })
+    setLines(opening)
   }, [engine, graph])
 
   useEffect(() => {
@@ -105,6 +111,9 @@ export default function Playtest() {
     const movedTo = next.nodeId !== state?.nodeId ? graph.nodes.get(next.nodeId) : null
     if (movedTo) {
       added.push({ who: 'story', text: movedTo.narration || `(${movedTo.slug} has no script yet)` })
+      // Walking into a fight: its first round follows the room's lead-in.
+      const opening = engine?.roundPrompt(next)
+      if (opening) added.push({ who: 'story', text: opening })
     }
     if (spoken && !movedTo) speak(spoken)
     setLines((l) => [...l, ...added])
@@ -114,6 +123,7 @@ export default function Playtest() {
   if (!graph || !engine || !state) return <p className="p-6 text-mortar">Dialling…</p>
 
   const offered = engine.offered(state)
+  const fightOptions = engine.fightOptions(state)
   const held = engine.held(state)
   const vars = [...graph.stateVars.values()]
 
@@ -199,7 +209,23 @@ export default function Playtest() {
 
       {!state.finished && (
         <div className="border-t border-mortar/40 px-4 py-2 text-xs text-mortar">
-          {offered.length === 0 ? (
+          {state.fightRound !== null ? (
+            /* Mid-fight the digits mean moves, not doors. Every other answer
+               loses, which is why they are listed as the only ones. */
+            <>
+              <span className="mr-3 text-grave">
+                round {state.fightRound + 1} of {engine.fightAt(state)?.rounds.length ?? 0}
+              </span>
+              {fightOptions.map((o) => (
+                <span key={o.digit} className="mr-3">
+                  <span className="text-torch">{o.digit}</span> {o.label}
+                </span>
+              ))}
+              {fightOptions.length === 0 && (
+                <span className="text-grave">This fight has no moves — every answer loses.</span>
+              )}
+            </>
+          ) : offered.length === 0 ? (
             <span className="text-grave">
               No exits here and this isn&apos;t an ending — the caller is stuck.
             </span>

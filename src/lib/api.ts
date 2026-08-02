@@ -1,7 +1,12 @@
 import { supabase } from './supabase'
 import type {
+  Character,
   Choice,
+  DialogueLine,
   Effect,
+  Fight,
+  FightMove,
+  FightRound,
   Gate,
   Membership,
   MembershipRole,
@@ -14,29 +19,64 @@ import type {
 /** Load an entire story into memory in one round trip per table. Spec §1 treats
  *  the graph as a single in-memory object, so this is the only read path. */
 export async function loadStoryGraph(storyId: string): Promise<StoryGraph> {
-  const [story, nodes, choices, stateVars, effects, gates] = await Promise.all([
+  const byStory = (table: string) => supabase.from(table).select('*').eq('story_id', storyId)
+
+  const [
+    story,
+    nodes,
+    choices,
+    stateVars,
+    effects,
+    gates,
+    characters,
+    dialogue,
+    fights,
+    fightMoves,
+    fightRounds,
+  ] = await Promise.all([
     supabase.from('stories').select('*').eq('id', storyId).single(),
-    supabase.from('nodes').select('*').eq('story_id', storyId),
-    supabase.from('choices').select('*').eq('story_id', storyId),
-    supabase.from('state_vars').select('*').eq('story_id', storyId),
-    supabase.from('effects').select('*').eq('story_id', storyId),
-    supabase.from('gates').select('*').eq('story_id', storyId),
+    byStory('nodes'),
+    byStory('choices'),
+    byStory('state_vars'),
+    byStory('effects'),
+    byStory('gates'),
+    byStory('characters'),
+    byStory('dialogue_lines'),
+    byStory('fights'),
+    byStory('fight_moves'),
+    byStory('fight_rounds'),
   ])
 
-  const firstError =
-    story.error ?? nodes.error ?? choices.error ?? stateVars.error ?? effects.error ?? gates.error
+  const firstError = [
+    story,
+    nodes,
+    choices,
+    stateVars,
+    effects,
+    gates,
+    characters,
+    dialogue,
+    fights,
+    fightMoves,
+    fightRounds,
+  ].find((r) => r.error)?.error
   if (firstError) throw firstError
 
-  const index = <T extends { id: string }>(rows: T[] | null) =>
-    new Map((rows ?? []).map((r) => [r.id, r]))
+  const index = <T extends { id: string }>(rows: unknown) =>
+    new Map(((rows ?? []) as T[]).map((r) => [r.id, r]))
 
   return {
     story: story.data as Story,
-    nodes: index<StoryNode>(nodes.data as StoryNode[]),
-    choices: index<Choice>(choices.data as Choice[]),
-    stateVars: index<StateVar>(stateVars.data as StateVar[]),
-    effects: index<Effect>(effects.data as Effect[]),
-    gates: index<Gate>(gates.data as Gate[]),
+    nodes: index<StoryNode>(nodes.data),
+    choices: index<Choice>(choices.data),
+    stateVars: index<StateVar>(stateVars.data),
+    effects: index<Effect>(effects.data),
+    gates: index<Gate>(gates.data),
+    characters: index<Character>(characters.data),
+    dialogue: index<DialogueLine>(dialogue.data),
+    fights: index<Fight>(fights.data),
+    fightMoves: index<FightMove>(fightMoves.data),
+    fightRounds: index<FightRound>(fightRounds.data),
   }
 }
 
@@ -222,3 +262,88 @@ export async function deleteGate(choiceId: string): Promise<void> {
   const { error } = await supabase.from('gates').delete().eq('choice_id', choiceId)
   if (error) throw error
 }
+
+// ------------------------------------------------------------ cast & dialogue
+
+/**
+ * The five new tables all take story_id and hand back the inserted row, so one
+ * generic pair beats ten near-identical wrappers. The story_id passed here is
+ * advisory: a trigger overwrites it from the parent row, which is what stops a
+ * forged id from smuggling a line into someone else's story.
+ */
+async function insertRow<T>(table: string, storyId: string, patch: object): Promise<T> {
+  const { data, error } = await supabase
+    .from(table)
+    .insert({ story_id: storyId, ...patch })
+    .select()
+    .single()
+  if (error) throw error
+  return data as T
+}
+
+async function updateRow<T>(table: string, id: string, patch: object): Promise<T> {
+  const { data, error } = await supabase.from(table).update(patch).eq('id', id).select().single()
+  if (error) throw error
+  return data as T
+}
+
+async function deleteRow(table: string, id: string): Promise<void> {
+  const { error } = await supabase.from(table).delete().eq('id', id)
+  if (error) throw error
+}
+
+export const createCharacter = (storyId: string, patch: Partial<Character> & { slug: string; name: string }) =>
+  insertRow<Character>('characters', storyId, patch)
+export const updateCharacter = (id: string, patch: Partial<Character>) =>
+  updateRow<Character>('characters', id, patch)
+export const deleteCharacter = (id: string) => deleteRow('characters', id)
+
+export const createDialogueLine = (
+  storyId: string,
+  patch: Partial<DialogueLine> & { node_id: string; text: string },
+) => insertRow<DialogueLine>('dialogue_lines', storyId, patch)
+export const updateDialogueLine = (id: string, patch: Partial<DialogueLine>) =>
+  updateRow<DialogueLine>('dialogue_lines', id, patch)
+export const deleteDialogueLine = (id: string) => deleteRow('dialogue_lines', id)
+
+/** Replace a room's lines wholesale. Splitting narration rewrites every line at
+ *  once, and a delete-then-insert keeps sort_order contiguous without a second
+ *  pass to renumber. */
+export async function replaceDialogue(
+  storyId: string,
+  nodeId: string,
+  lines: Array<{ character_id: string | null; text: string }>,
+): Promise<DialogueLine[]> {
+  const { error } = await supabase.from('dialogue_lines').delete().eq('node_id', nodeId)
+  if (error) throw error
+  if (lines.length === 0) return []
+  const { data, error: insertError } = await supabase
+    .from('dialogue_lines')
+    .insert(
+      lines.map((l, i) => ({ story_id: storyId, node_id: nodeId, sort_order: i, ...l })),
+    )
+    .select()
+  if (insertError) throw insertError
+  return (data ?? []) as DialogueLine[]
+}
+
+// ------------------------------------------------------------ fights
+
+export const createFight = (storyId: string, patch: Partial<Fight> & { node_id: string }) =>
+  insertRow<Fight>('fights', storyId, patch)
+export const updateFight = (id: string, patch: Partial<Fight>) => updateRow<Fight>('fights', id, patch)
+export const deleteFight = (id: string) => deleteRow('fights', id)
+
+export const createFightMove = (
+  storyId: string,
+  patch: Partial<FightMove> & { fight_id: string; slug: string },
+) => insertRow<FightMove>('fight_moves', storyId, patch)
+export const updateFightMove = (id: string, patch: Partial<FightMove>) =>
+  updateRow<FightMove>('fight_moves', id, patch)
+export const deleteFightMove = (id: string) => deleteRow('fight_moves', id)
+
+export const createFightRound = (storyId: string, patch: Partial<FightRound> & { fight_id: string }) =>
+  insertRow<FightRound>('fight_rounds', storyId, patch)
+export const updateFightRound = (id: string, patch: Partial<FightRound>) =>
+  updateRow<FightRound>('fight_rounds', id, patch)
+export const deleteFightRound = (id: string) => deleteRow('fight_rounds', id)

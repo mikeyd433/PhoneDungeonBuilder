@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { deriveGraph } from '@/features/graph/derived'
 import { buildRoomView } from '@/features/room/roomModel'
 import DungeonRoom from '@/features/room/vector/DungeonRoom'
-import { makeGraph } from '@/test/factory'
+import { addFight, makeGraph } from '@/test/factory'
 import type { RoomView } from '@/features/room/roomModel'
 import Automap from '@/features/automap/Automap'
 import { layoutAutomap, type MapLayout } from '@/features/automap/layout'
@@ -81,6 +81,27 @@ export default function Preview() {
     sample('Ending — rubble and a skull', () =>
       roomFrom(['A', 'FIN'], ['A>FIN'], { endings: ['FIN'], recorded: ['FIN'] }, 'FIN'),
     ),
+    sample('Fight — the walls give way to the arena', () => {
+      const g = makeGraph(['A', 'SHARKS', 'SHORE', 'DROWNED'], ['A>SHARKS'], {
+        recorded: ['SHARKS'],
+        endings: ['DROWNED'],
+      })
+      addFight(g, 'SHARKS', {
+        moves: ['PUNCH beats Kick', 'KICK beats Block', 'BLOCK beats Punch'],
+        rounds: ['Kick', 'Block', 'Punch'],
+        win: 'SHORE',
+        lose: 'DROWNED',
+      })
+      const node = [...g.nodes.values()].find((n) => n.slug === 'SHARKS')!
+      g.nodes.set(node.id, { ...node, title: 'Circled', narration: 'Something big is below.' })
+      return buildRoomView(g, deriveGraph(g), node.id)
+    }),
+    sample('Fight — unwinnable, so it reads broken', () => {
+      const g = makeGraph(['A', 'SHARKS'], ['A>SHARKS'], { recorded: ['SHARKS'] })
+      addFight(g, 'SHARKS', { moves: ['PUNCH beats Kick'], rounds: ['Headbutt'] })
+      const node = [...g.nodes.values()].find((n) => n.slug === 'SHARKS')!
+      return buildRoomView(g, deriveGraph(g), node.id)
+    }),
     sample('Deep room — depth notches', () =>
       roomFrom(
         ['A', 'B', 'C', 'D', 'E', 'F'],

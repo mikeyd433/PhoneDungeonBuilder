@@ -112,6 +112,9 @@ export default function Room() {
           <Link to={`/story/${storyId}/map`} className="text-mortar underline">
             Map
           </Link>
+          <Link to={`/story/${storyId}/cast`} className="text-mortar underline">
+            Cast
+          </Link>
           <Link to={`/story/${storyId}/playtest`} className="text-mortar underline">
             Dial in
           </Link>
@@ -148,6 +151,8 @@ export default function Room() {
           {view.isUnreachable && 'No path from the entrance reaches this room. '}
           {view.isOrphan && 'Nothing leads here. '}
           {view.endingWithExits && 'This is an ending, so its exits will never be offered.'}
+          {view.fightWithExits &&
+            'This room is a fight, so its doors will never be offered — the fight decides where the caller goes.'}
         </p>
       )}
 
@@ -157,6 +162,7 @@ export default function Room() {
         onChisel={onChisel}
         onRetreat={onRetreat}
         onCycleSibling={onCycleSibling}
+        onWalk={walkTo}
       />
 
       {/* F1.12 — the retreat chooser. */}
@@ -166,7 +172,7 @@ export default function Room() {
             <h3 className="mb-3 text-sm text-torch">Several ways back from here</h3>
             <ul className="flex flex-col gap-2">
               {view.retreats.map((r) => (
-                <li key={r.choiceId}>
+                <li key={r.edgeId}>
                   <button
                     onClick={() => {
                       setChoosingRetreat(false)

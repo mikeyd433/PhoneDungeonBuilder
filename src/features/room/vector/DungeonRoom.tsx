@@ -4,6 +4,7 @@ import Torch from './Torch'
 import { ARCH, archPath, archX, BACK, TORCH, VIEW, WALLS } from './geometry'
 import { designFor } from './designs'
 import { FloorMotifLayer, WallMotifLayer, WallTextureLayer } from './Texture'
+import Arena from './Arena'
 
 interface Props {
   view: RoomView
@@ -178,8 +179,8 @@ export default function DungeonRoom({ view, flare, onExit }: Props) {
       className="w-full"
       role="img"
       aria-label={`Room ${view.node.slug}, ${lit ? 'torchlit' : 'dark'}${
-        view.depth !== null ? `, depth ${view.depth}` : ''
-      }`}
+        view.fight ? `, a fight with ${view.fight.fight.opponent_name}` : ''
+      }${view.depth !== null ? `, depth ${view.depth}` : ''}`}
     >
       <defs>
         <radialGradient id="torchwash" cx={TORCH.x / VIEW.w} cy={TORCH.y / VIEW.h} r="0.85">
@@ -225,7 +226,11 @@ export default function DungeonRoom({ view, flare, onExit }: Props) {
         {d.openWalls && <line x1={BACK.x0} y1={BACK.y1} x2={BACK.x1} y2={BACK.y1} />}
       </g>
 
-      {view.isEnding ? (
+      {view.fight ? (
+        /* A fight fills the room. The way onward is won, not chosen, so there
+           are no archways to draw. */
+        <Arena fight={view.fight} lit={lit} />
+      ) : view.isEnding ? (
         /* F1.9 — rubble and a skull. No exits, and the way ends here. */
         <g>
           <path

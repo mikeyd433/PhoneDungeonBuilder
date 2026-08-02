@@ -9,6 +9,7 @@ import Preview from '@/routes/Preview'
 import MapScreen from '@/routes/Map'
 import Playtest from '@/routes/Playtest'
 import Export from '@/routes/Export'
+import Cast from '@/routes/Cast'
 
 export default function App() {
   const { session, ready } = useSession()
@@ -32,6 +33,7 @@ export default function App() {
       <Route path="/import" element={<Import />} />
       <Route path="/story/:storyId" element={<Room />} />
       <Route path="/story/:storyId/map" element={<MapScreen />} />
+      <Route path="/story/:storyId/cast" element={<Cast />} />
       <Route path="/story/:storyId/ledger" element={<Ledger />} />
       <Route path="/story/:storyId/playtest" element={<Playtest />} />
       <Route path="/story/:storyId/export" element={<Export />} />

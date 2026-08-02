@@ -1,6 +1,8 @@
 import type { StoryGraph } from '@/types/domain'
 import { PATIENCE_VALVE_AT, type CompileResult, type Widget } from './compile'
 import { formatDuration } from '@/lib/speech'
+import { castList, linesFor, workloads } from '@/features/cast/dialogue'
+import { counterFor, fightFor, movesOf, roundsOf } from '@/features/fight/model'
 
 /**
  * §6.6 path B — the build sheet.
@@ -198,7 +200,10 @@ export function audioManifestCsv(graph: StoryGraph): string {
 export function storyJson(graph: StoryGraph): string {
   return JSON.stringify(
     {
-      version: 1,
+      // Bumped when the cast, dialogue and fight tables were added: a v1 file
+      // has no characters key at all, which an importer has to be able to tell
+      // apart from a v2 file whose cast happens to be empty.
+      version: 2,
       exportedAt: null, // stamped by the caller; kept out so the payload is deterministic
       story: graph.story,
       nodes: [...graph.nodes.values()],
@@ -206,22 +211,87 @@ export function storyJson(graph: StoryGraph): string {
       stateVars: [...graph.stateVars.values()],
       effects: [...graph.effects.values()],
       gates: [...graph.gates.values()],
+      characters: [...graph.characters.values()],
+      dialogue: [...graph.dialogue.values()],
+      fights: [...graph.fights.values()],
+      fightMoves: [...graph.fightMoves.values()],
+      fightRounds: [...graph.fightRounds.values()],
     },
     null,
     2,
   )
 }
 
-/** F6.5 — a printable script for VO talent, one room per section. */
-export function printableScript(graph: StoryGraph): string {
-  const out: string[] = [graph.story.title, '='.repeat(60), '']
-  const nodes = [...graph.nodes.values()].sort((a, b) => a.slug.localeCompare(b.slug))
+/**
+ * F6.5 — a printable script for VO talent, one room per section.
+ *
+ * `onlyActor` narrows it to the rooms one voice actor appears in. Their lines
+ * are marked with a caret in the left margin and everyone else's are left plain
+ * as cues, because a script with the other parts stripped out is unreadable —
+ * you cannot time a line you can't see the setup for.
+ */
+export function printableScript(graph: StoryGraph, onlyActor?: string): string {
+  const wanted = onlyActor?.trim().toLowerCase()
+  const speaksHere = (nodeId: string) =>
+    !wanted ||
+    linesFor(graph, nodeId).some((l) => {
+      const c = l.character_id ? graph.characters.get(l.character_id) : null
+      return (c?.voice_actor ?? '').trim().toLowerCase() === wanted
+    })
+
+  const out: string[] = [
+    graph.story.title + (onlyActor ? ` — ${onlyActor}'s script` : ''),
+    '='.repeat(60),
+    '',
+  ]
+  if (onlyActor) {
+    out.push('Your lines are marked with >. Everything else is a cue — read for timing,')
+    out.push('not aloud. A room is recorded as one file, so the whole room gets booked')
+    out.push('even when only one line in it is yours.')
+    out.push('')
+  }
+
+  const nodes = [...graph.nodes.values()]
+    .filter((n) => speaksHere(n.id))
+    .sort((a, b) => a.slug.localeCompare(b.slug))
+
   for (const n of nodes) {
     out.push(`## ${n.slug}${n.title ? ` — ${n.title}` : ''}`)
     if (n.status === 'approved') out.push('(approved)')
     else if (n.audio_path) out.push('(recorded, not yet approved)')
     out.push('')
-    out.push(n.narration || '(nothing written yet)')
+
+    const lines = linesFor(graph, n.id)
+    if (lines.length === 0) {
+      out.push(n.narration || '(nothing written yet)')
+    } else {
+      for (const line of lines) {
+        const character = line.character_id ? graph.characters.get(line.character_id) : null
+        const mine =
+          wanted !== undefined &&
+          (character?.voice_actor ?? '').trim().toLowerCase() === wanted
+        const who = character ? `${character.name}: ` : ''
+        out.push(`${mine ? '>' : ' '} ${who}${line.text}`)
+      }
+    }
+
+    // A fight's rounds are script too, and they are the lines most likely to be
+    // missed — they live on the fight, not in the room's narration.
+    const fight = fightFor(graph, n.id)
+    if (fight) {
+      const moves = movesOf(graph, fight.id)
+      out.push('')
+      out.push(`   [fight: ${fight.opponent_name}]`)
+      roundsOf(graph, fight.id).forEach((round, i) => {
+        const answer = counterFor(moves, round)
+        out.push(
+          `   ${i + 1}. ${round.narration || round.opponent_move}  → press ${
+            answer ? moves.findIndex((m) => m.id === answer.id) + 1 : '?'
+          }`,
+        )
+      })
+    }
+
     const exits = [...graph.choices.values()]
       .filter((c) => c.from_node_id === n.id)
       .sort((a, b) => a.sort_order - b.sort_order)
@@ -237,4 +307,33 @@ export function printableScript(graph: StoryGraph): string {
     out.push('')
   }
   return out.join('\n')
+}
+
+/** The cast, and what each of them still owes. Booked against, not read aloud. */
+export function castManifestCsv(graph: StoryGraph): string {
+  const esc = (s: string) => `"${String(s).replace(/"/g, '""')}"`
+  const lineCount = new Map<string, number>()
+  for (const line of graph.dialogue.values()) {
+    if (!line.character_id) continue
+    lineCount.set(line.character_id, (lineCount.get(line.character_id) ?? 0) + 1)
+  }
+
+  const outstanding = new Map(workloads(graph).map((w) => [w.actor ?? '', w.unrecordedSlugs.length]))
+
+  const rows = [
+    ['slug', 'name', 'playable', 'voice_actor', 'lines', 'rooms_left_to_record'].join(','),
+  ]
+  for (const c of castList(graph)) {
+    rows.push(
+      [
+        esc(c.slug),
+        esc(c.name),
+        c.is_playable ? 'yes' : 'no',
+        esc(c.voice_actor ?? ''),
+        String(lineCount.get(c.id) ?? 0),
+        String(outstanding.get(c.voice_actor?.trim() ?? '') ?? 0),
+      ].join(','),
+    )
+  }
+  return rows.join('\n')
 }

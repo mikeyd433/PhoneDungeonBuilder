@@ -1,4 +1,13 @@
 import type { StoryGraph } from '@/types/domain'
+import { graphEdges } from '@/features/graph/edges'
+import {
+  counterFor,
+  fightProblems,
+  fightsByNode,
+  movesOf,
+  MAX_FIGHT_MOVES,
+  roundsOf,
+} from '@/features/fight/model'
 import {
   counterAddLiquid,
   counterSetLiquid,
@@ -96,6 +105,7 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
   const slugOf = (id: string) => graph.stateVars.get(id)?.slug ?? ''
   const nodes = [...graph.nodes.values()]
   const gateByChoice = new Map([...graph.gates.values()].map((g) => [g.choice_id, g]))
+  const fights = fightsByNode(graph)
 
   const choicesFrom = (nodeId: string) =>
     [...graph.choices.values()]
@@ -144,10 +154,26 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
 
   const playName = (slug: string) => wname(slug, 'play')
 
+  /** A fight's round widgets: `SHARKS_r1_play` then `SHARKS_r1_gather`. */
+  const roundName = (slug: string, index: number, part: 'play' | 'gather') =>
+    `${slug}_r${index + 1}_${part}`
+
+  /**
+   * Where a fight outcome leads. An outcome with nowhere set falls back to the
+   * fight's own room, so the flow is still connected — the warning is what tells
+   * the author it needs finishing, not a dangling transition Studio would refuse
+   * to import.
+   */
+  const fightOutcome = (targetId: string | null, fallbackSlug: string) =>
+    playName(targetId ? (graph.nodes.get(targetId)?.slug ?? fallbackSlug) : fallbackSlug)
+
   for (const node of nodes) {
     const slug = node.slug
     const outgoing = choicesFrom(node.id)
     const gated = outgoing.filter((c) => gateByChoice.has(c.id))
+    const fight = fights.get(node.id)
+    const rounds = fight ? roundsOf(graph, fight.id) : []
+    const moves = fight ? movesOf(graph, fight.id) : []
 
     // ---- arrival effects, before play so narration can reference them (§6.2)
     const arrival = effectsFor((e) => e.node_id === node.id)
@@ -208,6 +234,14 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
       say = `${node.narration}${lines}`
     }
 
+    // Where the room's narration hands off. A fight room's narration is the
+    // lead-in, so it hands off to round one rather than to a gather.
+    const roomExit = () => {
+      if (node.node_type === 'ending') return wname(slug, 'hangup')
+      if (!fight) return wname(slug, 'gather')
+      return rounds.length > 0 ? roundName(slug, 0, 'play') : fightOutcome(fight.win_node_id, slug)
+    }
+
     widgets.push({
       name: playName(slug),
       type: 'say-play',
@@ -215,9 +249,7 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
       note: node.audio_path ? 'Play the recorded audio.' : 'No audio yet — Studio will speak this.',
       say: node.audio_path ? undefined : say,
       playUrl: node.audio_path ? `${audioBaseUrl}${node.audio_path}` : undefined,
-      transitions: [
-        { event: 'audioComplete', next: node.node_type === 'ending' ? wname(slug, 'hangup') : wname(slug, 'gather') },
-      ],
+      transitions: [{ event: 'audioComplete', next: roomExit() }],
     })
 
     if (node.node_type === 'ending') {
@@ -228,6 +260,63 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
         note: 'The way ends here.',
         transitions: [],
       })
+      continue
+    }
+
+    // ---- a fight: two widgets per round, and no gather for the room itself
+    if (fight) {
+      const winNext = fightOutcome(fight.win_node_id, slug)
+      const loseNext = fightOutcome(fight.lose_node_id, slug)
+
+      rounds.forEach((round, i) => {
+        const answer = counterFor(moves, round)
+        const digit = answer ? moves.findIndex((m) => m.id === answer.id) + 1 : null
+        const advance =
+          i + 1 < rounds.length ? roundName(slug, i + 1, 'play') : winNext
+
+        widgets.push({
+          name: roundName(slug, i, 'play'),
+          type: 'say-play',
+          nodeId: node.id,
+          note: `Round ${i + 1}: ${fight.opponent_name} throws ${round.opponent_move || '(nothing set)'}.`,
+          say: round.narration || `${fight.opponent_name}: ${round.opponent_move}`,
+          transitions: [{ event: 'audioComplete', next: roundName(slug, i, 'gather') }],
+        })
+
+        // One matching digit; everything else loses. That includes silence:
+        // hesitating in a fight is an answer, and routing timeout back to the
+        // round would let a caller wait out every round it couldn't solve.
+        const roundTransitions: Transition[] = []
+        if (digit && digit <= MAX_FIGHT_MOVES) {
+          roundTransitions.push({
+            event: 'keypress',
+            condition: `Digits equals ${digit}`,
+            next: advance,
+          })
+        }
+        roundTransitions.push({ event: 'noMatch', next: loseNext })
+        roundTransitions.push({ event: 'timeout', next: loseNext })
+
+        widgets.push({
+          name: roundName(slug, i, 'gather'),
+          type: 'gather-input-on-call',
+          nodeId: node.id,
+          note:
+            digit && digit <= MAX_FIGHT_MOVES
+              ? `Press ${digit} (${answer?.slug}) to survive; anything else, and silence, loses.`
+              : 'Nothing counters this round — every answer loses. Fix it before exporting.',
+          transitions: roundTransitions,
+        })
+      })
+
+      for (const problem of fightProblems(fight, moves, rounds)) {
+        warnings.push(`${slug}: ${problem}`)
+      }
+      if (outgoing.length > 0) {
+        warnings.push(
+          `${slug} is a fight but also has ${outgoing.length} exit(s). A fight decides where the caller goes, so those doors are not exported.`,
+        )
+      }
       continue
     }
 
@@ -365,10 +454,10 @@ function estimateLongestPath(graph: StoryGraph): number {
   if (!root) return 0
   const STEPS_PER_NODE = 4
   const children = new Map<string, string[]>()
-  for (const c of graph.choices.values()) {
-    if (!c.to_node_id) continue
-    if (!children.has(c.from_node_id)) children.set(c.from_node_id, [])
-    children.get(c.from_node_id)!.push(c.to_node_id)
+  for (const e of graphEdges(graph)) {
+    if (!e.to_node_id) continue
+    if (!children.has(e.from_node_id)) children.set(e.from_node_id, [])
+    children.get(e.from_node_id)!.push(e.to_node_id)
   }
 
   let best = 0

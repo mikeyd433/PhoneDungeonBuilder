@@ -1,4 +1,17 @@
-import type { Choice, Digit, Gate, StateVar, Story, StoryGraph, StoryNode } from '@/types/domain'
+import type {
+  Character,
+  Choice,
+  DialogueLine,
+  Digit,
+  Fight,
+  FightMove,
+  FightRound,
+  Gate,
+  StateVar,
+  Story,
+  StoryGraph,
+  StoryNode,
+} from '@/types/domain'
 
 /**
  * Test helper for building a StoryGraph without a database.
@@ -83,7 +96,124 @@ export function makeGraph(
     stateVars: new Map<string, StateVar>(),
     effects: new Map(),
     gates: new Map<string, Gate>(),
+    characters: new Map<string, Character>(),
+    dialogue: new Map<string, DialogueLine>(),
+    fights: new Map<string, Fight>(),
+    fightMoves: new Map<string, FightMove>(),
+    fightRounds: new Map<string, FightRound>(),
   }
+}
+
+const STAMP = '2026-01-01T00:00:00Z'
+
+/**
+ * Hang a fight off a room.
+ *
+ * `moves` is "SLUG beats OPPONENT MOVE" and `rounds` is the opponent's move for
+ * each round in order — the two halves of the shark fight, in the shortest
+ * notation that still says which answer is right.
+ */
+export function addFight(
+  graph: StoryGraph,
+  atSlug: string,
+  opts: {
+    moves: string[]
+    rounds: string[]
+    win?: string
+    lose?: string
+    opponent?: string
+  },
+): Fight {
+  const nodeId = idOf(graph, atSlug)
+  const fight: Fight = {
+    id: `f-${atSlug}`,
+    story_id: graph.story.id,
+    node_id: nodeId,
+    opponent_name: opts.opponent ?? 'The shark',
+    win_node_id: opts.win ? idOf(graph, opts.win) : null,
+    lose_node_id: opts.lose ? idOf(graph, opts.lose) : null,
+    created_at: STAMP,
+    updated_at: STAMP,
+  }
+  graph.fights.set(fight.id, fight)
+
+  opts.moves.forEach((spec, i) => {
+    const [slug, beats] = spec.split(' beats ')
+    const id = `${fight.id}-m${i}`
+    graph.fightMoves.set(id, {
+      id,
+      story_id: graph.story.id,
+      fight_id: fight.id,
+      slug,
+      label: slug.toLowerCase(),
+      beats: beats ?? null,
+      sort_order: i,
+      created_at: STAMP,
+    })
+  })
+
+  opts.rounds.forEach((opponentMove, i) => {
+    const id = `${fight.id}-r${i}`
+    graph.fightRounds.set(id, {
+      id,
+      story_id: graph.story.id,
+      fight_id: fight.id,
+      sort_order: i,
+      opponent_move: opponentMove,
+      narration: `The shark throws a ${opponentMove}.`,
+      created_at: STAMP,
+      updated_at: STAMP,
+    })
+  })
+
+  return fight
+}
+
+/** Add a cast entry. */
+export function addCharacter(
+  graph: StoryGraph,
+  slug: string,
+  patch: Partial<Character> = {},
+): Character {
+  const character: Character = {
+    id: `ch-${slug}`,
+    story_id: graph.story.id,
+    slug,
+    name: patch.name ?? slug[0] + slug.slice(1).toLowerCase(),
+    is_playable: false,
+    voice_actor: null,
+    color: 'parchment',
+    notes: null,
+    created_at: STAMP,
+    updated_at: STAMP,
+    ...patch,
+  }
+  graph.characters.set(character.id, character)
+  return character
+}
+
+/** Attach lines to a room. `"CARTER|line text"` attributes; plain text doesn't. */
+export function addLines(graph: StoryGraph, atSlug: string, lines: string[]): DialogueLine[] {
+  const nodeId = idOf(graph, atSlug)
+  return lines.map((spec, i) => {
+    const [maybeSlug, ...rest] = spec.split('|')
+    const attributed = rest.length > 0
+    const character = attributed
+      ? [...graph.characters.values()].find((c) => c.slug === maybeSlug)
+      : undefined
+    const line: DialogueLine = {
+      id: `dl-${atSlug}-${i}`,
+      story_id: graph.story.id,
+      node_id: nodeId,
+      character_id: character?.id ?? null,
+      text: attributed ? rest.join('|') : spec,
+      sort_order: i,
+      created_at: STAMP,
+      updated_at: STAMP,
+    }
+    graph.dialogue.set(line.id, line)
+    return line
+  })
 }
 
 /** Resolve a slug to its generated node id, for assertions. */

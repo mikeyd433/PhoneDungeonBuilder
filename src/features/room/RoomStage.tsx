@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type TouchEvent } from 'react'
 import type { ExitView, RoomView } from './roomModel'
 import DungeonRoom from './vector/DungeonRoom'
+import { counterFor } from '@/features/fight/model'
+import { speakerHex } from '@/features/cast/colors'
 
 /**
  * The room renderer seam.
@@ -17,6 +19,8 @@ export interface RoomStageProps {
   onRetreat: () => void
   /** F1.11 — cycle to the previous/next room sharing this one's parent. */
   onCycleSibling?: (direction: 1 | -1) => void
+  /** Walk somewhere with no door involved — a fight's win and lose rooms. */
+  onWalk?: (nodeId: string) => void
 }
 
 /** Distance in px before a touch counts as a swipe rather than a tap. */
@@ -28,6 +32,7 @@ export default function RoomStage({
   onChisel,
   onRetreat,
   onCycleSibling,
+  onWalk,
 }: RoomStageProps) {
   const { node } = view
 
@@ -81,6 +86,75 @@ export default function RoomStage({
     >
       <DungeonRoom view={view} flare={flare} onExit={handleExit} />
 
+      {/* The fight, as a caller meets it: one round at a time, each with the
+          move that answers it. Shown in full because this is the authoring
+          view — the caller only ever hears one round. */}
+      {view.fight && (
+        <section className="px-4 pt-3 text-sm">
+          <ol className="flex flex-col gap-1">
+            {view.fight.rounds.map((round, i) => {
+              const answer = counterFor(view.fight!.moves, round)
+              const digit = answer
+                ? view.fight!.moves.findIndex((m) => m.id === answer.id) + 1
+                : null
+              return (
+                <li
+                  key={round.id}
+                  className="flex items-baseline gap-3 rounded border border-mortar/40 px-3 py-2"
+                >
+                  <span className="font-carved text-xs text-mortar">{i + 1}</span>
+                  <span className="min-w-0 flex-1 truncate">
+                    {round.opponent_move || <span className="text-grave">no move set</span>}
+                  </span>
+                  {answer && digit && digit <= 9 ? (
+                    <span className="shrink-0 text-torch">
+                      press {digit} · {answer.slug}
+                    </span>
+                  ) : (
+                    <span className="shrink-0 text-grave">no answer</span>
+                  )}
+                </li>
+              )
+            })}
+            {view.fight.rounds.length === 0 && (
+              <li className="text-cold">No rounds yet — add one in the editor.</li>
+            )}
+          </ol>
+
+          <div className="mt-2 flex gap-2">
+            {(
+              [
+                ['win', view.fight.fight.win_node_id, view.fight.winTitle],
+                ['lose', view.fight.fight.lose_node_id, view.fight.loseTitle],
+              ] as const
+            ).map(([outcome, id, title]) => (
+              <button
+                key={outcome}
+                disabled={!id || !onWalk}
+                onClick={() => id && onWalk?.(id)}
+                className={[
+                  'flex-1 rounded border px-3 py-2 text-left text-xs disabled:opacity-50',
+                  outcome === 'win' ? 'border-torch/60 text-torch' : 'border-grave/60 text-grave',
+                ].join(' ')}
+              >
+                <span className="block uppercase tracking-wider">
+                  {outcome === 'win' ? 'If they win' : 'If they lose'}
+                </span>
+                <span className="text-parchment">{title ?? 'nowhere yet'}</span>
+              </button>
+            ))}
+          </div>
+
+          {view.fight.problems.length > 0 && (
+            <ul className="mt-2 rounded border border-grave/40 bg-grave/10 px-3 py-2 text-xs">
+              {view.fight.problems.map((p) => (
+                <li key={p}>{p}</li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
+
       {/* F1.13 — beyond three, exits stack rather than crowd the walls. */}
       {view.overflowExits.length > 0 && (
         <ul className="flex flex-col gap-1 px-4 pt-3">
@@ -107,7 +181,7 @@ export default function RoomStage({
       {/* Floor plaque. F1.11 — swiping it sideways cycles siblings, which is the
           fast way to review a whole choice set without walking back up. */}
       <div className="px-4 pb-4 pt-3">
-        <p
+        <div
           onTouchStart={onTouchStart}
           onTouchEnd={swipeHandler(
             onCycleSibling && view.siblings.length > 1 ? () => onCycleSibling(1) : undefined,
@@ -118,8 +192,27 @@ export default function RoomStage({
             view.torchLit ? 'opacity-100' : 'opacity-60',
           ].join(' ')}
         >
-          {node.narration || <span className="text-cold">Nothing written here yet.</span>}
-        </p>
+          {/* Split into lines, the plaque shows who is speaking. Unsplit, it is
+              the same block of text it has always been — the split is a choice
+              the author makes room by room, not a migration. */}
+          {view.lines.length > 0 ? (
+            view.lines.map((line) => (
+              <p key={line.id} className="mb-2 last:mb-0">
+                {line.speaker && (
+                  <span
+                    className="mr-2 font-carved text-xs uppercase tracking-[0.12em]"
+                    style={{ color: speakerHex(line.color) }}
+                  >
+                    {line.speaker}
+                  </span>
+                )}
+                <span className={line.speaker ? 'font-voice' : 'text-parchment'}>{line.text}</span>
+              </p>
+            ))
+          ) : (
+            <p>{node.narration || <span className="text-cold">Nothing written here yet.</span>}</p>
+          )}
+        </div>
 
         {view.siblings.length > 1 && (
           <p className="mt-2 text-center text-xs text-mortar">

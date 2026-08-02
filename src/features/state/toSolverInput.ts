@@ -1,6 +1,7 @@
 import type { StoryGraph } from '@/types/domain'
 import type { EffectLike } from './expression'
 import type { SolverChoice, SolverInput, SolverNode } from './solver'
+import { graphEdges } from '@/features/graph/edges'
 
 /** Flatten the live graph into the plain, structured-cloneable shape the worker
  *  takes. Effects are resolved from state_var_id to slug here so the solver
@@ -39,14 +40,18 @@ export function toSolverInput(graph: StoryGraph): SolverInput {
     effects: (nodeEffects.get(n.id) ?? []).map(asEffect).filter((e) => e.varSlug),
   }))
 
-  const choices: SolverChoice[] = [...graph.choices.values()].map((c) => {
-    const gate = gateByChoice.get(c.id)
+  // Fight outcomes come through as choices with no gate and no effects. Winning
+  // a fight needs nothing in the satchel — only the right digits — so both
+  // outcomes are always available, and the solver is right to treat the rooms
+  // beyond them as reachable with whatever the caller walked in carrying.
+  const choices: SolverChoice[] = graphEdges(graph).map((e) => {
+    const gate = e.choice ? gateByChoice.get(e.choice.id) : undefined
     return {
-      id: c.id,
-      fromId: c.from_node_id,
-      toId: c.to_node_id,
-      digit: c.digit,
-      effects: (choiceEffects.get(c.id) ?? []).map(asEffect).filter((e) => e.varSlug),
+      id: e.id,
+      fromId: e.from_node_id,
+      toId: e.to_node_id,
+      digit: e.digit ?? (e.kind === 'fight-win' ? 'won' : 'lost'),
+      effects: (choiceEffects.get(e.id) ?? []).map(asEffect).filter((f) => f.varSlug),
       gate: gate
         ? {
             expression: gate.expression,

@@ -33,6 +33,9 @@ Two rules from §0 that everything else follows from:
 | Flat vs subflows | Stay flat. The widget budget meter says when to revisit (§11.2). |
 | Default gate fail | `refuse` — it teaches the player the item exists (§11.3). |
 | Counter clamp | 10, per story, configurable. The solver needs a ceiling or it never terminates (§11.5). |
+| Dialogue | Narration splits into attributed lines. **Audio is still one file per room** — lines exist for the script, not the flow. |
+| Characters | A cast list with voice-actor assignment. No effect on the compiled flow. |
+| Fights | A first-class kind of room (a `fights` row hung off a node, not a `node_type`). Opponent announces a move; the caller presses the move that counters it. Wrong answer, or silence, loses. |
 
 ## Spec gaps resolved in code
 
@@ -67,7 +70,19 @@ capture. pnpm. Target device order: **tablet portrait, then phone, then desktop.
 6. **Undo replays inverse operations against the database**, not local snapshots.
    Every mutation is already persisted, so a snapshot-restore would be undone by
    the next read.
-7. **Pipe-delimit inventory tests.** Studio's `contains` matches substrings, so
+7. **Structure is derived over EDGES, not choices.** A fight's win and lose
+   rooms are reached without any choice row existing, so depth, reachability,
+   orphans, portals, traps, the automap and the solver all read
+   `graphEdges(graph)` (`src/features/graph/edges.ts`). Only a room's *exits*
+   are choices. Getting this wrong reported every post-fight room as sealed.
+8. **The narration and the lines are one thing seen twice.**
+   `splitNarration` and `composeNarration` are inverses, and every line edit
+   rewrites `nodes.narration` from the lines. Two independently-edited copies of
+   the script would drift, and the recorded one is the one that ships.
+9. **Playtest and export must agree about fights.** Silence loses in both. Any
+   rule added to one has to be added to the other, or the bug only shows up on
+   the phone.
+10. **Pipe-delimit inventory tests.** Studio's `contains` matches substrings, so
    `ROPE` would match `ROPEBURN`. Always wrap in `|`. Same class of bug bit the
    importer's column matching — use whole-word matching, never `includes`.
 
@@ -76,7 +91,9 @@ capture. pnpm. Target device order: **tablet portrait, then phone, then desktop.
 ```
 src/
   features/
-    graph/      store (zustand) + derived structure
+    graph/      store (zustand) + edges + derived structure
+    cast/       dialogue split/compose (pure) + cast helpers + DialogueSection
+    fight/      fight model (pure) + FightSection
     room/       roomModel (pure) + RoomStage (renderer seam) + EditorSheet
     import/     CSV parse -> column mapping -> plan -> commit
     auth/       session hook

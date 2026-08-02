@@ -1,5 +1,6 @@
 import ELK, { type ElkNode, type ElkExtendedEdge } from 'elkjs/lib/elk.bundled.js'
 import type { DerivedGraph, StoryGraph } from '@/types/domain'
+import { graphEdges } from '@/features/graph/edges'
 
 /**
  * Automap layout (F4.1).
@@ -29,6 +30,8 @@ export interface MapRoom {
   isOrphan: boolean
   isUnreachable: boolean
   depth: number | null
+  /** A fight room. Marked with crossed blades rather than a door count. */
+  isFight: boolean
 }
 
 export interface MapEdge {
@@ -37,6 +40,10 @@ export interface MapEdge {
   to: string
   /** Back-edge — drawn dashed, the way a portal is drawn as a stairwell. */
   isPortal: boolean
+  /** A fight outcome rather than a door. Won and lost are drawn differently
+   *  from each other, because which one a line is matters more here than
+   *  anywhere else on the map. */
+  outcome: 'win' | 'lose' | null
   points: Array<{ x: number; y: number }>
 }
 
@@ -71,12 +78,17 @@ export async function layoutAutomap(
     height: ROOM_H,
   }))
 
-  const realEdges = [...graph.choices.values()].filter((c) => c.to_node_id)
-  const edges: ElkExtendedEdge[] = realEdges.map((c) => ({
-    id: c.id,
-    sources: [c.from_node_id],
-    targets: [c.to_node_id!],
-  }))
+  // Fight outcomes are laid out alongside doors: the room you land in after
+  // winning belongs on the map in its real place, not floating.
+  const allEdges = graphEdges(graph)
+  const kindOf = new Map(allEdges.map((e) => [e.id, e.kind]))
+  const edges: ElkExtendedEdge[] = allEdges
+    .filter((e) => e.to_node_id)
+    .map((e) => ({
+      id: e.id,
+      sources: [e.from_node_id],
+      targets: [e.to_node_id!],
+    }))
 
   const result = await elk.layout({
     id: 'root',
@@ -99,6 +111,8 @@ export async function layoutAutomap(
   const placed = new Map<string, ElkNode>()
   for (const child of result.children ?? []) placed.set(child.id, child)
 
+  const fightNodes = new Set([...graph.fights.values()].map((f) => f.node_id))
+
   const rooms: MapRoom[] = nodes.map((n) => {
     const p = placed.get(n.id)
     return {
@@ -115,6 +129,7 @@ export async function layoutAutomap(
       isOrphan: derived.orphans.has(n.id),
       isUnreachable: derived.unreachable.has(n.id),
       depth: derived.depth.get(n.id) ?? null,
+      isFight: fightNodes.has(n.id),
     }
   })
 
@@ -124,11 +139,13 @@ export async function layoutAutomap(
       ? [section.startPoint, ...(section.bendPoints ?? []), section.endPoint]
       : []
     const edge = e as ElkExtendedEdge
+    const kind = kindOf.get(e.id)
     return {
       id: e.id,
       from: edge.sources[0],
       to: edge.targets[0],
       isPortal: derived.portals.has(e.id),
+      outcome: kind === 'fight-win' ? 'win' : kind === 'fight-lose' ? 'lose' : null,
       points,
     }
   })

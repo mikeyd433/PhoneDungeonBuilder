@@ -6,6 +6,8 @@ import { nextFreeDigit } from './roomModel'
 import AudioPanel from '@/features/audio/AudioPanel'
 import ItemsSection from '@/features/state/ItemsSection'
 import CollabPanel from '@/features/collab/CollabPanel'
+import DialogueSection from '@/features/cast/DialogueSection'
+import FightSection from '@/features/fight/FightSection'
 import { ROOM_DESIGNS } from './vector/designs'
 import { DIGITS, canWrite, type Digit, type StoryNode } from '@/types/domain'
 
@@ -111,6 +113,8 @@ export default function EditorSheet({ nodeId, onClose }: { nodeId: string; onClo
           />
         </label>
 
+        <DialogueSection nodeId={nodeId} />
+
         <div className="flex flex-col gap-2">
           <span className="text-xs uppercase tracking-wider text-mortar">Exits</span>
           {outgoing.length === 0 && <p className="text-xs text-cold">No exits yet.</p>}
@@ -177,6 +181,8 @@ export default function EditorSheet({ nodeId, onClose }: { nodeId: string; onClo
             + Add exit
           </button>
         </div>
+
+        <FightSection nodeId={nodeId} />
 
         <ItemsSection nodeId={nodeId} />
 

@@ -1,12 +1,17 @@
 import { create } from 'zustand'
 import type {
+  Character,
   Choice,
   DerivedGraph,
   Digit,
+  Fight,
+  FightMove,
+  FightRound,
   MembershipRole,
   StoryGraph,
   StoryNode,
 } from '@/types/domain'
+import { composeNarration } from '@/features/cast/dialogue'
 import { deriveGraph } from './derived'
 import * as api from '@/lib/api'
 import { uniqueSlug } from '@/lib/slug'
@@ -50,6 +55,28 @@ interface DelveState {
   updateNode: (id: string, patch: Partial<StoryNode>) => Promise<void>
   updateChoice: (id: string, patch: Partial<Choice>) => Promise<void>
   deleteChoice: (id: string) => Promise<void>
+
+  addCharacter: (patch: { slug: string; name: string } & Partial<Character>) => Promise<void>
+  editCharacter: (id: string, patch: Partial<Character>) => Promise<void>
+  removeCharacter: (id: string) => Promise<void>
+
+  /** Replace a room's lines AND rewrite its narration from them, in that order,
+   *  so the recorded text and the script can never disagree. */
+  saveDialogue: (
+    nodeId: string,
+    lines: Array<{ character_id: string | null; text: string }>,
+  ) => Promise<void>
+
+  addFight: (nodeId: string) => Promise<void>
+  editFight: (id: string, patch: Partial<Fight>) => Promise<void>
+  removeFight: (id: string) => Promise<void>
+  addFightMove: (fightId: string, slug: string) => Promise<void>
+  editFightMove: (id: string, patch: Partial<FightMove>) => Promise<void>
+  removeFightMove: (id: string) => Promise<void>
+  addFightRound: (fightId: string) => Promise<void>
+  editFightRound: (id: string, patch: Partial<FightRound>) => Promise<void>
+  removeFightRound: (id: string) => Promise<void>
+
   undo: () => Promise<void>
   canUndo: () => boolean
   /** Re-read the story after a write this store doesn't model (items, gates). */
@@ -72,6 +99,59 @@ export const useDelve = create<DelveState>((set, get) => {
 
   const fail = (e: unknown) => {
     set({ error: e instanceof Error ? e.message : String(e) })
+  }
+
+  /**
+   * Cast and fight edits go through one path: run the write, then drop the
+   * returned row into its map.
+   *
+   * These are low-frequency, low-field-count edits — a move's slug, a round's
+   * narration — so unlike node and choice editing they are NOT optimistic. The
+   * round trip is invisible against how long it takes to type the next field,
+   * and skipping the optimism means there is no rollback path to get wrong.
+   */
+  const write = async <K extends 'characters' | 'dialogue' | 'fights' | 'fightMoves' | 'fightRounds'>(
+    key: K,
+    run: (graph: StoryGraph) => Promise<Array<{ id: string }> | { id: string } | null>,
+    undoEntry?: (graph: StoryGraph) => UndoEntry,
+  ) => {
+    const { graph } = get()
+    if (!graph) return
+    try {
+      const result = await run(graph)
+      const rows = result === null ? [] : Array.isArray(result) ? result : [result]
+      patchGraph((g) => {
+        const map = new Map(g[key] as unknown as Map<string, { id: string }>)
+        for (const row of rows) map.set(row.id, row)
+        return { ...g, [key]: map } as StoryGraph
+      })
+      if (undoEntry) pushUndo(undoEntry(graph))
+    } catch (e) {
+      fail(e)
+    }
+  }
+
+  /** Deletes have to drop the row locally too, which `write` can't express. */
+  const wipe = async (
+    key: 'characters' | 'dialogue' | 'fights' | 'fightMoves' | 'fightRounds',
+    id: string,
+    run: () => Promise<void>,
+    label: string,
+    invert: () => Promise<void>,
+  ) => {
+    const { graph } = get()
+    if (!graph) return
+    try {
+      await run()
+      patchGraph((g) => {
+        const map = new Map(g[key] as unknown as Map<string, unknown>)
+        map.delete(id)
+        return { ...g, [key]: map } as StoryGraph
+      })
+      pushUndo({ label, invert })
+    } catch (e) {
+      fail(e)
+    }
   }
 
   return {
@@ -317,6 +397,146 @@ export const useDelve = create<DelveState>((set, get) => {
       } catch (e) {
         fail(e)
       }
+    },
+
+    // ------------------------------------------------------------ cast
+
+    async addCharacter(patch) {
+      await write<'characters'>('characters', (g) => api.createCharacter(g.story.id, patch))
+    },
+
+    async editCharacter(id, patch) {
+      await write<'characters'>('characters', () => api.updateCharacter(id, patch))
+    },
+
+    async removeCharacter(id) {
+      // Deleting a character nulls the character_id on every line they spoke
+      // (the FK is ON DELETE SET NULL), so the lines that survive have to be
+      // re-read rather than guessed at.
+      const { graph } = get()
+      if (!graph) return
+      try {
+        await api.deleteCharacter(id)
+        await get().refresh()
+      } catch (e) {
+        fail(e)
+      }
+    },
+
+    async saveDialogue(nodeId, lines) {
+      const { graph } = get()
+      if (!graph) return
+      const node = graph.nodes.get(nodeId)
+      if (!node) return
+
+      const nameOf = (id: string | null) =>
+        id ? (graph.characters.get(id)?.name ?? null) : null
+      const narration = composeNarration(
+        lines.map((l) => ({ speaker: nameOf(l.character_id), text: l.text })),
+      )
+
+      try {
+        const saved = await api.replaceDialogue(graph.story.id, nodeId, lines)
+        // The narration is written second on purpose: if the line write fails,
+        // the recorded text is still the text the lines were derived from.
+        //
+        // Clearing every line means "stop splitting this room", NOT "this room
+        // says nothing" — rewriting the narration to an empty string there would
+        // silently delete the script.
+        if (lines.length > 0) await get().updateNode(nodeId, { narration })
+        patchGraph((g) => {
+          const dialogue = new Map(g.dialogue)
+          for (const [id, line] of dialogue) if (line.node_id === nodeId) dialogue.delete(id)
+          for (const line of saved) dialogue.set(line.id, line)
+          return { ...g, dialogue }
+        })
+      } catch (e) {
+        fail(e)
+      }
+    },
+
+    // ------------------------------------------------------------ fights
+
+    async addFight(nodeId) {
+      await write<'fights'>('fights', (g) => api.createFight(g.story.id, { node_id: nodeId }))
+    },
+
+    async editFight(id, patch) {
+      await write<'fights'>('fights', () => api.updateFight(id, patch))
+    },
+
+    async removeFight(id) {
+      // Moves and rounds cascade with it; refresh rather than track the cascade.
+      try {
+        await api.deleteFight(id)
+        await get().refresh()
+      } catch (e) {
+        fail(e)
+      }
+    },
+
+    async addFightMove(fightId, slug) {
+      const existing = [...(get().graph?.fightMoves.values() ?? [])].filter(
+        (m) => m.fight_id === fightId,
+      )
+      await write<'fightMoves'>('fightMoves', (g) =>
+        api.createFightMove(g.story.id, {
+          fight_id: fightId,
+          slug,
+          label: slug.toLowerCase(),
+          sort_order: existing.length,
+        }),
+      )
+    },
+
+    async editFightMove(id, patch) {
+      await write<'fightMoves'>('fightMoves', () => api.updateFightMove(id, patch))
+    },
+
+    async removeFightMove(id) {
+      const before = get().graph?.fightMoves.get(id)
+      if (!before) return
+      await wipe('fightMoves', id, () => api.deleteFightMove(id), `remove ${before.slug}`, async () => {
+        await api.createFightMove(before.story_id, {
+          fight_id: before.fight_id,
+          slug: before.slug,
+          label: before.label,
+          beats: before.beats,
+          sort_order: before.sort_order,
+        })
+      })
+    },
+
+    async addFightRound(fightId) {
+      const existing = [...(get().graph?.fightRounds.values() ?? [])].filter(
+        (r) => r.fight_id === fightId,
+      )
+      await write<'fightRounds'>('fightRounds', (g) =>
+        api.createFightRound(g.story.id, { fight_id: fightId, sort_order: existing.length }),
+      )
+    },
+
+    async editFightRound(id, patch) {
+      await write<'fightRounds'>('fightRounds', () => api.updateFightRound(id, patch))
+    },
+
+    async removeFightRound(id) {
+      const before = get().graph?.fightRounds.get(id)
+      if (!before) return
+      await wipe(
+        'fightRounds',
+        id,
+        () => api.deleteFightRound(id),
+        `remove round ${before.sort_order + 1}`,
+        async () => {
+          await api.createFightRound(before.story_id, {
+            fight_id: before.fight_id,
+            sort_order: before.sort_order,
+            opponent_move: before.opponent_move,
+            narration: before.narration,
+          })
+        },
+      )
     },
 
     async refresh() {
