@@ -5,6 +5,7 @@ import { slugify } from '@/lib/slug'
 import { nextFreeDigit } from './roomModel'
 import { isPlainRoom, roomKinds, type RoomKinds } from './roomKinds'
 import { describeCollapse, planCollapse } from './collapse'
+import LoopBackSheet from './LoopBackSheet'
 import { isPromptLine, promptsFor, unlabelledDoors, withPrompts, type Joiner } from './prompts'
 import AudioPanel from '@/features/audio/AudioPanel'
 import ItemsSection from '@/features/state/ItemsSection'
@@ -275,6 +276,8 @@ export default function EditorSheet({ nodeId, onClose }: { nodeId: string; onClo
   }
 
   const [announcing, setAnnouncing] = useState(false)
+  /** Which door is having its destination chosen. */
+  const [wiring, setWiring] = useState<string | null>(null)
   const prompts = useMemo(
     () => (graph && derived && node ? promptsFor(derived, node.id, 'for') : []),
     [graph, derived, node],
@@ -572,24 +575,27 @@ export default function EditorSheet({ nodeId, onClose }: { nodeId: string; onClo
                 }
                 className="min-w-0 flex-1 basis-48 rounded border border-mortar/60 bg-stone px-3 py-2 outline-none focus:border-torch"
               />
-              {/* F2.4 — destination picker: an existing node, or leave unwritten. */}
-              <select
-                value={choice.to_node_id ?? ''}
-                onChange={(e) =>
-                  void updateChoice(choice.id, { to_node_id: e.target.value || null })
-                }
+              {/* F2.4 — where this door leads. A button rather than a select:
+                  139 rooms in alphabetical order is a list nobody can find the
+                  hub in, and the picker behind this orders them by how likely
+                  they are instead. */}
+              <button
+                onClick={() => setWiring(choice.id)}
                 aria-label="Where this door leads"
-                className="min-w-0 flex-1 basis-40 rounded border border-mortar/60 bg-stone px-2 py-2 text-xs"
+                title="Point this door at a room — including one the caller has already been through"
+                className="min-w-0 flex-1 basis-40 truncate rounded border border-mortar/60 bg-stone px-2 py-2 text-left text-xs hover:border-torch"
               >
-                <option value="">— unwritten —</option>
-                {[...graph.nodes.values()]
-                  .sort((a, b) => a.slug.localeCompare(b.slug))
-                  .map((n) => (
-                    <option key={n.id} value={n.id}>
-                      {n.slug}
-                    </option>
-                  ))}
-              </select>
+                {choice.to_node_id ? (
+                  <>
+                    {derived.portals.has(choice.id) && <span className="text-torch">↺ </span>}
+                    {graph.nodes.get(choice.to_node_id)?.title ||
+                      graph.nodes.get(choice.to_node_id)?.slug ||
+                      '— gone —'}
+                  </>
+                ) : (
+                  <span className="text-cold">— leads nowhere —</span>
+                )}
+              </button>
               {/* The reaction to taking this door lives on "Show where doors
                   lead", beside the label it answers — not here, where the row
                   is already four controls of wiring. */}
@@ -799,6 +805,8 @@ export default function EditorSheet({ nodeId, onClose }: { nodeId: string; onClo
         </>
         )}
       </fieldset>
+
+      {wiring && <LoopBackSheet choiceId={wiring} onClose={() => setWiring(null)} />}
 
     </div>
   )

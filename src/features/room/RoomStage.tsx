@@ -25,6 +25,10 @@ export interface RoomStageProps {
   /** Rename the room a door leads to. That room is not the one being rendered,
    *  which is the whole point: the plates show it, so they should edit it. */
   onRenameTarget?: (nodeId: string, title: string) => void
+  /** Point a door at a room that already exists — including one behind you.
+   *  Takes a DIGIT, not a choice id: the blank arch has no choice row yet, and
+   *  it is the one that most needs this. */
+  onWire?: (digit: string) => void
   /** Open the reaction for a door — what is heard between pressing and
    *  arriving. Here rather than in the editor because it belongs beside the
    *  label it reacts to, not in a list of wiring. */
@@ -44,6 +48,7 @@ export default function RoomStage({
   onRelabelExit,
   onRenameTarget,
   onReact,
+  onWire,
 }: RoomStageProps) {
   const { node } = view
   const [peek, setPeek] = useState(false)
@@ -93,9 +98,14 @@ export default function RoomStage({
   // stage, so the setting rides along.
   const hasDoors = view.exits.length > 0 || view.overflowExits.length > 0
 
-  // Every real door, wall and stacked alike, in keypad order. Padding slots
-  // have no choice behind them, so there is nothing there to name.
-  const editable = [...view.exits, ...view.overflowExits].filter((e) => e.choiceId)
+  // Every arch on the wall, in keypad order — including the blank one.
+  //
+  // The blank arch used to be left out because it has no choice row behind it
+  // and so nothing to name. But tapping it in the room chisels a BRAND NEW
+  // room, which is the wrong answer when what you want is a door back to the
+  // hub: you would get an orphan to delete afterwards. Listing it here gives
+  // that arch the other answer.
+  const editable = [...view.exits, ...view.overflowExits]
 
   return (
     <div
@@ -143,6 +153,32 @@ export default function RoomStage({
             // rest.
             const firstHere = editable.findIndex((e) => e.targetId && e.targetId === target)
             const sharedWith = target && firstHere !== i ? editable[firstHere].digit : null
+
+            // The blank arch: nothing to label and nothing to name yet, so it
+            // gets the one thing it needs — the other way to fill it.
+            if (!exit.choiceId) {
+              return (
+                <li
+                  key={`blank-${exit.digit}`}
+                  className="flex flex-wrap items-center gap-2 rounded border border-dashed border-mortar/25 p-2"
+                >
+                  <span className="w-6 shrink-0 text-center font-carved text-mortar">
+                    {exit.digit}
+                  </span>
+                  <span className="text-xs text-cold">no door here yet</span>
+                  {onWire && (
+                    <button
+                      onClick={() => onWire(exit.digit)}
+                      className="rounded border border-mortar/50 px-2 py-1.5 text-xs text-mortar hover:border-torch hover:text-torch"
+                    >
+                      ↺ send it back to a room that exists
+                    </button>
+                  )}
+                  <span className="text-xs text-cold">or tap the arch to cut a new room</span>
+                </li>
+              )
+            }
+
             return (
               <li
                 key={exit.choiceId}
@@ -207,6 +243,13 @@ export default function RoomStage({
                     }}
                     className="min-w-0 flex-1 basis-40 rounded border border-mortar/60 bg-stone px-2 py-1.5 font-carved text-sm outline-none focus:border-torch disabled:opacity-60"
                   />
+                ) : onWire ? (
+                  <button
+                    onClick={() => onWire(exit.digit)}
+                    className="flex-1 basis-40 rounded border border-dashed border-mortar/50 px-2 py-1.5 text-xs text-cold hover:border-torch hover:text-torch"
+                  >
+                    leads nowhere yet — send it somewhere
+                  </button>
                 ) : (
                   <span className="flex-1 basis-40 px-2 py-1.5 text-xs text-cold">
                     leads nowhere yet

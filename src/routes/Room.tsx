@@ -5,6 +5,7 @@ import { buildRoomView, type ExitView } from '@/features/room/roomModel'
 import RoomStage from '@/features/room/RoomStage'
 import ReactionSheet from '@/features/room/ReactionSheet'
 import ReactionGate from '@/features/room/ReactionGate'
+import LoopBackSheet from '@/features/room/LoopBackSheet'
 import EditorSheet from '@/features/room/EditorSheet'
 import Automap from '@/features/automap/Automap'
 import { useAutomapLayout } from '@/features/automap/useAutomapLayout'
@@ -39,6 +40,8 @@ export default function Room() {
   const [reacting, setReacting] = useState<string | null>(null)
   /** A door being walked through that has something to be heard first. */
   const [passing, setPassing] = useState<{ choiceId: string; toId: string } | null>(null)
+  /** Which door is being pointed at a room, from the doors panel. */
+  const [wiring, setWiring] = useState<string | null>(null)
   const { layout } = useAutomapLayout()
   const { result: solverResult, solving } = useSolver()
   const [satchelOpen, setSatchelOpen] = useState(false)
@@ -101,6 +104,17 @@ export default function Room() {
   }
   // Either there is a trail to walk back down, or the graph itself has a way in.
   const canRetreat = trailLength > 1 || view.retreats.length > 0
+
+  /** Point a door at an existing room, making the door first if need be. */
+  const openWiring = async (digit: string) => {
+    const existing = (derived.children.get(currentNodeId) ?? []).find((c) => c.digit === digit)
+    if (existing) return setWiring(existing.id)
+    await useDelve.getState().addChoice(currentNodeId, digit as ExitView['digit'])
+    const made = (useDelve.getState().derived?.children.get(currentNodeId) ?? []).find(
+      (c) => c.digit === digit,
+    )
+    if (made) setWiring(made.id)
+  }
 
   const onChisel = async (exit: ExitView) => {
     if (exit.choiceId) {
@@ -259,7 +273,15 @@ export default function Room() {
         /* Reaching a door's reaction from the doorway rather than the editor:
            this is where you are standing when you decide it needs one. */
         onReact={setReacting}
+        /* A digit, not a choice: the blank arch has no choice row yet, and it
+           is the one that most needs sending back. Making the row here rather
+           than inside the picker means cancelling leaves an unlabelled bricked
+           door — which is what that wall slot already was, so nothing is worse
+           off than before the tap. */
+        onWire={(digit) => void openWiring(digit)}
       />
+
+      {wiring && <LoopBackSheet choiceId={wiring} onClose={() => setWiring(null)} />}
 
       {reacting && <ReactionSheet choiceId={reacting} onClose={() => setReacting(null)} />}
 
