@@ -1,7 +1,7 @@
 import ELK, { type ElkNode, type ElkExtendedEdge } from 'elkjs/lib/elk.bundled.js'
 import type { DerivedGraph, StoryGraph } from '@/types/domain'
 import { graphEdges } from '@/features/graph/edges'
-import { isFullyRecorded } from '@/features/cast/dialogue'
+import { isFullyRecorded, linesOf } from '@/features/cast/dialogue'
 
 /**
  * Automap layout (F4.1).
@@ -21,6 +21,9 @@ export const ROOM_H = 56
 export interface MapRoom {
   id: string
   slug: string
+  /** What the author calls it. The slug is an identifier; on a map of 139
+   *  rooms, PRESS_1_TO_TURN is not how anybody finds "helmet". */
+  title: string
   x: number
   y: number
   w: number
@@ -33,6 +36,11 @@ export interface MapRoom {
   depth: number | null
   /** A fight room. Marked with crossed blades rather than a door count. */
   isFight: boolean
+  /** Doors out, and how many of them lead nowhere yet. */
+  doors: number
+  looseDoors: number
+  /** Nothing written here at all — neither narration nor lines. */
+  isStub: boolean
 }
 
 export interface MapEdge {
@@ -116,9 +124,12 @@ export async function layoutAutomap(
 
   const rooms: MapRoom[] = nodes.map((n) => {
     const p = placed.get(n.id)
+    const outgoing = derived.children.get(n.id) ?? []
+    const hasWords = n.narration.trim().length > 0 || linesOf(graph, { nodeId: n.id }).length > 0
     return {
       id: n.id,
       slug: n.slug,
+      title: n.title?.trim() || '',
       x: p?.x ?? 0,
       y: p?.y ?? 0,
       w: ROOM_W,
@@ -133,6 +144,9 @@ export async function layoutAutomap(
       isUnreachable: derived.unreachable.has(n.id),
       depth: derived.depth.get(n.id) ?? null,
       isFight: fightNodes.has(n.id),
+      doors: outgoing.length,
+      looseDoors: outgoing.filter((c) => !c.to_node_id).length,
+      isStub: !hasWords,
     }
   })
 

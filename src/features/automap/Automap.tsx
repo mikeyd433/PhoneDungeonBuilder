@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { MapLayout } from './layout'
+import { ROOM_W, type MapLayout } from './layout'
+import { nameLines } from './labels'
 
 interface Props {
   layout: MapLayout
@@ -7,9 +8,39 @@ interface Props {
   onTeleport: (nodeId: string) => void
   /** Minimap mode: no interaction, no labels, just the shape of the dungeon. */
   thumbnail?: boolean
+  /** Rooms answering the current search or tally. Everything else fades back —
+   *  null means nothing is being asked, so nothing fades. */
+  highlight?: Set<string> | null
+  /** The room whose card is open. Ringed, and never faded. */
+  selectedId?: string | null
+  onSelect?: (nodeId: string) => void
 }
 
 const PAD = 40
+
+/**
+ * How a room reads before you can read its name.
+ *
+ * At 139 rooms fitted to a screen, a label is three pixels tall and every room
+ * was the same pale rectangle — so the map showed the shape of the dungeon and
+ * nothing about its state, which is the opposite of §0's first rule. Filling by
+ * how far along a room is means the zoomed-out map answers "how much is left"
+ * without a single word being legible.
+ */
+const INK = '#1F3A4A'
+const PAPER = '#EAF2F6'
+const RED = '#8C2F22'
+
+function roomFill(room: { recorded: boolean; isStub: boolean; isUnreachable: boolean }): string {
+  if (room.isUnreachable) return '#D8C3BC'
+  if (room.recorded) return '#1F3A4A' // done: inked solid
+  if (room.isStub) return '#DCE8EF' // nothing written: barely there
+  return '#EAF2F6' // written, waiting on a take
+}
+
+/** Below this many rooms across the viewport, names are legible; above it they
+ *  are smudges, and smudges are worse than an honest blank. */
+const LABEL_LIMIT_ROOMS_ACROSS = 26
 
 interface Box {
   x: number
@@ -32,7 +63,15 @@ interface Box {
  * computes against a scale the browser never actually used. Driving the viewBox
  * keeps one coordinate system, and screen->user conversion is then exact.
  */
-export default function Automap({ layout, currentId, onTeleport, thumbnail }: Props) {
+export default function Automap({
+  layout,
+  currentId,
+  onTeleport,
+  thumbnail,
+  highlight = null,
+  selectedId = null,
+  onSelect,
+}: Props) {
   const roomById = useMemo(() => new Map(layout.rooms.map((r) => [r.id, r])), [layout.rooms])
 
   /** The whole dungeon, padded. */
@@ -95,6 +134,8 @@ export default function Automap({ layout, currentId, onTeleport, thumbnail }: Pr
   )
 
   const interactive = !thumbnail
+  // Names appear once there is room for them, and not before.
+  const showLabels = !thumbnail && box.w / ROOM_W <= LABEL_LIMIT_ROOMS_ACROSS
 
   return (
     <div className={thumbnail ? 'h-full w-full' : 'relative h-full w-full bg-paper'}>
@@ -228,25 +269,31 @@ export default function Automap({ layout, currentId, onTeleport, thumbnail }: Pr
           )
         })}
 
-        {layout.rooms.map((room) => (
+        {layout.rooms.map((room) => {
+          // Faded, not hidden: a search answers "where is it" and that answer
+          // is meaningless without the shape of the dungeon still around it.
+          const dimmed = Boolean(highlight) && !highlight!.has(room.id) && room.id !== selectedId
+          const act = (fn: (id: string) => void) => fn(room.id)
+          return (
           <g
             key={room.id}
             role={interactive ? 'button' : undefined}
             tabIndex={interactive ? 0 : undefined}
-            aria-label={`${room.slug}${room.isEnding ? ', an ending' : ''}${
+            aria-label={`${room.title || room.slug}${room.isEnding ? ', an ending' : ''}${
               room.isFight ? ', a fight' : ''
             }${room.recorded ? ', recorded' : ''}`}
-            onClick={interactive ? () => onTeleport(room.id) : undefined}
+            onClick={interactive ? () => act(onSelect ?? onTeleport) : undefined}
             onKeyDown={
               interactive
                 ? (e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault()
-                      onTeleport(room.id)
+                      act(onSelect ?? onTeleport)
                     }
                   }
                 : undefined
             }
+            opacity={dimmed ? 0.22 : 1}
             className={interactive ? 'cursor-pointer outline-none' : undefined}
           >
             <rect
@@ -254,22 +301,18 @@ export default function Automap({ layout, currentId, onTeleport, thumbnail }: Pr
               y={room.y}
               width={room.w}
               height={room.h}
-              fill={room.isUnreachable ? '#C4B7B0' : '#EAF2F6'}
-              stroke={room.isOrphan || room.isUnreachable ? '#8C2F22' : '#1F3A4A'}
+              fill={roomFill(room)}
+              stroke={room.isOrphan || room.isUnreachable ? RED : INK}
               strokeWidth={2}
-              /* Written rooms inked; stubs dotted. */
-              strokeDasharray={room.written ? undefined : '4 3'}
+              /* Nothing written yet: dotted, the way an unfinished survey is. */
+              strokeDasharray={room.isStub ? '4 3' : undefined}
             />
 
-            {/* Recorded rooms get a filled corner triangle — the automap's
-                equivalent of a lit torch. */}
-            {room.recorded && (
-              <path
-                d={`M ${room.x + room.w - 16} ${room.y} L ${room.x + room.w} ${room.y} L ${
-                  room.x + room.w
-                } ${room.y + 16} Z`}
-                fill="#1F3A4A"
-              />
+            {/* A door that leads nowhere, marked on the room itself: at a zoom
+                where the stub corridors below are invisible, this is the only
+                thing that says the room is unfinished. */}
+            {room.looseDoors > 0 && (
+              <circle cx={room.x + room.w - 8} cy={room.y + room.h - 8} r={4} fill={RED} />
             )}
 
             {room.isEnding && (
@@ -301,24 +344,44 @@ export default function Automap({ layout, currentId, onTeleport, thumbnail }: Pr
               </g>
             )}
 
-            {!thumbnail && (
-              <text
-                x={room.x + room.w / 2}
-                y={room.y + room.h / 2 + 4}
-                textAnchor="middle"
-                fontFamily="'Architects Daughter', cursive"
-                fontSize={12}
-                fill="#1F3A4A"
+            {/* The name, once there is room to read it. What the author calls
+                the place, not its identifier — on a map this size, nobody finds
+                "helmet" by looking for PRESS_1_TO_TURN. Two lines, because one
+                truncated to 13 characters told you almost nothing. */}
+            {showLabels &&
+              nameLines(room).map((line, i, all) => (
+                <text
+                  key={i}
+                  x={room.x + room.w / 2}
+                  y={room.y + room.h / 2 + 4 + (i - (all.length - 1) / 2) * 13}
+                  textAnchor="middle"
+                  fontFamily="'Architects Daughter', cursive"
+                  fontSize={12}
+                  fill={room.recorded ? PAPER : INK}
+                  pointerEvents="none"
+                  /* An ending's heavy X runs straight through its label; a halo
+                     in the room's own fill keeps it readable without lightening
+                     the X, which is the stronger signal of the two. */
+                  stroke={roomFill(room)}
+                  strokeWidth={3}
+                  paintOrder="stroke"
+                >
+                  {line}
+                </text>
+              ))}
+
+            {/* The room whose card is open. */}
+            {room.id === selectedId && (
+              <rect
+                x={room.x - 5}
+                y={room.y - 5}
+                width={room.w + 10}
+                height={room.h + 10}
+                fill="none"
+                stroke={RED}
+                strokeWidth={2}
                 pointerEvents="none"
-                /* An ending's heavy X runs straight through its label; a paper
-                   halo keeps the slug readable without lightening the X, which
-                   is the stronger signal of the two. */
-                stroke="#EAF2F6"
-                strokeWidth={3}
-                paintOrder="stroke"
-              >
-                {room.slug.length > 13 ? `${room.slug.slice(0, 12)}…` : room.slug}
-              </text>
+              />
             )}
 
             {/* Current location: a red pin. */}
@@ -336,8 +399,17 @@ export default function Automap({ layout, currentId, onTeleport, thumbnail }: Pr
               </g>
             )}
           </g>
-        ))}
+          )
+        })}
       </svg>
+
+      {/* Names are hidden rather than drawn as smudges, so say why — a map that
+          silently stops labelling itself reads as broken. */}
+      {interactive && !showLabels && (
+        <p className="pointer-events-none absolute bottom-4 left-3 font-paper text-xs text-ink opacity-60">
+          Zoom in to read the names. Filled rooms are recorded.
+        </p>
+      )}
 
       {interactive && (
         <div className="absolute bottom-3 right-3 flex gap-2">

@@ -4,6 +4,7 @@ import { useDelve } from '@/features/graph/store'
 import { buildRoomView, type ExitView } from '@/features/room/roomModel'
 import RoomStage from '@/features/room/RoomStage'
 import ReactionSheet from '@/features/room/ReactionSheet'
+import ReactionGate from '@/features/room/ReactionGate'
 import EditorSheet from '@/features/room/EditorSheet'
 import Automap from '@/features/automap/Automap'
 import { useAutomapLayout } from '@/features/automap/useAutomapLayout'
@@ -36,6 +37,8 @@ export default function Room() {
   const [choosingRetreat, setChoosingRetreat] = useState(false)
   /** Which door's reaction is open, if any. */
   const [reacting, setReacting] = useState<string | null>(null)
+  /** A door being walked through that has something to be heard first. */
+  const [passing, setPassing] = useState<{ choiceId: string; toId: string } | null>(null)
   const { layout } = useAutomapLayout()
   const { result: solverResult, solving } = useSolver()
   const [satchelOpen, setSatchelOpen] = useState(false)
@@ -68,7 +71,16 @@ export default function Room() {
   const view = buildRoomView(graph, derived, currentNodeId)
   if (!view) return <p className="p-6">This room has collapsed.</p>
 
-  const onEnter = (exit: ExitView) => exit.targetId && walkTo(exit.targetId)
+  // A door carrying a reaction stops you on the way through, so what is heard
+  // between the two rooms gets heard. An ordinary door walks straight on.
+  const onEnter = (exit: ExitView) => {
+    if (!exit.targetId) return
+    if (exit.reaction !== 'none' && exit.choiceId) {
+      setPassing({ choiceId: exit.choiceId, toId: exit.targetId })
+      return
+    }
+    walkTo(exit.targetId)
+  }
 
   // F1.11 — cycle through rooms sharing this one's parent.
   const onCycleSibling = (direction: 1 | -1) => {
@@ -242,6 +254,18 @@ export default function Room() {
       />
 
       {reacting && <ReactionSheet choiceId={reacting} onClose={() => setReacting(null)} />}
+
+      {passing && (
+        <ReactionGate
+          choiceId={passing.choiceId}
+          onCancel={() => setPassing(null)}
+          onContinue={() => {
+            const { toId } = passing
+            setPassing(null)
+            walkTo(toId)
+          }}
+        />
+      )}
 
       {/* F1.12 — the retreat chooser. */}
       {choosingRetreat && (
