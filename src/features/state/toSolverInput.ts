@@ -49,12 +49,14 @@ export function toSolverInput(graph: StoryGraph): SolverInput {
   // a fight needs nothing in the satchel — only the right digits — so both
   // outcomes are always available, and the solver is right to treat the rooms
   // beyond them as reachable with whatever the caller walked in carrying.
-  // Reading edges are deliberately NOT choices. They are real structure — the
-  // map and the reachability check need them — but the caller never presses
-  // anything to take one, and modelling one as a free ungated choice would let
-  // the solver walk it without the item the check is asking about.
+  // Reading and divert edges are deliberately NOT choices. They are real
+  // structure — the map and the reachability check need them — but the caller
+  // never presses anything to take one, and modelling either as a free ungated
+  // choice would let the solver walk it without the item the check asks about.
+  // The solver reaches a divert's far side through the gate on the choice
+  // itself, which is where the condition lives.
   const choices: SolverChoice[] = graphEdges(graph)
-    .filter((e) => e.kind !== 'reading')
+    .filter((e) => e.kind !== 'reading' && e.kind !== 'divert')
     .map((e) => {
     const gate = e.choice ? gateByChoice.get(e.choice.id) : undefined
     return {

@@ -6,6 +6,7 @@ import { buildRoomView, type ExitView } from '@/features/room/roomModel'
 import { slotsToHideNewDoor } from '@/features/room/keys'
 import RoomStage from '@/features/room/RoomStage'
 import ReactionSheet from '@/features/room/ReactionSheet'
+import ForkSheet from '@/features/room/ForkSheet'
 import ReactionGate from '@/features/room/ReactionGate'
 import LoopBackSheet from '@/features/room/LoopBackSheet'
 import EditorSheet from '@/features/room/EditorSheet'
@@ -41,6 +42,8 @@ export default function Room() {
   const [choosingRetreat, setChoosingRetreat] = useState(false)
   /** Which door's reaction is open, if any. */
   const [reacting, setReacting] = useState<string | null>(null)
+  /** Which door is having its fork set up. */
+  const [forking, setForking] = useState<string | null>(null)
   /** A door being walked through that has something to be heard first. */
   const [passing, setPassing] = useState<{ choiceId: string; toId: string } | null>(null)
   /** Which door is being pointed at a room, from the doors panel. */
@@ -339,6 +342,8 @@ export default function Room() {
         /* Reaching a door's reaction from the doorway rather than the editor:
            this is where you are standing when you decide it needs one. */
         onReact={setReacting}
+        /* One key, two rooms — beside the destination it splits. */
+        onFork={setForking}
         /* A digit, not a choice: the blank arch has no choice row yet, and it
            is the one that most needs sending back. Making the row here rather
            than inside the picker means cancelling leaves an unlabelled bricked
@@ -351,6 +356,8 @@ export default function Room() {
         onViewState={setViewingState}
         onSetDoorShown={(choiceId, shown) => void setDoorShown(choiceId, shown)}
       />
+
+      {forking && <ForkSheet choiceId={forking} onClose={() => setForking(null)} />}
 
       {wiring && (() => {
         const c = graph.choices.get(wiring)

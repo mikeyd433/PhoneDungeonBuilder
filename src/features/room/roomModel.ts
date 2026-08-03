@@ -54,6 +54,10 @@ export interface ExitView {
   revokes: string[]
   /** F1.8 — an iron portcullis. Null when the choice has no gate. */
   gate: { behavior: 'hide' | 'refuse' | 'divert'; conditionCount: number } | null
+  /** A `divert` gate is a FORK — the key leads to one of two rooms depending on
+   *  what the caller carries. Named apart from `gate` because it is not a lock:
+   *  nobody is refused, they simply arrive somewhere else. */
+  forksTo: string | null
   /** What the caller hears between pressing this and arriving. `written` means
    *  a script with at least one part nobody has read — silence on the phone,
    *  and the reason this is three states rather than a boolean. */
@@ -280,6 +284,12 @@ export function buildRoomView(
       gate: gate
         ? { behavior: gate.fail_behavior, conditionCount: countConditions(gate.expression) }
         : null,
+      forksTo:
+        gate?.fail_behavior === 'divert' && gate.fail_node_id
+          ? graph.nodes.get(gate.fail_node_id)?.title ||
+            graph.nodes.get(gate.fail_node_id)?.slug ||
+            null
+          : null,
       reaction: reactionState(graph, choice.id),
       hiddenIn: hidesDoor(graph, choice.id).length,
       neverShown: alwaysHidden(graph, nodeId, choice.id),
@@ -339,6 +349,7 @@ export function buildRoomView(
         grants: [],
         revokes: [],
         gate: null,
+        forksTo: null,
         reaction: 'none',
         hiddenIn: 0,
         neverShown: false,

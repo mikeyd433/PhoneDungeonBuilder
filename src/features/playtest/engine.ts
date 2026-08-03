@@ -248,7 +248,11 @@ export class PlaytestEngine {
 
     if (!offer.open && offer.gate) {
       if (offer.gate.failBehavior === 'divert' && offer.gate.failNodeId) {
-        return this.enter(state, offer.gate.failNodeId)
+        // A divert is a FORK, not a refusal: the caller pressed the key and
+        // went somewhere, so the reaction to pressing it plays on this route
+        // too. The exporter wraps the split the same way, and the two must not
+        // disagree about what is heard.
+        return this.withReaction(offer.choice.id, this.enter(state, offer.gate.failNodeId))
       }
       // `refuse` — say why, and stay put.
       return {
@@ -279,15 +283,25 @@ export class PlaytestEngine {
         spoken: '(This branch is unwritten — nothing happens.)',
       }
     }
-    const arrival = this.enter({ ...state, caller }, offer.choice.to_node_id)
+    return this.withReaction(
+      offer.choice.id,
+      this.enter({ ...state, caller }, offer.choice.to_node_id),
+    )
+  }
 
-    // The reaction, between the press and the arrival, in that order. Split by
-    // speaker if it has been, and attributed the same way a room's lines are —
-    // a two-hander in a doorway reads as nonsense without the names.
-    //
-    // Written but unrecorded is flagged rather than read out as though it will
-    // ship: on the phone that part is silence.
-    const reaction = reactionPlaybackFor(this.graph, offer.choice.id)
+  /**
+   * The reaction, between the press and the arrival, in that order.
+   *
+   * Split by speaker if it has been, and attributed the same way a room's lines
+   * are — a two-hander in a doorway reads as nonsense without the names.
+   * Written but unrecorded is flagged rather than read out as though it will
+   * ship: on the phone that part is silence.
+   */
+  private withReaction(
+    choiceId: string,
+    arrival: { next: PlaytestState; spoken: string | null },
+  ): { next: PlaytestState; spoken: string | null } {
+    const reaction = reactionPlaybackFor(this.graph, choiceId)
       .map((part) => {
         const said = part.say.trim()
         if (!said) return ''

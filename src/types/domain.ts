@@ -374,7 +374,7 @@ export interface FightRound {
  * Structure is computed over these; the room's *exits* are still choices only,
  * because a fight is answered with moves rather than doors.
  */
-export type EdgeKind = 'choice' | 'fight-win' | 'fight-lose' | 'fight-move' | 'reading'
+export type EdgeKind = 'choice' | 'fight-win' | 'fight-lose' | 'fight-move' | 'reading' | 'divert'
 
 export interface GraphEdge {
   /** Real choice id, or `fight:<fightId>:win` / `:lose` for a fight outcome. */

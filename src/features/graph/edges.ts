@@ -21,6 +21,8 @@ export const fightMoveEdgeId = (outcomeId: string) => `fightmove:${outcomeId}`
 
 export const readingEdgeId = (variantId: string) => `reading:${variantId}`
 
+export const divertEdgeId = (gateId: string) => `divert:${gateId}`
+
 export function graphEdges(graph: StoryGraph): GraphEdge[] {
   const edges: GraphEdge[] = []
 
@@ -104,6 +106,35 @@ export function graphEdges(graph: StoryGraph): GraphEdge[] {
       // After the keypad and after the fight outcomes: nothing about this is a
       // key the caller presses, so it must never lead a digit-ordered list.
       sort_order: 103 + variant.sort_order,
+      choice: null,
+    })
+  }
+
+  /**
+   * The other side of a fork.
+   *
+   * A `divert` gate sends the caller to a room no choice row points at — the
+   * same shape as a fight's win room, and left out for exactly as long. The map
+   * never drew it and the ledger reported the room beyond it as sealed, which
+   * is the failure §2 warns about when structure is not derived over edges.
+   *
+   * `choice: null`, so it is never a door: the caller presses the digit the
+   * choice already owns, and this is where the gate sends them instead.
+   */
+  for (const gate of graph.gates.values()) {
+    if (gate.fail_behavior !== 'divert') continue
+    const choice = graph.choices.get(gate.choice_id)
+    if (!choice || !graph.nodes.has(choice.from_node_id)) continue
+    edges.push({
+      id: divertEdgeId(gate.id),
+      kind: 'divert',
+      from_node_id: choice.from_node_id,
+      to_node_id: gate.fail_node_id,
+      digit: null,
+      label: choice.label ? `${choice.label}, without` : 'the other way',
+      // Beside the door it forks from, and after it: a digit-ordered list must
+      // still lead with the key the caller presses.
+      sort_order: choice.sort_order + 0.5,
       choice: null,
     })
   }

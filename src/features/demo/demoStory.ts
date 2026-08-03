@@ -217,6 +217,13 @@ export function buildDemoStory(): StoryGraph {
     updated_at: STAMP,
   }
   gates.set(gate.id, gate)
+  const forkGate: Gate = {
+    id: nextId('g'), story_id: story.id, choice_id: exit(hold, '2', 'climb the ladder', fin),
+    expression: { op: 'has', var: 'ROPE' }, fail_behavior: 'divert',
+    fail_narration: null, fail_audio_path: null, fail_audio_duration_ms: null,
+    fail_node_id: drowned, consume_on_pass: false, created_at: STAMP, updated_at: STAMP,
+  }
+  gates.set(forkGate.id, forkGate)
 
   // The shore, read two ways. Carrying the rope changes what the room SAYS —
   // not only which doors it offers — which is the case a gate alone could

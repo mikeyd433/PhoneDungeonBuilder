@@ -710,36 +710,47 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
         dest = wname(slug, 'gather')
       }
 
-      // The reaction to having pressed this digit, between the keypress and
-      // the next room. Wrapped closest to the destination, so what actually
-      // happens is: gate passes -> effects apply -> reaction plays -> arrive.
-      //
-      // Inside the gate on purpose: hearing the reaction to a thing you were
-      // not allowed to do would be worse than hearing nothing, and a refused
-      // door has its own take already.
-      //
-      // A reaction split between two actors is one widget per line, chained and
-      // landing on the same destination — the same shape a room's conversation
-      // takes, for the same reason.
+      /**
+       * The reaction to having pressed this digit — what is said between the
+       * keypress and the next room.
+       *
+       * WHERE it wraps depends on what the gate is for:
+       *
+       *   refuse / hide — inside the gate, closest to the destination. Hearing
+       *     the reaction to a thing you were not allowed to do would be worse
+       *     than hearing nothing, and a refused door has its own take already.
+       *
+       *   divert — OUTSIDE the whole split, so both routes hear it. A divert is
+       *     a fork, not a refusal: the caller pressed the key and went
+       *     somewhere, and "Mike hands over the helmet" is the reaction to
+       *     pressing it, not to passing a test.
+       */
       const reactParts = reactionPlaybackFor(graph, choice.id)
       const reactRecorded = reactParts.filter((p) => p.audioPath)
       const reactName = (i: number) =>
         `${slug}_d${dkey}_react${i === 0 ? '' : `_line${i + 1}`}`
+      const forks = gate?.fail_behavior === 'divert'
 
-      // Built back to front so each widget already knows where the next one is,
-      // and the first of them becomes what the digit points at.
-      for (let i = reactRecorded.length - 1; i >= 0; i--) {
-        const part = reactRecorded[i]
-        widgets.push({
-          name: reactName(i),
-          type: 'say-play',
-          nodeId: node.id,
-          note: `Reaction to pressing ${choice.digit}.${part.speaker ? ` — ${part.speaker}` : ''}`,
-          playUrl: `${audioBaseUrl}${part.audioPath}`,
-          transitions: [{ event: 'audioComplete', next: dest }],
-        })
-        dest = reactName(i)
+      /** Chain the reaction's widgets in front of `next`, back to front, so
+       *  each already knows where the one after it is. */
+      const wrapReaction = (next: string | null): string | null => {
+        let at = next
+        for (let i = reactRecorded.length - 1; i >= 0; i--) {
+          const part = reactRecorded[i]
+          widgets.push({
+            name: reactName(i),
+            type: 'say-play',
+            nodeId: node.id,
+            note: `Reaction to pressing ${choice.digit}.${part.speaker ? ` — ${part.speaker}` : ''}`,
+            playUrl: `${audioBaseUrl}${part.audioPath}`,
+            transitions: [{ event: 'audioComplete', next: at }],
+          })
+          at = reactName(i)
+        }
+        return at
       }
+
+      if (!forks) dest = wrapReaction(dest)
 
       const reactMissing = reactParts.length - reactRecorded.length
       if (reactMissing > 0) {
@@ -862,6 +873,9 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
           }
         }
         dest = splitName
+        // A fork: both routes are somewhere the caller chose to go, so the
+        // reaction to choosing wraps the split rather than one branch of it.
+        if (forks) dest = wrapReaction(dest)
       }
 
       /**

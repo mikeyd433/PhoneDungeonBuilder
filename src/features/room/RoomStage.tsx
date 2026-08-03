@@ -33,6 +33,9 @@ export interface RoomStageProps {
    *  arriving. Here rather than in the editor because it belongs beside the
    *  label it reacts to, not in a list of wiring. */
   onReact?: (choiceId: string) => void
+  /** Fork this door on an item: one key, two rooms. Beside the destination it
+   *  splits, for the same reason the reaction sits beside its label. */
+  onFork?: (choiceId: string) => void
   /** Stand in the room as a caller in one particular state. */
   onViewState?: (id: string | null | 'all') => void
   /** Offer or withhold one door in the state currently being viewed. Absent in
@@ -53,6 +56,7 @@ export default function RoomStage({
   onRelabelExit,
   onRenameTarget,
   onReact,
+  onFork,
   onWire,
   onViewState,
   onSetDoorShown,
@@ -366,6 +370,28 @@ export default function RoomStage({
                     leads nowhere yet
                   </span>
                 )}
+                {/* One key, two rooms. Beside the destination it splits, and
+                    when it does the second room is named here too — a door
+                    that goes to two places must not read like one that goes to
+                    one. */}
+                {onFork && exit.choiceId && (
+                  <button
+                    onClick={() => onFork(exit.choiceId!)}
+                    aria-label={`Where door ${exit.digit} forks`}
+                    title={
+                      exit.forksTo
+                        ? `Forks: otherwise leads to ${exit.forksTo}`
+                        : 'Send this door to a different room depending on what they carry'
+                    }
+                    className={[
+                      'shrink-0 rounded border px-2 py-1.5 text-xs',
+                      exit.forksTo ? 'border-torch/60 text-torch' : 'border-mortar/40 text-mortar',
+                    ].join(' ')}
+                  >
+                    ⑂{exit.forksTo ? ` ${exit.forksTo}` : ''}
+                  </button>
+                )}
+
                 {/* The reaction to taking this door — what is heard between the
                     keypress and arriving. Beside the label because that is what
                     it answers, and marked so a room's doors can be scanned for
