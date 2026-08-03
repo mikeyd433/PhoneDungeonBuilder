@@ -45,14 +45,25 @@ function Nameplate({ exit, lit }: { exit: ExitView; lit: boolean }) {
   const emptySlot = unwritten && !exit.choiceId
 
   const PALE = lit ? '#8FB0C2' : '#6B5A47'
+  const NAMED = lit ? '#E4D9BE' : '#8FB0C2'
   const rows: Array<{ text: string; size: number; family?: string; fill: string }> = []
 
-  // What the caller hears. Budgets differ per row because the faces do: the
-  // destination is set in Cinzel, whose small caps run about half again as wide
-  // as the body face.
-  if (!emptySlot && exit.label) {
-    for (const line of wrapToPlate(exit.label, 17, 1)) {
-      rows.push({ text: line, size: 8, fill: PALE })
+  /**
+   * A door's name is what the author wrote ON it, not the room behind it.
+   *
+   * The destination used to be the headline here, which meant three doors into
+   * one room — put the helmet on, give it to Mike, leave it — all read as that
+   * room's name and were indistinguishable at a glance, however differently
+   * they were labelled. The label is the only part of a threshold that is
+   * per-door, so it is the part that gets to be the name.
+   *
+   * Budgets differ per row because the faces do: Cinzel's small caps run about
+   * half again as wide as the body face.
+   */
+  const named = !emptySlot && Boolean(exit.label.trim())
+  if (named) {
+    for (const line of wrapToPlate(exit.label, 12, 2)) {
+      rows.push({ text: line, size: 9, family: 'Cinzel, Georgia, serif', fill: NAMED })
     }
   }
 
@@ -75,15 +86,17 @@ function Nameplate({ exit, lit }: { exit: ExitView; lit: boolean }) {
     }
   }
 
-  // Where it lands them.
+  // Where it lands them. Second billing behind the door's own words — unless
+  // there are none, in which case this is all the door has to identify itself
+  // by and it takes the name treatment instead.
   const destination = unwritten
     ? [emptySlot ? 'no door yet' : 'unwritten']
-    : wrapToPlate(exit.targetTitle ?? 'nowhere', 12, 2)
+    : wrapToPlate(`${named ? '→ ' : ''}${exit.targetTitle ?? 'nowhere'}`, named ? 17 : 12, 2)
   for (const line of destination) {
     rows.push({
       text: line,
-      size: 9,
-      family: unwritten ? undefined : 'Cinzel, Georgia, serif',
+      size: named ? 8 : 9,
+      family: unwritten || named ? undefined : 'Cinzel, Georgia, serif',
       /* Red only for a door that claims a destination and hasn't got one — a
          dangling reference, which is broken rather than merely unfinished.
          Unwritten branches stay the same cold blue as their brickwork. */
@@ -91,13 +104,13 @@ function Nameplate({ exit, lit }: { exit: ExitView; lit: boolean }) {
         ? '#41525C'
         : !exit.targetTitle
           ? '#8C2F22'
-          : // A slug standing in for a name is dimmer than a name: the door
-            // still says where it goes, without claiming somebody named it.
-            exit.targetTitled
-            ? lit
-              ? '#E4D9BE'
-              : '#8FB0C2'
-            : '#6B5A47',
+          : named
+            ? PALE
+            : // A slug standing in for a name is dimmer than a name: the door
+              // still says where it goes, without claiming somebody named it.
+              exit.targetTitled
+              ? NAMED
+              : '#6B5A47',
     })
   }
 
