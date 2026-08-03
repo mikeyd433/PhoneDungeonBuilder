@@ -3,8 +3,9 @@ import { useDelve } from '@/features/graph/store'
 import * as api from '@/lib/api'
 import { errorText } from '@/lib/errorText'
 import { describeExpression } from '@/features/state/describe'
+import GateBuilder from '@/features/state/GateBuilder'
+import { fromFlat, toFlat, type FlatGate } from '@/features/state/gateShape'
 import LoopBackSheet from './LoopBackSheet'
-import type { GateExpression } from '@/types/domain'
 
 /**
  * One key, two rooms — the check that happens on the way THROUGH.
@@ -51,6 +52,11 @@ export default function ForkSheet({
   const vars = [...graph.stateVars.values()].sort((a, b) => a.slug.localeCompare(b.slug))
   const named = vars.map((v) => ({ slug: v.slug, name: v.name }))
   const forks = gate?.fail_behavior === 'divert'
+  const flat = forks ? toFlat(gate.expression) : null
+  const noCondition =
+    forks &&
+    (gate.expression.op === 'and' || gate.expression.op === 'or') &&
+    gate.expression.args.length === 0
   const roomName = (id: string | null) =>
     (id && (graph.nodes.get(id)?.title || graph.nodes.get(id)?.slug)) || null
 
@@ -78,8 +84,6 @@ export default function ForkSheet({
         consume_on_pass: false,
       }),
     )
-
-  const field = 'rounded border border-mortar/60 bg-stone px-2 py-2 text-sm'
 
   return (
     <div className="fixed inset-0 z-40 flex items-end bg-depth/85" onClick={onClose}>
@@ -129,49 +133,37 @@ export default function ForkSheet({
               reaction either way.
             </p>
 
-            <div className="flex flex-wrap items-center gap-2 text-sm">
-              <span className="text-mortar">If they are</span>
-              <select
-                value={(gate.expression as { op?: string }).op === 'lacks' ? 'lacks' : 'has'}
-                disabled={busy}
-                onChange={(e) =>
+            {/* The same builder the gates use, so "any one of these" is one
+                thing to learn rather than two. A fork asking a question a gate
+                cannot ask would be a second condition language to keep
+                honest — and the commonest fork in an item story is exactly the
+                one a single row could not write: either of two things opens it. */}
+            {flat ? (
+              <GateBuilder
+                flat={flat}
+                vars={vars}
+                onChange={(next: FlatGate) =>
                   void run(() =>
-                    api.upsertGate(story.id, choiceId, {
-                      expression: {
-                        op: e.target.value as 'has' | 'lacks',
-                        var: (gate.expression as { var?: string }).var ?? vars[0].slug,
-                      } as GateExpression,
-                    }),
+                    api.upsertGate(story.id, choiceId, { expression: fromFlat(next) }),
                   )
                 }
-                className={field}
-              >
-                <option value="has">carrying</option>
-                <option value="lacks">not carrying</option>
-              </select>
-              <select
-                value={(gate.expression as { var?: string }).var ?? vars[0].slug}
-                disabled={busy}
-                onChange={(e) =>
-                  void run(() =>
-                    api.upsertGate(story.id, choiceId, {
-                      expression: {
-                        op:
-                          (gate.expression as { op?: string }).op === 'lacks' ? 'lacks' : 'has',
-                        var: e.target.value,
-                      } as GateExpression,
-                    }),
-                  )
-                }
-                className={field}
-              >
-                {vars.map((v) => (
-                  <option key={v.id} value={v.slug}>
-                    {v.name || v.slug}
-                  </option>
-                ))}
-              </select>
-            </div>
+              />
+            ) : (
+              <p className="text-xs text-cold">
+                This condition is nested more deeply than the builder shows, so it is left alone.
+                Its plain-English reading is below.
+              </p>
+            )}
+
+            {/* An empty `and` is vacuously true, so the fork exists and nobody
+                ever takes the second route. Said out loud, because from here it
+                looks like a working fork. */}
+            {noCondition && (
+              <p className="text-xs text-grave">
+                No conditions yet, so this always takes the first route — add one, or remove the
+                fork.
+              </p>
+            )}
 
             {/* The two routes, in the order they read. Both are ordinary rooms
                 and neither is a fallback — which is why they are two rows the
@@ -182,7 +174,7 @@ export default function ForkSheet({
               className="rounded border border-torch/50 px-3 py-2 text-left text-sm hover:border-torch"
             >
               <span className="block text-xs text-mortar">
-                …they go to
+                {noCondition ? 'Everybody goes to' : '…they go to'}
               </span>
               <span className="text-torch">{roomName(choice.to_node_id) ?? '— nowhere yet —'}</span>
             </button>
@@ -200,8 +192,10 @@ export default function ForkSheet({
 
             <p className="rounded border border-mortar/25 p-2 text-xs text-cold">
               Reads as: pressing {choice.digit} leads to{' '}
-              {roomName(choice.to_node_id) ?? 'nowhere'} when {describeExpression(named, gate.expression)}, and to{' '}
-              {roomName(gate.fail_node_id) ?? 'nowhere'} otherwise.
+              <span className="text-torch">{roomName(choice.to_node_id) ?? 'nowhere'}</span> when{' '}
+              <span className="text-parchment">{describeExpression(named, gate.expression)}</span>,
+              and to <span className="text-parchment">{roomName(gate.fail_node_id) ?? 'nowhere'}</span>{' '}
+              otherwise.
             </p>
 
             <p className="text-xs text-cold">
