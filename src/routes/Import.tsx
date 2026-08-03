@@ -13,6 +13,7 @@ import {
 import { suggestSplit, type SplitSuggestion } from '@/features/import/split'
 import { commitImportPlan } from '@/features/import/commitImport'
 import { createStory } from '@/lib/api'
+import { errorText } from '@/lib/errorText'
 
 /**
  * F2.11 — import with a preview. §8: never write directly from a file without a
@@ -136,7 +137,7 @@ export default function Import() {
       // Land in the last story created — the dungeon, when splitting.
       navigate(`/story/${last}`)
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(errorText(e))
       setBusy(false)
     }
   }

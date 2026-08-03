@@ -20,6 +20,7 @@ import { uniqueSlug } from '@/lib/slug'
 import { enqueue, isOffline } from '@/lib/offlineQueue'
 import { buildDemoStory, DEMO_STORY_ID } from '@/features/demo/demoStory'
 import { planCollapse } from '@/features/room/collapse'
+import { errorText } from '@/lib/errorText'
 
 /** F2.10 — undo stack, last 20 actions. */
 const UNDO_LIMIT = 20
@@ -135,7 +136,7 @@ export const useDelve = create<DelveState>((set, get) => {
   }
 
   const fail = (e: unknown) => {
-    set({ error: e instanceof Error ? e.message : String(e) })
+    set({ error: errorText(e) })
   }
 
   /**
@@ -252,7 +253,7 @@ export const useDelve = create<DelveState>((set, get) => {
           loading: false,
         })
       } catch (e) {
-        set({ error: e instanceof Error ? e.message : String(e), loading: false })
+        set({ error: errorText(e), loading: false })
       }
     },
 

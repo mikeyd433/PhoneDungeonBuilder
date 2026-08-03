@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useDelve } from '@/features/graph/store'
+import * as api from '@/lib/api'
 import { buildRoomView, type ExitView } from '@/features/room/roomModel'
 import RoomStage from '@/features/room/RoomStage'
 import ReactionSheet from '@/features/room/ReactionSheet'
@@ -13,6 +14,7 @@ import SatchelPanel from '@/features/state/SatchelPanel'
 import { useSolver } from '@/features/state/useSolver'
 import { usePresence } from '@/features/collab/usePresence'
 import { useOfflineSync } from '@/features/offline/useOfflineSync'
+import { errorText } from '@/lib/errorText'
 
 export default function Room() {
   const { storyId } = useParams<{ storyId: string }>()
@@ -42,6 +44,19 @@ export default function Room() {
   const [passing, setPassing] = useState<{ choiceId: string; toId: string } | null>(null)
   /** Which door is being pointed at a room, from the doors panel. */
   const [wiring, setWiring] = useState<string | null>(null)
+  /**
+   * Which state of the room is being stood in — a reading id, null for the room
+   * as written, or 'all' for every door at once.
+   *
+   * Reset on walking somewhere, because a state belongs to a room: "Has the
+   * lamp" means nothing three rooms later, and carrying the selection would
+   * silently hide doors in a room that never had a reading by that name.
+   */
+  const [viewingState, setViewingState] = useState<string | null | 'all'>('all')
+  useEffect(() => setViewingState('all'), [currentNodeId])
+  /** Door-visibility writes go straight to the API rather than through the
+   *  store, so they need somewhere of their own to fail into. */
+  const [doorError, setDoorError] = useState<string | null>(null)
   const { layout } = useAutomapLayout()
   const { result: solverResult, solving } = useSolver()
   const [satchelOpen, setSatchelOpen] = useState(false)
@@ -71,7 +86,7 @@ export default function Room() {
     )
   }
 
-  const view = buildRoomView(graph, derived, currentNodeId)
+  const view = buildRoomView(graph, derived, currentNodeId, viewingState)
   if (!view) return <p className="p-6">This room has collapsed.</p>
 
   // A door carrying a reaction stops you on the way through, so what is heard
@@ -104,6 +119,25 @@ export default function Room() {
   }
   // Either there is a trail to walk back down, or the graph itself has a way in.
   const canRetreat = trailLength > 1 || view.retreats.length > 0
+
+  /**
+   * Offer or withhold a door in the state being stood in.
+   *
+   * Only ever the CURRENT state — there is no way to reach another room's rules
+   * from here, and no way to change 'all', which is not a state a caller can be
+   * in. Written straight through and re-read, like everything else that hangs
+   * off a reading.
+   */
+  const setDoorShown = async (choiceId: string, shown: boolean) => {
+    if (viewingState === 'all') return
+    setDoorError(null)
+    try {
+      await api.setDoorHidden(graph.story.id, choiceId, viewingState, !shown)
+      await useDelve.getState().refresh()
+    } catch (e) {
+      setDoorError(errorText(e))
+    }
+  }
 
   /** Point a door at an existing room, making the door first if need be. */
   const openWiring = async (digit: string) => {
@@ -279,6 +313,11 @@ export default function Room() {
            door — which is what that wall slot already was, so nothing is worse
            off than before the tap. */
         onWire={(digit) => void openWiring(digit)}
+        /* Stand in the room as one kind of caller. Kept on the route rather
+           than in the stage so it survives opening the editor — the reason to
+           switch states is usually to edit that state's doors. */
+        onViewState={setViewingState}
+        onSetDoorShown={(choiceId, shown) => void setDoorShown(choiceId, shown)}
       />
 
       {wiring && (() => {
@@ -375,11 +414,17 @@ export default function Room() {
         )}
       </footer>
 
-      {error && (
+      {(error || doorError) && (
         <div className="fixed inset-x-4 bottom-24 z-30 rounded border border-grave bg-grave/20 p-3 text-sm">
           <div className="flex items-start justify-between gap-3">
-            <span>{error}</span>
-            <button onClick={clearError} className="underline">
+            <span>{error ?? doorError}</span>
+            <button
+              onClick={() => {
+                setDoorError(null)
+                clearError()
+              }}
+              className="underline"
+            >
               Dismiss
             </button>
           </div>

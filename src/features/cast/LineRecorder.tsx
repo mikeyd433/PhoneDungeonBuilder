@@ -7,6 +7,7 @@ import { IVR_EXT, IVR_MIME, toIvrWav } from '@/features/audio/ivrWav'
 import { useHoldToRecord } from '@/features/audio/useHoldToRecord'
 import { audioPath, publicAudioUrl, removeAudio, uploadAudio } from '@/features/audio/storage'
 import { audioTargets } from '@/features/audio/targets'
+import { errorText } from '@/lib/errorText'
 
 /**
  * Record one line of a conversation.
@@ -51,7 +52,7 @@ export default function LineRecorder({ lineId }: { lineId: string }) {
       await setLineAudio(line.id, path, wav.durationMs || durationMs)
       if (previous) await removeAudio(previous)
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(errorText(e))
     } finally {
       setBusy(false)
     }
@@ -76,7 +77,7 @@ export default function LineRecorder({ lineId }: { lineId: string }) {
       const { blob, mimeType, durationMs } = await s.stop()
       await save(blob, mimeType, await measureDuration(blob, durationMs))
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(errorText(e))
     }
   }
 
@@ -91,7 +92,7 @@ export default function LineRecorder({ lineId }: { lineId: string }) {
       await setLineAudio(line.id, null, null)
       await removeAudio(previous)
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(errorText(e))
     } finally {
       setBusy(false)
     }

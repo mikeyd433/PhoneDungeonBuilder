@@ -9,6 +9,7 @@ import { measureDuration, RecorderSession, recordingSupported } from '@/features
 import { publicAudioUrl } from '@/features/audio/storage'
 import { estimateSeconds, formatDuration } from '@/lib/speech'
 import { canRecord } from '@/types/domain'
+import { errorText } from '@/lib/errorText'
 
 /**
  * One slot at a time, in the order the story is read.
@@ -88,7 +89,7 @@ export default function Record() {
       // Straight on: the whole point is not stopping between takes.
       setAt((i) => Math.min(queue.length - 1, i + 1))
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(errorText(e))
     } finally {
       setBusy(false)
     }
@@ -114,7 +115,7 @@ export default function Record() {
       await measureDuration(blob, durationMs)
       await store(blob)
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(errorText(e))
     }
   }
 

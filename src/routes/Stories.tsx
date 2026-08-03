@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { createStory, listStories } from '@/lib/api'
 import { supabase } from '@/lib/supabase'
 import type { Story } from '@/types/domain'
+import { errorText } from '@/lib/errorText'
 
 /** F7.3 — multi-story support. */
 export default function Stories() {
@@ -26,7 +27,7 @@ export default function Stories() {
       const story = await createStory(title.trim())
       navigate(`/story/${story.id}`)
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(errorText(e))
       setBusy(false)
     }
   }

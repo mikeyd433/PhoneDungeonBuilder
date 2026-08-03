@@ -33,6 +33,11 @@ export interface RoomStageProps {
    *  arriving. Here rather than in the editor because it belongs beside the
    *  label it reacts to, not in a list of wiring. */
   onReact?: (choiceId: string) => void
+  /** Stand in the room as a caller in one particular state. */
+  onViewState?: (id: string | null | 'all') => void
+  /** Offer or withhold one door in the state currently being viewed. Absent in
+   *  the "every state" view, where there is no one state to change. */
+  onSetDoorShown?: (choiceId: string, shown: boolean) => void
 }
 
 /** Distance in px before a touch counts as a swipe rather than a tap. */
@@ -49,6 +54,8 @@ export default function RoomStage({
   onRenameTarget,
   onReact,
   onWire,
+  onViewState,
+  onSetDoorShown,
 }: RoomStageProps) {
   const { node } = view
   const [peek, setPeek] = useState(false)
@@ -115,6 +122,41 @@ export default function RoomStage({
       /* F1.4 — swipe right retreats. */
       onTouchEnd={swipeHandler(undefined, onRetreat)}
     >
+      {/* Stand in the room as one kind of caller.
+          A room that reads two ways has two sets of doors, and looking at both
+          at once is how you author it but not how anyone experiences it. Pick a
+          state and the wall becomes that state's wall — which is also what
+          makes the doors editable one state at a time. */}
+      {view.states.length > 0 && onViewState && (
+        <div className="flex flex-wrap items-center gap-1 px-4 pt-2">
+          <span className="mr-1 text-xs uppercase tracking-wider text-mortar">Standing here</span>
+          {view.states.map((s) => (
+            <button
+              key={String(s.id)}
+              type="button"
+              title={s.hint}
+              aria-pressed={view.viewing === s.id}
+              onClick={() => onViewState(s.id)}
+              className={[
+                'rounded border px-2 py-1 text-xs',
+                view.viewing === s.id ? 'border-torch text-torch' : 'border-mortar/50 text-mortar',
+              ].join(' ')}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* What this caller actually hears, when it is not the room's own words.
+          Shown because everything else on screen has changed to match it, and a
+          wall with different doors and no explanation reads as a bug. */}
+      {view.readingText !== null && (
+        <p className="mx-4 mt-2 rounded border border-torch/40 bg-torch/5 px-3 py-2 text-xs text-parchment">
+          {view.readingText.trim() || <span className="text-cold">(this reading has no words — the caller hears nothing here)</span>}
+        </p>
+      )}
+
       <DungeonRoom view={view} flare={flare} onExit={handleExit} peek={peek} />
 
       {/* Where the doors go. The narration sometimes says so and sometimes
@@ -202,10 +244,32 @@ export default function RoomStage({
                 >
                   {exit.digit}
                 </span>
-                {exit.hiddenIn > 0 && (
-                  <span className={exit.neverShown ? 'shrink-0 text-xs text-grave' : 'shrink-0 text-xs text-mortar'}>
-                    {exit.neverShown ? 'never offered' : `only sometimes`}
-                  </span>
+                {/* In the "every state" view this is a read-out; standing in
+                    one state it is the switch, because that is the state whose
+                    doors you are editing. */}
+                {onSetDoorShown && view.viewing !== 'all' ? (
+                  <label
+                    className="flex shrink-0 items-center gap-1 text-xs text-mortar"
+                    title="Whether this caller is offered this door at all"
+                  >
+                    <input
+                      type="checkbox"
+                      checked
+                      onChange={() => onSetDoorShown(exit.choiceId!, false)}
+                      className="accent-torch"
+                    />
+                    here
+                  </label>
+                ) : (
+                  exit.hiddenIn > 0 && (
+                    <span
+                      className={
+                        exit.neverShown ? 'shrink-0 text-xs text-grave' : 'shrink-0 text-xs text-mortar'
+                      }
+                    >
+                      {exit.neverShown ? 'never offered' : 'only sometimes'}
+                    </span>
+                  )
                 )}
                 <input
                   // Remounts when the value changes underneath — two doors to
@@ -307,6 +371,40 @@ export default function RoomStage({
           })}
         </ul>
       )}
+
+      {/* Doors this caller is NOT offered. Not on the wall — they cannot see
+          them — but listed here, because a door you have withheld is one you
+          have to be able to give back, and a wall it is missing from gives you
+          nowhere to do that. */}
+      {peek && view.withheldExits.length > 0 && onSetDoorShown && (
+        <div className="px-4 pt-3">
+          <span className="text-xs uppercase tracking-wider text-mortar">Not offered here</span>
+          <ul className="mt-1 flex flex-col gap-1">
+            {view.withheldExits.map((exit) => (
+              <li
+                key={`withheld-${exit.choiceId}`}
+                className="flex flex-wrap items-center gap-2 rounded border border-dashed border-mortar/25 p-2 opacity-70"
+              >
+                <span className="w-6 shrink-0 text-center font-carved text-mortar">{exit.digit}</span>
+                <span className="min-w-0 flex-1 truncate text-sm text-cold">
+                  {exit.label || <em>unlabelled</em>}
+                  {exit.targetTitle ? ` → ${exit.targetTitle}` : ''}
+                </span>
+                <label className="flex shrink-0 items-center gap-1 text-xs text-mortar">
+                  <input
+                    type="checkbox"
+                    checked={false}
+                    onChange={() => onSetDoorShown(exit.choiceId!, true)}
+                    className="accent-torch"
+                  />
+                  here
+                </label>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
 
       {/* The fight, as a caller meets it: one round at a time, each with the
           move that answers it. Shown in full because this is the authoring

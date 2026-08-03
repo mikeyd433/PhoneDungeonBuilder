@@ -3,6 +3,7 @@ import { useDelve } from '@/features/graph/store'
 import { supabase } from '@/lib/supabase'
 import * as collab from './api'
 import type { Claim, NodeComment } from './api'
+import { errorText } from '@/lib/errorText'
 
 /** F9.3 comments and F9.4 claiming, for one room. */
 export default function CollabPanel({ nodeId }: { nodeId: string }) {
@@ -22,7 +23,7 @@ export default function CollabPanel({ nodeId }: { nodeId: string }) {
       setComments(c)
       setClaims(k)
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(errorText(e))
     }
   }
 
@@ -45,7 +46,7 @@ export default function CollabPanel({ nodeId }: { nodeId: string }) {
       await fn()
       await reload()
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(errorText(e))
     }
   }
 

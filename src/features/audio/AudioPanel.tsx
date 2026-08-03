@@ -14,6 +14,7 @@ import { useHoldToRecord } from './useHoldToRecord'
 import Waveform from './Waveform'
 import { nextStatus } from './status'
 import { isFullyRecorded, playsLineByLine } from '@/features/cast/dialogue'
+import { errorText } from '@/lib/errorText'
 
 export default function AudioPanel({ nodeId }: { nodeId: string }) {
   const graph = useDelve((s) => s.graph)
@@ -79,7 +80,7 @@ export default function AudioPanel({ nodeId }: { nodeId: string }) {
         if (previous) await removeAudio(previous)
         setPeaks(await computePeaks(blob))
       } catch (e) {
-        setError(e instanceof Error ? e.message : String(e))
+        setError(errorText(e))
       } finally {
         setBusy(null)
       }
@@ -103,7 +104,7 @@ export default function AudioPanel({ nodeId }: { nodeId: string }) {
       await removeAudio(previous)
       setPeaks([])
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(errorText(e))
     } finally {
       setBusy(null)
     }
@@ -133,7 +134,7 @@ export default function AudioPanel({ nodeId }: { nodeId: string }) {
       const measured = await measureDuration(blob, durationMs)
       await save(blob, mimeType, measured)
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(errorText(e))
     }
   }
 

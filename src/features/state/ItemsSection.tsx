@@ -6,6 +6,7 @@ import GateBuilder from './GateBuilder'
 import { fromFlat, toFlat, type FlatGate } from './gateShape'
 import type { Choice, Effect, EffectOperation, StateVar } from '@/types/domain'
 import TakeRecorder from '@/features/audio/TakeRecorder'
+import { errorText } from '@/lib/errorText'
 
 /**
  * F8.1–F8.5, in the editor sheet.
@@ -34,7 +35,7 @@ export default function ItemsSection({ nodeId }: { nodeId: string }) {
       await fn()
       await refresh()
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(errorText(e))
     } finally {
       setBusy(false)
     }

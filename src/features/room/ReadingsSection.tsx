@@ -8,6 +8,7 @@ import TakeRecorder from '@/features/audio/TakeRecorder'
 import { estimateSeconds } from '@/lib/speech'
 import LoopBackSheet from './LoopBackSheet'
 import { doorShows, variantProblems, variantsOf } from './variants'
+import { errorText } from '@/lib/errorText'
 
 /**
  * The room, read differently depending on what the caller is carrying.
@@ -86,7 +87,7 @@ export default function ReadingsSection({ nodeId }: { nodeId: string }) {
       await fn()
       await refresh()
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(errorText(e))
     } finally {
       setBusy(false)
     }

@@ -5,6 +5,7 @@ import { audioTargets, matchFile, type AudioTarget } from '@/features/audio/targ
 import { useTakeWriter } from '@/features/audio/useTakeWriter'
 import { formatDuration } from '@/lib/speech'
 import { canRecord } from '@/types/domain'
+import { errorText } from '@/lib/errorText'
 
 /**
  * Dropping a folder of finished VO into the story.
@@ -72,7 +73,7 @@ export default function AudioImport() {
         setRows((r) =>
           r.map((x, j) =>
             i === j
-              ? { ...x, state: 'failed', note: e instanceof Error ? e.message : String(e) }
+              ? { ...x, state: 'failed', note: errorText(e) }
               : x,
           ),
         )

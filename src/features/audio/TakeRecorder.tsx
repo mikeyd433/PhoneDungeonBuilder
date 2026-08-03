@@ -6,6 +6,7 @@ import { measureDuration, RecorderSession, recordingSupported } from './recorder
 import { IVR_EXT, IVR_MIME, toIvrWav } from './ivrWav'
 import { useHoldToRecord } from './useHoldToRecord'
 import { audioPath, publicAudioUrl, removeAudio, uploadAudio } from './storage'
+import { errorText } from '@/lib/errorText'
 
 /**
  * One take, for anything smaller than a room.
@@ -50,7 +51,7 @@ export default function TakeRecorder({
       await onSaved(next, wav.durationMs || ms)
       if (previous) await removeAudio(previous)
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(errorText(e))
     } finally {
       setBusy(false)
     }
@@ -66,7 +67,7 @@ export default function TakeRecorder({
       await onSaved(null, null)
       await removeAudio(path)
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(errorText(e))
     } finally {
       setBusy(false)
     }
@@ -91,7 +92,7 @@ export default function TakeRecorder({
       const { blob, mimeType, durationMs: measured } = await s.stop()
       await save(blob, mimeType, await measureDuration(blob, measured))
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(errorText(e))
     }
   }
 

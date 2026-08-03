@@ -258,6 +258,18 @@ export function buildDemoStory(): StoryGraph {
   }
   variants.set(lockerEmptyHanded.id, lockerEmptyHanded)
 
+  // And the doors follow the same check: the locker is only worth forcing once
+  // you have the rope, so without it that door is not on the wall at all. One
+  // row, because a row means hidden and the reading above it says nothing.
+  const hiddenDoors = new Map<string, HiddenDoor>()
+  hiddenDoors.set('hd-1', {
+    id: 'hd-1',
+    story_id: story.id,
+    choice_id: force,
+    variant_id: null,
+    created_at: STAMP,
+  })
+
   // Cast.
   const characters = new Map<string, Character>()
   const cast = (slug: string, name: string, actor: string | null, color: string, playable: boolean) => {
@@ -374,7 +386,7 @@ export function buildDemoStory(): StoryGraph {
     effects,
     gates,
     variants,
-    hiddenDoors: new Map<string, HiddenDoor>(),
+    hiddenDoors,
     characters,
     dialogue,
     fights,
