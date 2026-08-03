@@ -25,7 +25,7 @@ export default function Login() {
   return (
     <main className="mx-auto flex min-h-full max-w-md flex-col justify-center gap-6 p-6">
       <header>
-        <h1 className="text-xl text-torch">The Delve</h1>
+        <h1 className="text-xl text-torch">Jackie Dungeon</h1>
         <p className="mt-2 text-sm text-mortar">
           A dungeon-crawl authoring tool for a phone adventure.
         </p>

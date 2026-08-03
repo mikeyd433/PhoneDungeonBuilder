@@ -40,7 +40,7 @@ export function buildDemoStory(): StoryGraph {
 
   const story: Story = {
     id: DEMO_STORY_ID,
-    title: 'The Delve — walkthrough',
+    title: 'Jackie Dungeon — walkthrough',
     root_node_id: null,
     owner_id: 'demo-owner',
     counter_clamp: 10,

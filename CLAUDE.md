@@ -1,4 +1,4 @@
-# CLAUDE.md — The Delve
+# CLAUDE.md — Jackie Dungeon
 
 Project context for Claude Code. Read this first, every session. The full product
 spec is the source of truth at **`docs/delve-spec.md`** — when this file and the
@@ -6,7 +6,7 @@ spec disagree, the spec wins; update this file to match.
 
 ## What we're building
 
-**The Delve** is a dungeon-crawl authoring tool for a Twilio Studio
+**Jackie Dungeon** is a dungeon-crawl authoring tool for a Twilio Studio
 choose-your-own-adventure IVR. You stand in a room, the exits are your choices,
 and a graph-paper automap shows the structure. It compiles to a Twilio Studio
 flow. See spec §0.

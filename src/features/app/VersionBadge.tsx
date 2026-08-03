@@ -23,7 +23,7 @@ export default function VersionBadge() {
 
   return (
     <span
-      title={`The Delve ${__APP_VERSION__} · ${__APP_COMMIT__} · built ${stamp}`}
+      title={`Jackie Dungeon ${__APP_VERSION__} · ${__APP_COMMIT__} · built ${stamp}`}
       aria-label={`Build ${__APP_COMMIT__}, ${stamp}`}
       className="pointer-events-none fixed right-1 top-0 z-50 select-none font-carved text-[10px] leading-4 text-mortar/50"
     >

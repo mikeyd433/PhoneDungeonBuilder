@@ -1,8 +1,8 @@
-# The Delve — Build Spec
+# Jackie Dungeon — Build Spec
 
 **A dungeon-crawl authoring tool for a Twilio Studio choose-your-own-adventure IVR.**
 
-Working title: *The Delve*. Replace freely.
+Named *Jackie Dungeon*.
 
 ---
 

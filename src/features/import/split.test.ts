@@ -144,13 +144,13 @@ describe('importing each side of a split', () => {
     const menu = buildBrainstormPlan(data, {
       ...collapse,
       restrictTo: split.upstream,
-      otherStoryName: 'The Delve',
+      otherStoryName: 'The Hotline',
     })
     // HOTLINE_0 has two exits: one stays in the menu, one crosses the boundary.
     const handoff = menu.choices.find((c) => !c.toSlug)!
     expect(handoff.fromSlug).toBe('HOTLINE_0')
     expect(handoff.unresolvedName).toBe('HOTLINE_9')
-    expect(menu.issues.some((i) => i.message.includes('The Delve'))).toBe(true)
+    expect(menu.issues.some((i) => i.message.includes('The Hotline'))).toBe(true)
   })
 
   it('starts the dungeon at the cut node', () => {

@@ -34,7 +34,7 @@ export default function Stories() {
   return (
     <main className="mx-auto max-w-2xl p-6">
       <header className="mb-6 flex items-center justify-between">
-        <h1 className="text-xl text-torch">The Delve</h1>
+        <h1 className="text-xl text-torch">Jackie Dungeon</h1>
         <button
           onClick={() => supabase.auth.signOut()}
           className="text-sm text-mortar underline"

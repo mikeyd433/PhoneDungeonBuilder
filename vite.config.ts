@@ -58,8 +58,8 @@ export default defineConfig({
         navigateFallbackDenylist: [/^\/rest\//, /^\/auth\//],
       },
       manifest: {
-        name: 'The Delve',
-        short_name: 'Delve',
+        name: 'Jackie Dungeon',
+        short_name: 'Jackie',
         description: 'A dungeon-crawl authoring tool for a phone adventure.',
         start_url: '.',
         scope: '.',

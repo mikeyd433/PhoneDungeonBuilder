@@ -1,4 +1,4 @@
-# The Delve
+# Jackie Dungeon
 
 A dungeon-crawl authoring tool for a Twilio Studio choose-your-own-adventure IVR.
 
