@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useDelve } from '@/features/graph/store'
 import { castList, suggestCast, workloads } from '@/features/cast/dialogue'
+import CallSheet from '@/features/cast/CallSheetPanel'
+import { useCallSheets } from '@/features/cast/useCallSheets'
 import { SPEAKER_COLORS, speakerHex } from '@/features/cast/colors'
 import { slugify, uniqueSlug } from '@/lib/slug'
 import { canWrite } from '@/types/domain'
@@ -22,6 +24,7 @@ export default function Cast() {
   const editCharacter = useDelve((s) => s.editCharacter)
   const removeCharacter = useDelve((s) => s.removeCharacter)
   const [name, setName] = useState('')
+  const sheets = useCallSheets()
 
   useEffect(() => {
     if (storyId && !graph) void loadStory(storyId)
@@ -196,7 +199,8 @@ export default function Cast() {
           <p className="mb-3 text-xs text-cold">
             A room recorded as one file is booked for everyone in it, so it stays outstanding until
             that single take exists. A room recorded line by line is outstanding only for whoever
-            is still missing their own lines.
+            is still missing their own lines. The call sheet is the page you hand them: their
+            lines, in story order, named the way the importer expects them back.
           </p>
           <ul className="flex flex-col gap-3">
             {queues.map((q) => (
@@ -209,6 +213,12 @@ export default function Cast() {
                     {q.characters.join(', ') || 'unattributed lines'} · {q.lines} line(s)
                   </span>
                 </div>
+                {sheets.get(q.actor ?? ' unassigned') && (
+                  <CallSheet
+                    sheet={sheets.get(q.actor ?? ' unassigned')!}
+                    storyTitle={graph.story.title}
+                  />
+                )}
                 {q.unrecordedSlugs.length === 0 ? (
                   <p className="text-xs text-torch">Nothing outstanding.</p>
                 ) : (
