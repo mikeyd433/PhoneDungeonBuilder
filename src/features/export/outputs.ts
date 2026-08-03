@@ -161,7 +161,12 @@ export function studioFlowJson(
         ...(w.say ? { say: w.say } : {}),
         ...(w.playUrl ? { play: w.playUrl, loop: 1 } : {}),
         ...(w.splitOn ? { input: w.splitOn } : {}),
-        ...(w.variables ? { variables: w.variables } : {}),
+        // `index` is what the Studio console itself emits for every variable,
+        // and matching its output exactly is cheaper than finding out which
+        // fields the TypedParameter schema treats as required.
+        ...(w.variables
+          ? { variables: w.variables.map((v, i) => ({ index: String(i), ...v })) }
+          : {}),
         ...(w.properties ?? {}),
       },
       transitions: w.transitions.map((t) => ({
@@ -321,8 +326,11 @@ export function storyJson(graph: StoryGraph): string {
     {
       // Bumped when the cast, dialogue and fight tables were added: a v1 file
       // has no characters key at all, which an importer has to be able to tell
-      // apart from a v2 file whose cast happens to be empty.
-      version: 2,
+      // apart from a v2 file whose cast happens to be empty. v3 adds the
+      // alternate readings and their door-visibility rules — a v2 file has
+      // neither key, and a room read two ways would silently become a room read
+      // one way if that could not be told apart.
+      version: 3,
       exportedAt: null, // stamped by the caller; kept out so the payload is deterministic
       story: graph.story,
       nodes: [...graph.nodes.values()],
@@ -330,6 +338,8 @@ export function storyJson(graph: StoryGraph): string {
       stateVars: [...graph.stateVars.values()],
       effects: [...graph.effects.values()],
       gates: [...graph.gates.values()],
+      variants: [...graph.variants.values()],
+      hiddenDoors: [...graph.hiddenDoors.values()],
       characters: [...graph.characters.values()],
       dialogue: [...graph.dialogue.values()],
       fights: [...graph.fights.values()],

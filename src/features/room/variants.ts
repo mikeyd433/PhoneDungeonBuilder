@@ -61,6 +61,44 @@ export function variantPlayback(variant: NodeVariant): PlaybackPart[] {
 }
 
 /**
+ * Is this door offered under this reading?
+ *
+ * `variantId` null is the room as written. A row in `hiddenDoors` means hidden,
+ * so the absence of any rule is "yes" — which is what makes a door added next
+ * month appear in readings written today, and a reading added next month offer
+ * the doors that already exist.
+ */
+export function doorShows(
+  graph: StoryGraph,
+  choiceId: string,
+  variantId: string | null,
+): boolean {
+  for (const rule of graph.hiddenDoors.values()) {
+    if (rule.choice_id === choiceId && rule.variant_id === variantId) return false
+  }
+  return true
+}
+
+/** Every reading slot that hides this door, base included as null. */
+export function hidesDoor(graph: StoryGraph, choiceId: string): Array<string | null> {
+  return [...graph.hiddenDoors.values()]
+    .filter((r) => r.choice_id === choiceId)
+    .map((r) => r.variant_id)
+}
+
+/**
+ * A door nobody is ever offered.
+ *
+ * Hidden under the base reading and under every reading there is, so no state
+ * a caller can be in reaches it. Worth saying out loud: from the editor it
+ * looks like an ordinary door, and on the phone it is a key that does nothing.
+ */
+export function alwaysHidden(graph: StoryGraph, nodeId: string, choiceId: string): boolean {
+  const slots: Array<string | null> = [null, ...variantsOf(graph, nodeId).map((v) => v.id)]
+  return slots.every((slot) => !doorShows(graph, choiceId, slot))
+}
+
+/**
  * A check chain that sends the caller somewhere can send them somewhere that
  * checks again. Ten hops is far past anything deliberate and short of a hang.
  */

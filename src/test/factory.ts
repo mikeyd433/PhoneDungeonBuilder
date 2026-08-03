@@ -8,6 +8,7 @@ import type {
   FightRound,
   FightRoundOutcome,
   Gate,
+  HiddenDoor,
   NodeVariant,
   StateVar,
   Story,
@@ -110,6 +111,7 @@ export function makeGraph(
     effects: new Map(),
     gates: new Map<string, Gate>(),
     variants: new Map<string, NodeVariant>(),
+    hiddenDoors: new Map<string, HiddenDoor>(),
     characters: new Map<string, Character>(),
     dialogue: new Map<string, DialogueLine>(),
     fights: new Map<string, Fight>(),
@@ -364,6 +366,18 @@ export function addReading(
   }
   graph.variants.set(variant.id, variant)
   return variant
+}
+
+/** Hide one door under one reading. `variantId` null is the room as written. */
+export function hideDoor(graph: StoryGraph, choiceId: string, variantId: string | null): void {
+  const id = `hd-${choiceId}-${variantId ?? 'base'}`
+  graph.hiddenDoors.set(id, {
+    id,
+    story_id: graph.story.id,
+    choice_id: choiceId,
+    variant_id: variantId,
+    created_at: STAMP,
+  })
 }
 
 export function idOf(graph: StoryGraph, slug: string): string {

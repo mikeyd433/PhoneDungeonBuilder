@@ -194,6 +194,26 @@ export interface NodeVariant {
   updated_at: string
 }
 
+/**
+ * A door that one reading does not offer.
+ *
+ * Stored as what is HIDDEN rather than what is offered, and that polarity is
+ * the design: no rows means every door under every reading, so a door added
+ * next month appears in readings written today, and a reading added next month
+ * offers the doors that already exist. An "offered" list gets both backwards.
+ *
+ * `variant_id` null is the room as written — the reading that plays when none
+ * of the others match, and a real slot to hide a door in ("the grate is only
+ * there if you have the lamp" is a row against the base).
+ */
+export interface HiddenDoor {
+  id: string
+  story_id: string
+  choice_id: string
+  variant_id: string | null
+  created_at: string
+}
+
 export interface Membership {
   story_id: string
   user_id: string
@@ -399,6 +419,7 @@ export interface StoryGraph {
   effects: Map<string, Effect>
   gates: Map<string, Gate>
   variants: Map<string, NodeVariant>
+  hiddenDoors: Map<string, HiddenDoor>
   characters: Map<string, Character>
   dialogue: Map<string, DialogueLine>
   fights: Map<string, Fight>

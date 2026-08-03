@@ -12,7 +12,7 @@ import type {
 
 import { buildFightView, type FightView } from '@/features/fight/model'
 import { linesFor, reactionPlaybackFor } from '@/features/cast/dialogue'
-import { allReadings, variantsOf } from './variants'
+import { allReadings, alwaysHidden, hidesDoor, variantsOf } from './variants'
 import { MAX_WALL_ARCHES } from './vector/geometry'
 
 /**
@@ -56,6 +56,14 @@ export interface ExitView {
    *  a script with at least one part nobody has read — silence on the phone,
    *  and the reason this is three states rather than a boolean. */
   reaction: 'none' | 'written' | 'recorded'
+  /**
+   * How many readings do NOT offer this door — §0's first rule applied to the
+   * arrival check. A door only some callers are offered must not draw like one
+   * everybody gets, or the wall is telling you something untrue about the room.
+   */
+  hiddenIn: number
+  /** Hidden under every reading there is: a key that does nothing, on any call. */
+  neverShown: boolean
 }
 
 export interface RoomView {
@@ -221,6 +229,8 @@ export function buildRoomView(
         ? { behavior: gate.fail_behavior, conditionCount: countConditions(gate.expression) }
         : null,
       reaction: reactionState(graph, choice.id),
+      hiddenIn: hidesDoor(graph, choice.id).length,
+      neverShown: alwaysHidden(graph, nodeId, choice.id),
     }
   }
 
@@ -262,6 +272,8 @@ export function buildRoomView(
         revokes: [],
         gate: null,
         reaction: 'none',
+        hiddenIn: 0,
+        neverShown: false,
       })
       }
     }

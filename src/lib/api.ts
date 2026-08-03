@@ -10,6 +10,7 @@ import type {
   FightRound,
   FightRoundOutcome,
   Gate,
+  HiddenDoor,
   Membership,
   MembershipRole,
   NodeVariant,
@@ -32,6 +33,7 @@ export async function loadStoryGraph(storyId: string): Promise<StoryGraph> {
     effects,
     gates,
     variants,
+    hiddenDoors,
     characters,
     dialogue,
     fights,
@@ -46,6 +48,7 @@ export async function loadStoryGraph(storyId: string): Promise<StoryGraph> {
     byStory('effects'),
     byStory('gates'),
     byStory('node_variants'),
+    byStory('hidden_doors'),
     byStory('characters'),
     byStory('dialogue_lines'),
     byStory('fights'),
@@ -62,6 +65,7 @@ export async function loadStoryGraph(storyId: string): Promise<StoryGraph> {
     effects,
     gates,
     variants,
+    hiddenDoors,
     characters,
     dialogue,
     fights,
@@ -82,6 +86,7 @@ export async function loadStoryGraph(storyId: string): Promise<StoryGraph> {
     effects: index<Effect>(effects.data),
     gates: index<Gate>(gates.data),
     variants: index<NodeVariant>(variants.data),
+    hiddenDoors: index<HiddenDoor>(hiddenDoors.data),
     characters: index<Character>(characters.data),
     dialogue: index<DialogueLine>(dialogue.data),
     fights: index<Fight>(fights.data),
@@ -315,6 +320,32 @@ export async function updateVariant(id: string, patch: Partial<NodeVariant>): Pr
 
 export async function deleteVariant(id: string): Promise<void> {
   const { error } = await supabase.from('node_variants').delete().eq('id', id)
+  if (error) throw error
+}
+
+/**
+ * Hide or show one door under one reading.
+ *
+ * A row means hidden, so showing a door is a delete — which is also what makes
+ * "no rows" the right default for a door nobody has thought about yet.
+ */
+export async function setDoorHidden(
+  storyId: string,
+  choiceId: string,
+  variantId: string | null,
+  hidden: boolean,
+): Promise<void> {
+  if (hidden) {
+    const { error } = await supabase
+      .from('hidden_doors')
+      .insert({ story_id: storyId, choice_id: choiceId, variant_id: variantId })
+    if (error) throw error
+    return
+  }
+  const query = supabase.from('hidden_doors').delete().eq('choice_id', choiceId)
+  const { error } = await (variantId === null
+    ? query.is('variant_id', null)
+    : query.eq('variant_id', variantId))
   if (error) throw error
 }
 

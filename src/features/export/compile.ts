@@ -26,7 +26,7 @@ import {
   revokeLiquid,
 } from './liquid'
 import { consumePlan } from '@/features/state/consume'
-import { variantProblems, variantsOf } from '@/features/room/variants'
+import { hidesDoor, variantProblems, variantsOf } from '@/features/room/variants'
 
 /**
  * Compile a story into a Twilio Studio widget graph (§6.2, §6.5, §6.7).
@@ -134,9 +134,27 @@ import {
   RET_VAR,
 } from './inventory'
 
-/** One digit, no speech, and the room's own patience. */
+/**
+ * One digit, no speech, and the room's own patience.
+ *
+ * `say: ''` is not decoration and must not be removed. The gather widget's
+ * schema requires ONE OF `say` or `play`:
+ *
+ *   "oneOf": [{ "required": ["say"] }, { "required": ["play"] }]
+ *
+ * — and every gather in this flow is silent, because the room said its piece in
+ * the say-play widgets before it. Without either key the whole definition fails
+ * validation and Studio reports nothing but "Something went wrong", which is
+ * the same trap the per-digit conditions fell into.
+ *
+ * Empty rather than `play`: pointing the gather at the room's audio would play
+ * it a second time, and there is no text to synthesise here, so the no-TTS rule
+ * is untouched — an empty Say speaks nothing.
+ */
 export function gatherProperties(timeoutSeconds: number): Record<string, unknown> {
   return {
+    say: '',
+    loop: 1,
     number_of_digits: 1,
     stop_gather: true,
     timeout: timeoutSeconds,
@@ -809,6 +827,64 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
           }
         }
         dest = splitName
+      }
+
+      /**
+       * A door only some readings offer.
+       *
+       * The reading number is already sitting in a flow variable, computed
+       * before the room played, so "is this door here" costs one split on a
+       * value that exists rather than a second evaluation of anything.
+       *
+       * The digit is still ACCEPTED — a gather takes what it takes — but it
+       * goes back to the choices instead of through, which is the same shape a
+       * `hide` gate has. What is different is that the reading which offers the
+       * door is also the one that announces it, so the caller is never left
+       * guessing at a key that works but was never mentioned.
+       */
+      const hiddenIn = hidesDoor(graph, choice.id)
+      if (hiddenIn.length > 0 && variants.length > 0) {
+        const shownIn = [null, ...variants.map((v) => v.id)]
+          .map((id, i) => ({ id, number: i }))
+          .filter((slot) => !hiddenIn.includes(slot.id))
+
+        if (shownIn.length === 0) {
+          // Hidden everywhere: no state a caller can be in reaches it. From the
+          // editor this looks like an ordinary door.
+          warnings.push(
+            `${slug} digit ${choice.digit} ("${choice.label}") is hidden under every reading, so no caller is ever offered it.`,
+          )
+        }
+
+        const showName = `${slug}_d${digitToken(choice.digit)}_shown`
+        widgets.push({
+          name: showName,
+          type: 'split-based-on',
+          nodeId: node.id,
+          note:
+            shownIn.length === 0
+              ? 'This door is hidden under every reading — the digit does nothing.'
+              : `Digit ${choice.digit} is only offered under reading(s) ${shownIn
+                  .map((s) => s.number)
+                  .join(', ')} (0 = the room as written).`,
+          splitOn: `{{flow.variables.${readingVarName(slug)}}}`,
+          transitions: [
+            ...shownIn.map((slot) => ({
+              event: 'match',
+              condition: `Equal To ${slot.number}`,
+              match: { type: 'equal_to' as const, value: String(slot.number) },
+              next: dest,
+            })),
+            { event: 'noMatch', next: wname(slug, 'gather') },
+          ],
+        })
+        dest = showName
+      } else if (hiddenIn.length > 0) {
+        // Visibility rules with nothing to vary on. Not silently ignored: the
+        // author wrote a rule and it has no effect.
+        warnings.push(
+          `${slug} digit ${choice.digit} is hidden under a reading, but this room has no readings — so the door is always offered.`,
+        )
       }
 
       keyTransitions.push({

@@ -2,7 +2,7 @@ import type { StoryGraph } from '@/types/domain'
 import type { EffectLike } from './expression'
 import type { SolverChoice, SolverInput, SolverNode } from './solver'
 import { graphEdges } from '@/features/graph/edges'
-import { variantsOf } from '@/features/room/variants'
+import { doorShows, hidesDoor, variantsOf } from '@/features/room/variants'
 
 /** Flatten the live graph into the plain, structured-cloneable shape the worker
  *  takes. Effects are resolved from state_var_id to slug here so the solver
@@ -42,6 +42,7 @@ export function toSolverInput(graph: StoryGraph): SolverInput {
     redirects: variantsOf(graph, n.id)
       .filter((v) => v.goto_node_id && v.goto_node_id !== n.id)
       .map((v) => ({ expression: v.expression, toId: v.goto_node_id! })),
+    readings: variantsOf(graph, n.id).map((v) => ({ id: v.id, expression: v.expression })),
   }))
 
   // Fight outcomes come through as choices with no gate and no effects. Winning
@@ -62,6 +63,14 @@ export function toSolverInput(graph: StoryGraph): SolverInput {
       toId: e.to_node_id,
       digit: e.digit ?? (e.kind === 'fight-win' ? 'won' : 'lost'),
       effects: (choiceEffects.get(e.id) ?? []).map(asEffect).filter((f) => f.varSlug),
+      // Only when somebody has actually hidden it somewhere: null means "every
+      // reading", which is the case for all but a handful of doors and skips
+      // the per-state work entirely.
+      shownIn: e.choice && hidesDoor(graph, e.choice.id).length > 0
+        ? [null, ...variantsOf(graph, e.from_node_id).map((v) => v.id)].filter((slot) =>
+            doorShows(graph, e.choice!.id, slot),
+          )
+        : null,
       gate: gate
         ? {
             expression: gate.expression,

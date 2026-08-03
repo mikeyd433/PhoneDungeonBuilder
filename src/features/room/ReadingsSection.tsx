@@ -7,7 +7,7 @@ import { describeExpression } from '@/features/state/describe'
 import TakeRecorder from '@/features/audio/TakeRecorder'
 import { estimateSeconds } from '@/lib/speech'
 import LoopBackSheet from './LoopBackSheet'
-import { variantProblems, variantsOf } from './variants'
+import { doorShows, variantProblems, variantsOf } from './variants'
 
 /**
  * The room, read differently depending on what the caller is carrying.
@@ -38,6 +38,46 @@ export default function ReadingsSection({ nodeId }: { nodeId: string }) {
   const vars = [...graph.stateVars.values()].sort((a, b) => a.slug.localeCompare(b.slug))
   const readings = variantsOf(graph, nodeId)
   const problems = variantProblems(graph, nodeId)
+  const doors = [...graph.choices.values()]
+    .filter((c) => c.from_node_id === nodeId)
+    .sort((a, b) => a.digit.localeCompare(b.digit) || a.sort_order - b.sort_order)
+
+  /**
+   * Which doors one reading offers.
+   *
+   * Ticked = offered, which is the way round an author thinks about it, while
+   * what is STORED is what is hidden — no rows means every door, so a door
+   * added tomorrow shows up in a reading written today.
+   */
+  const Doors = ({ variantId }: { variantId: string | null }) =>
+    doors.length === 0 ? null : (
+      <div className="flex flex-col gap-1">
+        <span className="text-xs text-mortar">Doors offered</span>
+        <div className="flex flex-wrap gap-2">
+          {doors.map((door) => {
+            const shown = doorShows(graph, door.id, variantId)
+            return (
+              <label key={door.id} className="flex items-center gap-1 text-xs">
+                <input
+                  type="checkbox"
+                  checked={shown}
+                  disabled={busy}
+                  onChange={(e) =>
+                    void run(() =>
+                      api.setDoorHidden(story.id, door.id, variantId, !e.target.checked),
+                    )
+                  }
+                  className="accent-torch"
+                />
+                <span className={shown ? 'text-parchment' : 'text-cold line-through'}>
+                  {door.digit} {door.label || '(unlabelled)'}
+                </span>
+              </label>
+            )
+          })}
+        </div>
+      </div>
+    )
 
   const run = async (fn: () => Promise<unknown>) => {
     setBusy(true)
@@ -161,6 +201,8 @@ export default function ReadingsSection({ nodeId }: { nodeId: string }) {
               {variant.narration.length} chars · ~{estimateSeconds(variant.narration)}s
             </span>
 
+            <Doors variantId={variant.id} />
+
             {/* Where this one leaves the caller. The same picker the doors
                 use, so "somewhere they have already been" is as easy here as
                 it is there — an arrival check very often sends them back. */}
@@ -199,9 +241,13 @@ export default function ReadingsSection({ nodeId }: { nodeId: string }) {
       })}
 
       {readings.length > 0 && (
-        <p className="rounded border border-mortar/25 p-2 text-xs text-cold">
-          Otherwise: the room as written above, and its own doors.
-        </p>
+        <div className="flex flex-col gap-2 rounded border border-mortar/25 p-2">
+          <p className="text-xs text-cold">Otherwise: the room as written above.</p>
+          {/* The fallback is a reading slot like any other, and a real one to
+              hide a door in — "the grate is only there if you have the lamp"
+              is a door switched OFF here and left on above. */}
+          <Doors variantId={null} />
+        </div>
       )}
 
       {routing &&

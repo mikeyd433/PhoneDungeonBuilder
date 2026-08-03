@@ -184,9 +184,29 @@ export default function RoomStage({
                 key={exit.choiceId}
                 className="flex flex-wrap items-center gap-2 rounded border border-mortar/25 p-2"
               >
-                <span className="w-6 shrink-0 text-center font-carved text-torch">
+                {/* A door only some callers are offered must not read like one
+                    everybody gets — §0's first rule. Dimmed and marked, and
+                    flagged outright when no reading offers it at all. */}
+                <span
+                  title={
+                    exit.neverShown
+                      ? 'Hidden under every reading — no caller is ever offered this'
+                      : exit.hiddenIn > 0
+                        ? `Not offered under ${exit.hiddenIn} of this room's readings`
+                        : undefined
+                  }
+                  className={[
+                    'w-6 shrink-0 text-center font-carved',
+                    exit.neverShown ? 'text-grave line-through' : exit.hiddenIn > 0 ? 'text-mortar' : 'text-torch',
+                  ].join(' ')}
+                >
                   {exit.digit}
                 </span>
+                {exit.hiddenIn > 0 && (
+                  <span className={exit.neverShown ? 'shrink-0 text-xs text-grave' : 'shrink-0 text-xs text-mortar'}>
+                    {exit.neverShown ? 'never offered' : `only sometimes`}
+                  </span>
+                )}
                 <input
                   // Remounts when the value changes underneath — two doors to
                   // the same room both show its name, and renaming from one has

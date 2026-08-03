@@ -17,7 +17,7 @@ import {
 } from '@/features/state/expression'
 import { consumedBy } from '@/features/state/consume'
 import { reactionPlaybackFor, type PlaybackPart } from '@/features/cast/dialogue'
-import { playbackWithState, readingFor, walkArrival } from '@/features/room/variants'
+import { doorShows, playbackWithState, readingFor, walkArrival } from '@/features/room/variants'
 
 /**
  * The playtest runtime (§4.4) — the same data, seen as the caller sees it.
@@ -184,9 +184,13 @@ export class PlaytestEngine {
    */
   offered(state: PlaytestState): OfferedChoice[] {
     if (state.fightRound !== null) return []
+    // Which reading the caller got decides the doors as well as the words —
+    // one check, both halves of the decision. Null is the room as written.
+    const reading = this.readingAt(state)
     const out: OfferedChoice[] = []
     for (const choice of this.graph.choices.values()) {
       if (choice.from_node_id !== state.nodeId) continue
+      if (!doorShows(this.graph, choice.id, reading?.id ?? null)) continue
       const gate = [...this.graph.gates.values()].find((g) => g.choice_id === choice.id)
       const open = gate ? evaluate(gate.expression, state.caller, this.index) : true
 

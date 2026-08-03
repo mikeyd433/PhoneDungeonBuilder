@@ -9,6 +9,7 @@ const node = (id: string, extra: Partial<SolverNode> = {}): SolverNode => ({
   isEnding: false,
   effects: [],
   redirects: [],
+  readings: [],
   ...extra,
 })
 

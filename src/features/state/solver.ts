@@ -41,6 +41,15 @@ export interface SolverChoice {
   toId: string | null
   digit: string
   effects: EffectLike[]
+  /**
+   * The reading slots that offer this door, or null when every one does.
+   *
+   * Which reading a caller got decides the doors as well as the words, so a
+   * door the base reading hides is not a way out of this room for a caller
+   * carrying nothing — and the solver has to agree, or it reports a route the
+   * phone will not give anybody.
+   */
+  shownIn?: Array<string | null> | null
   gate: {
     expression: GateExpression
     failBehavior: 'hide' | 'refuse' | 'divert'
@@ -65,6 +74,12 @@ export interface SolverNode {
    * item, which on the phone you never can.
    */
   redirects: Array<{ expression: GateExpression; toId: string }>
+  /**
+   * Every reading on this room, in order — the same if/elsif chain the export
+   * numbers. Needed apart from `redirects` because a reading that changes only
+   * the words still decides which doors are offered.
+   */
+  readings: Array<{ id: string; expression: GateExpression }>
 }
 
 export interface SolverInput {
@@ -192,6 +207,12 @@ export function solve(input: SolverInput): SolverResult {
 
     for (const choice of outgoing.get(nodeId) ?? []) {
       for (const state of states) {
+        // Which reading this caller arrived to, and therefore which doors are
+        // even here. Computed per state, because that is what it depends on.
+        if (choice.shownIn) {
+          const reading = node.readings.find((r) => evaluate(r.expression, state, index))
+          if (!choice.shownIn.includes(reading?.id ?? null)) continue
+        }
         const passes = choice.gate ? evaluate(choice.gate.expression, state, index) : true
 
         let targetId: string | null = null
