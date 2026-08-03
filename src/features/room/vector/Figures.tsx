@@ -1,6 +1,6 @@
 import type { FigureKind } from '@/types/domain'
 import { speakerHex } from '@/features/cast/colors'
-import { VIEW } from './geometry'
+import { CARVED, VIEW } from './geometry'
 
 /**
  * Somebody standing in the room.
@@ -146,7 +146,7 @@ export default function Figures({
               y={tagY}
               textAnchor="middle"
               fontSize={9}
-              fontFamily="Cinzel, Georgia, serif"
+              fontFamily={CARVED}
               letterSpacing="0.06em"
               fill={ink}
               opacity={lit ? 1 : 0.6}

@@ -1,5 +1,5 @@
 import type { FightView } from '@/features/fight/model'
-import { BACK, VIEW } from './geometry'
+import { BACK, CARVED, VIEW } from './geometry'
 
 /**
  * A fight, drawn where the archways would be.
@@ -78,7 +78,7 @@ export default function Arena({ fight, lit }: { fight: FightView; lit: boolean }
         x={cx}
         y={floorY + 44}
         textAnchor="middle"
-        fontFamily="Cinzel, Georgia, serif"
+        fontFamily={CARVED}
         fontSize={13}
         letterSpacing="0.12em"
         fill={broken ? '#8C2F22' : lit ? '#E4D9BE' : '#6B5A47'}

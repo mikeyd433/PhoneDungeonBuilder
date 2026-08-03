@@ -14,17 +14,31 @@
  * Vite rewrites these relative URLs and fingerprints the files at build time, so
  * they resolve in dev and under the /delve/ base alike.
  *
- * Cinzel 400/600 and Alegreya 400/500 resolve to the same variable font file
- * each; the duplicate declarations let the browser synthesise the weights.
+ * Alegreya 400/500 resolves to the same variable font file; the duplicate
+ * declaration lets the browser synthesise the weight.
  */
 
-/* Carved — stone. Room titles, lintel digits, section headers. Caps only. */
+/*
+ * Carved — stone. Room titles, lintel digits, section headers. Caps only.
+ *
+ * Uncial rather than the Roman inscriptional face this started with. Cinzel is
+ * classical — Trajan's column, not a dungeon — and the brief was medieval.
+ *
+ * Uncial specifically, out of the medieval hands, because of how this face is
+ * used: everything wearing it is uppercased and letterspaced. Blackletter caps
+ * are famously unreadable, and a Gothic face put through the same treatment
+ * turned "ANNOUNCE THE DOORS" into a smear. Uncial forms ARE majuscule, so
+ * they survive it and stay legible down to the 9px threshold plates.
+ *
+ * One weight only. It is a display face and there is nothing to synthesise a
+ * bold from that would not look broken.
+ */
 @font-face {
-  font-family: 'Cinzel';
+  font-family: 'Uncial Antiqua';
   font-style: normal;
-  font-weight: 400 600;
+  font-weight: 400;
   font-display: swap;
-  src: url('../assets/fonts/cinzel-latin.woff2') format('woff2');
+  src: url('../assets/fonts/uncial-antiqua-latin.woff2') format('woff2');
 }
 
 /* Voice — the spoken word. Narration and choice labels. */

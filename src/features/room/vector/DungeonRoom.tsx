@@ -1,7 +1,17 @@
 import { type KeyboardEvent } from 'react'
 import type { ExitView, RoomView } from '../roomModel'
 import Torch from './Torch'
-import { archBox, archPath, archX, BACK, TORCH, VIEW, WALLS, wrapToPlate } from './geometry'
+import {
+  archBox,
+  archPath,
+  archX,
+  BACK,
+  CARVED,
+  TORCH,
+  VIEW,
+  WALLS,
+  wrapToPlate,
+} from './geometry'
 import { designFor } from './designs'
 import { FloorMotifLayer, WallMotifLayer, WallTextureLayer } from './Texture'
 import Arena from './Arena'
@@ -59,13 +69,13 @@ function Nameplate({ exit, lit, count }: { exit: ExitView; lit: boolean; count: 
    * they were labelled. The label is the only part of a threshold that is
    * per-door, so it is the part that gets to be the name.
    *
-   * Budgets differ per row because the faces do: Cinzel's small caps run about
-   * half again as wide as the body face.
+   * Budgets differ per row because the faces do: the carved face runs about
+   * half again as wide per character as the body face.
    */
   const named = !emptySlot && Boolean(exit.label.trim())
   if (named) {
     for (const line of wrapToPlate(exit.label, 12, 2)) {
-      rows.push({ text: line, size: 9, family: 'Cinzel, Georgia, serif', fill: NAMED })
+      rows.push({ text: line, size: 9, family: CARVED, fill: NAMED })
     }
   }
 
@@ -98,7 +108,7 @@ function Nameplate({ exit, lit, count }: { exit: ExitView; lit: boolean; count: 
     rows.push({
       text: line,
       size: named ? 8 : 9,
-      family: unwritten || named ? undefined : 'Cinzel, Georgia, serif',
+      family: unwritten || named ? undefined : CARVED,
       /* Red only for a door that claims a destination and hasn't got one — a
          dangling reference, which is broken rather than merely unfinished.
          Unwritten branches stay the same cold blue as their brickwork. */
@@ -332,7 +342,7 @@ function Archway({
         y={ARCH.top - 6}
         textAnchor="middle"
         fontSize={18}
-        fontFamily="Cinzel, Georgia, serif"
+        fontFamily={CARVED}
         letterSpacing="0.12em"
         fill={exit.kind === 'bricked' ? '#41525C' : lit ? '#E4D9BE' : '#6B5A47'}
       >
@@ -510,7 +520,7 @@ export default function DungeonRoom({ view, flare, onExit, peek = false }: Props
         x={VIEW.w / 2}
         y={BACK.y0 + 26}
         textAnchor="middle"
-        fontFamily="Cinzel, Georgia, serif"
+        fontFamily={CARVED}
         fontSize={15}
         letterSpacing="0.12em"
         fill={lit ? '#E4D9BE' : '#6B5A47'}

@@ -22,7 +22,7 @@ export default {
       },
       fontFamily: {
         // Spec §3: three faces, each mapped to a material.
-        carved: ['Cinzel', 'Georgia', 'serif'], // stone — caps, sparingly
+        carved: ['"Uncial Antiqua"', 'Georgia', 'serif'], // stone — caps, sparingly
         voice: ['Alegreya', 'Georgia', 'serif'], // the spoken word
         paper: ['"Architects Daughter"', 'Comic Sans MS', 'cursive'], // surveyor's pencil
       },

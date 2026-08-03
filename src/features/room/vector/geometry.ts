@@ -11,6 +11,15 @@
  */
 export const VIEW = { w: 400, h: 300 } as const
 
+/**
+ * The carved face, for SVG text that cannot reach a Tailwind class.
+ *
+ * Named once so the room, the arena and the figures cannot drift onto three
+ * different fonts — which is exactly what happened while this was a string
+ * literal repeated in four files.
+ */
+export const CARVED = '"Uncial Antiqua", Georgia, serif'
+
 /** The back wall rectangle; every trapezoid is the join between this and the frame. */
 export const BACK = { x0: 60, y0: 40, x1: 340, y1: 200 } as const
 
@@ -73,9 +82,9 @@ export function archBox(count: number) {
  * SVG text neither wraps nor ellipsizes: it just keeps drawing, straight out
  * over the wall and into the next archway's label. So anything going on a plate
  * has to be broken to width here, before it is drawn. `maxChars` is a per-line
- * budget calibrated to the 70-unit arch at the size it is rendered — Cinzel's
- * small caps are far wider per character than the body face, so the two lines
- * of a plate get different budgets.
+ * budget calibrated to the 70-unit arch at the size it is rendered — the
+ * carved face runs far wider per character than the body face, so the two
+ * lines of a plate get different budgets.
  *
  * Returns at most `maxLines` lines, with an ellipsis when something was cut, so
  * a truncated room name never reads as a complete one.
