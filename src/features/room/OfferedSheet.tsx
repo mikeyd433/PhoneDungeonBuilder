@@ -5,6 +5,7 @@ import { errorText } from '@/lib/errorText'
 import GateBuilder from '@/features/state/GateBuilder'
 import { fromFlat, toFlat, type FlatGate } from '@/features/state/gateShape'
 import { describeExpression, shortCondition } from '@/features/state/describe'
+import NewItemButton from '@/features/state/NewItemButton'
 import { doorShows, variantsOf } from './variants'
 
 /**
@@ -121,10 +122,47 @@ export default function OfferedSheet({
         <div className="mb-4 rounded border border-mortar/40 p-3">
           <span className="text-xs uppercase tracking-wider text-mortar">Only in some states</span>
           {readings.length === 0 ? (
-            <p className="mt-1 text-xs text-cold">
-              This room reads one way, so there are no states to choose between. Add an alternate
-              reading in the editor, or use a condition below — which works in any room.
-            </p>
+            /* The third trap: a visibility rule needs the room to have a
+               reading first, and the only warning came from the export,
+               afterwards. Said here, with the button that fixes it — the
+               reading that offers a door is also the one that announces it,
+               which is the whole reason to prefer this over a condition. */
+            <div className="mt-1 flex flex-col gap-2">
+              <p className="text-xs text-cold">
+                This room reads one way, so there are no states to choose between yet. A reading is
+                the version of the room a caller carrying something hears — and the version that
+                mentions this door.
+              </p>
+              <button
+                type="button"
+                disabled={busy || vars.length === 0}
+                title={vars.length === 0 ? 'Make an item first — there is a button below' : undefined}
+                onClick={() =>
+                  void run(() =>
+                    api.createVariant(story.id, choice.from_node_id, {
+                      sort_order: 0,
+                      expression: { op: 'has', var: vars[0].slug },
+                    }),
+                  )
+                }
+                className="self-start rounded border border-mortar px-3 py-2 text-xs hover:border-torch disabled:opacity-40"
+              >
+                + Give this room a second reading
+              </button>
+              {vars.length === 0 && (
+                <NewItemButton
+                  label="+ Create the first item"
+                  onCreated={(slug) =>
+                    run(() =>
+                      api.createVariant(story.id, choice.from_node_id, {
+                        sort_order: 0,
+                        expression: { op: 'has', var: slug },
+                      }),
+                    )
+                  }
+                />
+              )}
+            </div>
           ) : (
             <div className="mt-2 flex flex-wrap gap-2">
               {slots.map((slot) => {

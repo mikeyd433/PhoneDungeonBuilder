@@ -25,12 +25,21 @@ export default function DoorSheet({
   onFork,
   onReact,
   onOffered,
+  viewing = 'all',
+  onSplitKey,
 }: {
   choiceId: string
   onClose: () => void
   onFork: (choiceId: string) => void
   onReact: (choiceId: string) => void
   onOffered: (choiceId: string) => void
+  /** The state being stood in, so "a different door on this key" knows which
+   *  state it is for. */
+  viewing?: string | null | 'all'
+  /** Hide this door in the state being stood in and put a new one on its key,
+   *  in one go. Absent in the authoring view, where there is no one state the
+   *  new door would belong to. */
+  onSplitKey?: (choiceId: string) => Promise<void>
   }) {
   const graph = useDelve((s) => s.graph)
   const derived = useDelve((s) => s.derived)
@@ -147,6 +156,33 @@ export default function DoorSheet({
               {choice.reaction_narration?.trim() ? choice.reaction_narration.slice(0, 60) : 'Nothing yet'}
             </span>
           </button>
+
+          {/* The second trap from the walkthroughs: a second door on one key
+              only works if the first is already hidden in that state, and
+              nothing suggested the order. Here it is one action — hide this
+              one here, cut a new one on the same key, for this state only. */}
+          {onSplitKey && viewing !== 'all' && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() =>
+                void run(async () => {
+                  await onSplitKey(choice.id)
+                  onClose()
+                })
+              }
+              className={row}
+            >
+              <span className="block text-xs text-mortar">In this state</span>
+              <span className="text-parchment">
+                Make {choice.digit} a different door here
+              </span>
+              <span className="block text-xs text-cold">
+                This door stops being offered in this state, and a new one takes the key — its own
+                words, its own destination.
+              </span>
+            </button>
+          )}
 
           <div className="mt-1 flex flex-wrap gap-2 border-t border-mortar/30 pt-3">
             <button

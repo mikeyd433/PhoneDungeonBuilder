@@ -149,6 +149,28 @@ export default function Room() {
     }
   }
 
+  /**
+   * Make this key mean something different in the state being stood in.
+   *
+   * Two doors on one key needs the first hidden HERE before the second can be
+   * made, and nothing said so — the blank arch simply did not offer that key.
+   * One action does both, in the order that leaves nothing broken half way: the
+   * old door stops being offered here first, so the key is free when the new
+   * one lands on it.
+   */
+  const splitKey = async (choiceId: string) => {
+    if (viewingState === 'all') return
+    const existing = graph.choices.get(choiceId)
+    if (!existing) return
+    try {
+      await api.setDoorHidden(graph.story.id, choiceId, viewingState, true)
+      await useDelve.getState().refresh()
+      await makeDoor(existing.digit)
+    } catch (e) {
+      setDoorError(errorText(e))
+    }
+  }
+
   /** Point a door at an existing room, making the door first if need be. */
   const openWiring = async (digit: string) => {
     // Only a door THIS state offers counts as already there: a key whose door
@@ -381,6 +403,8 @@ export default function Room() {
           onFork={setForking}
           onReact={setReacting}
           onOffered={setOffering}
+          viewing={viewingState}
+          onSplitKey={splitKey}
         />
       )}
 

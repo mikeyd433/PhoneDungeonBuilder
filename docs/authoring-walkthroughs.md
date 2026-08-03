@@ -222,7 +222,7 @@ the digit, the label, where it leads, when it is offered, what is heard on the
 way through, insert and remove. The row keeps only what is worth scanning. The
 editor's Doors tab stays as the all-doors-at-once view.
 
-### 4. Order-of-operations traps — **partly done**
+### 4. Order-of-operations traps — **done**
 
 Three jobs only work if you do them in an undocumented order:
 
@@ -231,8 +231,15 @@ Three jobs only work if you do them in an undocumented order:
 - a second door on a key needs the first one hidden in that state *first*;
 - a visibility rule needs the room to have a reading *first*.
 
-**Fix:** each of these already knows why it is unavailable. Say it on the
-control rather than in the sheet behind it.
+**Fixed**, each as an action rather than an explanation:
+
+- the fork sheet offers "Point this door at a room →" when the door leads
+  nowhere, and the picker behind it can cut the room;
+- the door sheet, standing in a state, offers "Make ⟨n⟩ a different door here",
+  which hides this one in that state and puts a new one on the key — in the
+  order that leaves nothing broken half way;
+- the offered sheet offers "+ Give this room a second reading" when there are no
+  states to choose between, rather than leaving it to an export warning.
 
 ### 5. The doors panel is dense at 430 px — **done**
 
@@ -242,7 +249,7 @@ collapsed into one `⋯` per door, which carries the whole door sheet — and
 element encodes real data and *always* is the absence of it. A door that is
 conditional still says `sometimes`; one that is never offered still says so.
 
-### 6. Dead weight in the code — **partly done**
+### 6. Dead weight in the code — **done**
 
 - `hasSharedKeys` — written, never called. **Removed.**
 - `RoomView.readingText` — computed for every room, consumed by nothing since
@@ -252,9 +259,12 @@ conditional still says `sometimes`; one that is never offered still says so.
   it, but it is the seam its tests reach the private `compile` through, and
   those tests pin the substring trap, the negation pushdown and the empty
   and/or identities. Kept, with a comment saying so.
-- `_shown` and `_pick` in the exporter are two splits on the same variable;
-  `_pick` ("which door is this") already subsumes `_shown` ("is this door
-  here"), where no door is the noMatch.
+- `_shown` and `_pick` in the exporter are two splits on the same variable.
+  **Left alone deliberately.** `_pick` subsumes `_shown` in principle, but only
+  a door that shares its key needs `_pick`, and collapsing them would emit a
+  two-armed split for every conditional door in the story — more widgets against
+  a 1,000 ceiling, to save one branch in a file that is now 881 lines. The
+  comment in `compileDoor.ts` says which is which.
 
 ### 7. `compile.ts` is 1,249 lines
 
