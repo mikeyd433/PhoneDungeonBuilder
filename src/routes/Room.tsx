@@ -198,6 +198,9 @@ export default function Room() {
           <Link to={`/story/${storyId}/playtest`} className="text-mortar underline">
             Dial in
           </Link>
+          <Link to={`/story/${storyId}/tidy`} className="text-mortar underline">
+            Tidy
+          </Link>
           <Link to={`/story/${storyId}/ledger`} className="text-mortar underline">
             Ledger
           </Link>
