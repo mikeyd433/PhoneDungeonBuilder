@@ -36,6 +36,9 @@ export interface RoomStageProps {
   /** Fork this door on an item: one key, two rooms. Beside the destination it
    *  splits, for the same reason the reaction sits beside its label. */
   onFork?: (choiceId: string) => void
+  /** When this door is offered at all — one control over what used to be two
+   *  unrelated mechanisms in two different places. */
+  onOffered?: (choiceId: string) => void
   /** Stand in the room as a caller in one particular state. */
   onViewState?: (id: string | null | 'all') => void
   /** Offer or withhold one door in the state currently being viewed. Absent in
@@ -57,6 +60,7 @@ export default function RoomStage({
   onRenameTarget,
   onReact,
   onFork,
+  onOffered,
   onWire,
   onViewState,
   onSetDoorShown,
@@ -277,7 +281,8 @@ export default function RoomStage({
                 </span>
                 {/* In the "every state" view this is a read-out; standing in
                     one state it is the switch, because that is the state whose
-                    doors you are editing. */}
+                    doors you are editing. Long-pressing either — or tapping the
+                    marker in the authoring view — opens the whole question. */}
                 {onSetDoorShown && view.viewing !== 'all' ? (
                   <label
                     className="flex shrink-0 items-center gap-1 text-xs text-mortar"
@@ -291,6 +296,33 @@ export default function RoomStage({
                     />
                     here
                   </label>
+                ) : onOffered ? (
+                  <button
+                    type="button"
+                    onClick={() => onOffered(exit.choiceId!)}
+                    aria-label={`When door ${exit.digit} is offered`}
+                    title={
+                      exit.neverShown
+                        ? 'Hidden everywhere — no caller is ever offered this'
+                        : exit.hiddenIn > 0 || exit.gate?.behavior === 'hide'
+                          ? 'Only offered sometimes — tap to see when'
+                          : 'Always offered — tap to make it conditional'
+                    }
+                    className={[
+                      'shrink-0 rounded border px-2 py-1.5 text-xs',
+                      exit.neverShown
+                        ? 'border-grave/60 text-grave'
+                        : exit.hiddenIn > 0 || exit.gate?.behavior === 'hide'
+                          ? 'border-torch/60 text-torch'
+                          : 'border-mortar/40 text-mortar',
+                    ].join(' ')}
+                  >
+                    {exit.neverShown
+                      ? 'never offered'
+                      : exit.hiddenIn > 0 || exit.gate?.behavior === 'hide'
+                        ? 'sometimes'
+                        : 'always'}
+                  </button>
                 ) : (
                   exit.hiddenIn > 0 && (
                     <span
