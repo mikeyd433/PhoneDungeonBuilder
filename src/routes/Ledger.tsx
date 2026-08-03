@@ -3,9 +3,10 @@ import { Link, useParams } from 'react-router-dom'
 import { useDelve } from '@/features/graph/store'
 import { darkRooms, trapNodes, unwrittenBranches } from '@/features/graph/derived'
 import { buildFightView } from '@/features/fight/model'
-import type { StoryNode } from '@/types/domain'
+import { auditItems } from '@/features/state/itemAudit'
+import type { StoryGraph, StoryNode } from '@/types/domain'
 
-type Tab = 'unexplored' | 'sealed' | 'dark' | 'traps' | 'fights' | 'all'
+type Tab = 'unexplored' | 'sealed' | 'dark' | 'traps' | 'fights' | 'items' | 'all'
 
 const TABS: Array<{ id: Tab; label: string; help: string }> = [
   { id: 'unexplored', label: 'Unexplored passages', help: 'Choices with no destination — your to-write list.' },
@@ -21,8 +22,25 @@ const TABS: Array<{ id: Tab; label: string; help: string }> = [
     label: 'Fights',
     help: 'Every fight, and anything wrong with it. A round nothing counters kills every caller who reaches it.',
   },
+  {
+    id: 'items',
+    label: 'Items',
+    help: 'Whether the satchel does anything. An item granted but never checked changes nothing; a gate asking for something never granted is a door nobody can open.',
+  },
   { id: 'all', label: 'All rooms', help: 'The whole dungeon.' },
 ]
+
+/** Where to send somebody who taps an item: the first room that hands it over,
+ *  or the first that takes it away. Null when nothing touches it at all. */
+function firstGrantRoom(graph: StoryGraph, varId: string): string {
+  const touching = [...graph.effects.values()].filter((e) => e.state_var_id === varId)
+  const grant = touching.find((e) => e.operation === 'grant' || e.operation === 'add') ?? touching[0]
+  if (!grant) return graph.story.root_node_id ?? ''
+  if (grant.node_id) return grant.node_id
+  return grant.choice_id
+    ? (graph.choices.get(grant.choice_id)?.from_node_id ?? graph.story.root_node_id ?? '')
+    : (graph.story.root_node_id ?? '')
+}
 
 /**
  * §4.5 — the surveyor's notebook. Cold blue graph paper against the dungeon's
@@ -94,6 +112,21 @@ export default function Ledger() {
         .filter((r) => matches(r.primary + r.secondary))
         .sort((a, b) => a.primary.localeCompare(b.primary))
     }
+    if (tab === 'items') {
+      return auditItems(graph)
+        .filter((f) => matches(`${f.slug} ${f.name} ${f.message}`))
+        .map((f) => ({
+          id: f.varId,
+          // An item is not somewhere you can stand, so tapping one goes to the
+          // first room that hands it over rather than nowhere at all.
+          nodeId: firstGrantRoom(graph, f.varId),
+          primary: `${f.slug}${f.verdict === 'fine' ? '' : ` · ${f.verdict}`}`,
+          secondary: f.message,
+          // Only the ledger's item pass has anything wrong to say about a row
+          // rather than about the tab, so it is the only one that tones them.
+          bad: f.verdict !== 'fine',
+        }))
+    }
     if (tab === 'traps') {
       const traps = trapNodes(graph, derived)
       return nodeRows([...graph.nodes.values()].filter((n) => traps.has(n.id)))
@@ -147,9 +180,19 @@ export default function Ledger() {
             <Link
               to={`/story/${storyId}`}
               onClick={() => walkTo(row.nodeId)}
-              className="block rounded border border-grid bg-white/50 px-3 py-2 hover:border-ink"
+              className={[
+                'block rounded border bg-white/50 px-3 py-2 hover:border-ink',
+                'bad' in row && row.bad ? 'border-grave/60' : 'border-grid',
+              ].join(' ')}
             >
-              <span className="font-paper font-bold">{row.primary}</span>
+              <span
+                className={[
+                  'font-paper font-bold',
+                  'bad' in row && row.bad ? 'text-grave' : '',
+                ].join(' ')}
+              >
+                {row.primary}
+              </span>
               <span className="block font-paper text-sm opacity-70">{row.secondary}</span>
             </Link>
           </li>
