@@ -109,6 +109,16 @@ capture. pnpm. Target device order: **tablet portrait, then phone, then desktop.
 
 ## Recording workflow
 
+Three ways in — held down in a room, worked through at `/story/:id/record`,
+or a folder dropped at `/story/:id/audio` — and **all three run the same four
+steps from `useTakeWriter`**: convert, upload, point the row at it, and only
+then delete the file it replaced. That order is the part worth guarding, and
+three copies of its `assign` switch would be three chances to forget a kind.
+The queue runs in **story order** (`features/audio/queue.ts`), not by slug: an
+actor reads front to back. Per-actor call sheets on the Cast page are built
+over the same `audioTargets`, so the filename on the sheet is the string the
+importer matches on.
+
 Takes can be recorded in the app or brought in finished. `src/features/audio/targets.ts`
 is the single list of every recordable slot and **what to call its file** — the
 audio manifest's `call it` column and the bulk importer (`/story/:id/audio`)
@@ -116,6 +126,15 @@ both read it, so they can never disagree. Hold-to-record is guarded against a
 scroll that starts on the button (`useHoldToRecord`), and every take can be
 cleared: an accidental one-second take is worse than none, because it reads as
 a recorded room and plays as silence.
+
+## Cleaning up after the import
+
+`/story/:id/tidy` — the Brainstorm export had no concept of a room, so every
+node became one and its text became the name. Two passes (`features/room/tidy.ts`),
+both suggestions, neither automatic: short names for sentence-titles (the old
+title moves into the narration, where it was always meant to be), and rooms
+that were actions. `planCollapse` still has the final say on the second, so
+nothing offered can lose dialogue, items, gates or a fight.
 
 ## Repo layout
 
