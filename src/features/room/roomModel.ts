@@ -138,9 +138,6 @@ export interface RoomView {
   /** Which of those is being shown. `'all'` is the default and the only one
    *  that ever draws a door the caller might not be offered. */
   viewing: string | null | 'all'
-  /** What the room reads out in the state being viewed, when that is one of the
-   *  alternates. Null means the room's own narration, shown as always. */
-  readingText: string | null
   /** F1.14 — the narration, split by who says it. Empty when nobody has split
    *  this room's text into lines yet. */
   lines: Array<{ id: string; speaker: string | null; color: string; text: string }>
@@ -420,7 +417,6 @@ export function buildRoomView(
             })),
           ],
     viewing: at,
-    readingText: shownReading ? shownReading.narration : null,
     torchLit: (() => {
       // F1.5 — "there is audio for this room", which now has to mean every way
       // the room can read. A finished base and an unrecorded alternate is a

@@ -53,29 +53,35 @@ want, so step 3 is a tap and not a search.
 
 ---
 
-## 4. Fork a door on an item — from a story with no items yet
+## 4. Fork a door on an item
 
-Measured live.
+### Before
 
 | # | Tap | Surface |
 |---|---|---|
 | 1 | Show where doors lead | room |
 | 2 | ⑂ on the door | room |
-| 3 | **Done** — dead end, the sheet says "Create an item first, on the Items tab" | fork sheet |
+| 3 | **Done** — dead end, "Create an item first, on the Items tab" | fork sheet |
 | 4 | ✎ EDIT | room |
-| 5 | tick "🎒 An item changes hands" — *the Items tab does not exist until now* | editor → Write |
-| 6 | type the item name | editor → Items |
-| 7 | + New *(unmeasured)* | editor → Items |
+| 5 | tick "🎒 An item changes hands" — *the Items tab did not exist until now* | editor → Write |
+| 6–7 | type the item name, + New | editor → Items |
 | 8 | Done | editor |
-| 9 | ⑂ on the door, again | room |
-| 10 | ⑂ Make this door fork on an item | fork sheet |
-| 11 | pick the other room | picker |
+| 9–10 | ⑂ again, Make this door fork | room / fork sheet |
+| 11 | pick the other room — *and only a room that already existed* | picker |
 
-**~11 taps across three surfaces, with a dead end at step 3.**
+**~11 taps, three surfaces, dead end at step 3.**
 
-The dead end is the whole problem. The fork sheet knows there are no items, and
-sends you somewhere you cannot get to from where you are standing — the Items
-tab is itself hidden behind a checkbox on a different tab.
+### Now
+
+| # | Tap | Surface |
+|---|---|---|
+| 1 | Show where doors lead | room |
+| 2 | ⋯ on the door → Where it leads | room / door sheet |
+| 3 | ⑂ Make this door fork *(or "+ Create the first item", right there, if none exists)* | fork sheet |
+| 4 | the other route → **⛏ Cut a new room called "…"** | picker |
+
+**3 taps with an item in the story, ~4 without. One dead end removed, and the
+second room no longer has to exist first.**
 
 ---
 
@@ -84,33 +90,28 @@ tab is itself hidden behind a checkbox on a different tab.
 There are **two ways to do this**, they produce the same visible result, and
 they are stored differently.
 
-### A — through the state plate (needs the room to have a reading)
+### Before — two paths, 4 taps and 8, different storage
+
+**A, through the state plate** (needs the room to have a reading): plate → the
+state → Show where doors lead → untick **here**. Four taps.
+
+**B, through a `hide` gate** (works anywhere): EDIT → tick "an item changes
+hands" → Items → find the door → + Require something → choose the item →
+change "say why" to "don't offer the choice at all" → Done. Eight taps.
+
+Same visible result. Nothing said which was which, or warned when both were set
+on one door.
+
+### Now — one question
 
 | # | Tap | Surface |
 |---|---|---|
-| 1 | the state plate | room |
-| 2 | "As written" | plate menu |
-| 3 | Show where doors lead | room |
-| 4 | untick **here** on the door | room |
+| 1 | Show where doors lead | room |
+| 2 | ⋯ on the door → **When it is offered** | room / door sheet |
+| 3 | Always · Only in some states · Only when carrying something | offered sheet |
 
-**4 taps, one surface, the editor never opens.** This is the good path.
-
-### B — through a `hide` gate (works in any room)
-
-| # | Tap | Surface |
-|---|---|---|
-| 1 | ✎ EDIT | room |
-| 2 | tick "🎒 An item changes hands" | editor → Write |
-| 3 | Items | editor |
-| 4 | scroll to the door | editor → Items |
-| 5 | + Require something | editor → Items |
-| 6 | choose the item | editor → Items |
-| 7 | change "say why, and stay here" → "don't offer the choice at all" | editor → Items |
-| 8 | Done | editor |
-
-**~8 taps, and a different data model.** But path A is unavailable unless the
-room already has a reading, and nothing tells you that — the export warns
-*afterwards* if you write a visibility rule in a room with no readings.
+**3 taps.** The mechanism follows from the answer instead of from which screen
+you found first. Both are shown when both are set, and it says so.
 
 ---
 
@@ -177,7 +178,7 @@ tab, twice, for a story that already has items.
 
 Ordered by how much time they cost.
 
-### 1. Item logic is behind a checkbox, and the checkbox is on another tab
+### 1. Item logic is behind a checkbox, and the checkbox is on another tab — **done**
 
 The Items tab does not exist until "🎒 An item changes hands" is ticked in
 Write. Every item flow therefore starts with two taps that do nothing except
@@ -190,7 +191,7 @@ knows perfectly well that no items exist, dead-ends into it.
 the room does. Add "+ Create an item" directly to the fork sheet and the gate
 builder, so neither ever dead-ends.
 
-### 2. Two mechanisms for "this door isn't offered"
+### 2. Two mechanisms for "this door isn't offered" — **done**
 
 `hide` gates and `hidden_doors` (walkthrough 5) look identical to an author and
 are stored differently. One is 4 taps and one is 8. The 4-tap one silently
@@ -200,7 +201,7 @@ door.
 **Fix:** one control on the door — *Offered: always / only in these states /
 only when ⟨condition⟩* — writing whichever mechanism fits the answer.
 
-### 3. Neither door surface is complete
+### 3. Neither door surface is complete — **done**
 
 | | room panel | editor → Doors |
 |---|---|---|
@@ -216,10 +217,12 @@ only when ⟨condition⟩* — writing whichever mechanism fits the answer.
 Half the controls in each place, so every door job is a guess about which
 surface to open.
 
-**Fix:** move digit / destination / insert / delete onto the room panel and let
-the editor's Doors tab become the overview it already looks like.
+**Fixed** by going further than that: one `⋯` per door opens a sheet holding
+the digit, the label, where it leads, when it is offered, what is heard on the
+way through, insert and remove. The row keeps only what is worth scanning. The
+editor's Doors tab stays as the all-doors-at-once view.
 
-### 4. Order-of-operations traps
+### 4. Order-of-operations traps — **partly done**
 
 Three jobs only work if you do them in an undocumented order:
 
@@ -231,21 +234,24 @@ Three jobs only work if you do them in an undocumented order:
 **Fix:** each of these already knows why it is unavailable. Say it on the
 control rather than in the sheet behind it.
 
-### 5. The doors panel is dense at 430 px
+### 5. The doors panel is dense at 430 px — **done**
 
-Three doors is 6 icon buttons (⑂ 🔊 each) plus the label and room-name fields,
-before the digit, the "here" box and the fork target text. Measured: 14 visible
-buttons with the panel open, 29 with the editor open on top of it.
+Was 14 visible buttons with the panel open at the entrance; now **11**. ⑂ and 🔊
+collapsed into one `⋯` per door, which carries the whole door sheet — and
+"always offered" no longer takes a slot, because §0's rule is that every visual
+element encodes real data and *always* is the absence of it. A door that is
+conditional still says `sometimes`; one that is never offered still says so.
 
-**Fix:** collapse ⑂ and 🔊 into one "…" per door, or show them only for doors
-that have something.
+### 6. Dead weight in the code — **partly done**
 
-### 6. Dead weight in the code
-
-- `hasSharedKeys` — written, never called.
-- `gateConditionLiquid` — superseded by `gateAssignmentLiquid`.
+- `hasSharedKeys` — written, never called. **Removed.**
 - `RoomView.readingText` — computed for every room, consumed by nothing since
-  the reading's words moved into `lines`.
+  the reading's words moved into `lines`. **Removed**, and its test rewritten to
+  assert on `lines`, which is where the behaviour actually is.
+- `gateConditionLiquid` — **this finding was wrong.** Nothing in `src/` calls
+  it, but it is the seam its tests reach the private `compile` through, and
+  those tests pin the substring trap, the negation pushdown and the empty
+  and/or identities. Kept, with a comment saying so.
 - `_shown` and `_pick` in the exporter are two splits on the same variable;
   `_pick` ("which door is this") already subsumes `_shown` ("is this door
   here"), where no door is the noMatch.

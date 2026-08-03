@@ -74,10 +74,16 @@ describe('standing in one state', () => {
     expect(view(g).withheldExits).toEqual([])
   })
 
-  it('reads out the words this caller actually hears', () => {
+  /** The reading REPLACES the room's script rather than annotating it, so the
+   *  words on the floor are the reading's and the room's own lines are gone. */
+  it('reads out the words this caller actually hears, as the room’s script', () => {
     const { g, lit } = cell()
-    expect(view(g, lit.id).readingText).toBe('The lamp finds a grate in the far wall.')
-    expect(view(g, null).readingText).toBeNull()
+    expect(view(g, lit.id).lines.map((l) => l.text)).toEqual([
+      'The lamp finds a grate in the far wall.',
+    ])
+    expect(view(g, null).lines.map((l) => l.text)).not.toContain(
+      'The lamp finds a grate in the far wall.',
+    )
   })
 
   /**

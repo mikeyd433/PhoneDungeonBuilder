@@ -39,6 +39,9 @@ export interface RoomStageProps {
   /** When this door is offered at all — one control over what used to be two
    *  unrelated mechanisms in two different places. */
   onOffered?: (choiceId: string) => void
+  /** Everything about this door, in one sheet. The row keeps only the things
+   *  worth scanning; the rest is one tap away rather than six icons wide. */
+  onOpenDoor?: (choiceId: string) => void
   /** Stand in the room as a caller in one particular state. */
   onViewState?: (id: string | null | 'all') => void
   /** Offer or withhold one door in the state currently being viewed. Absent in
@@ -61,6 +64,7 @@ export default function RoomStage({
   onReact,
   onFork,
   onOffered,
+  onOpenDoor,
   onWire,
   onViewState,
   onSetDoorShown,
@@ -296,7 +300,13 @@ export default function RoomStage({
                     />
                     here
                   </label>
-                ) : onOffered ? (
+                ) : /* §0's first rule: every visual element encodes real data.
+                       "Always offered" is the absence of data and every door
+                       starts that way, so it earns no room on the line —
+                       marking all three doors "always" said nothing and cost
+                       exactly as much space as saying something. Making a door
+                       conditional lives in its sheet. */
+                onOffered && (exit.neverShown || exit.hiddenIn > 0 || exit.gate?.behavior === 'hide') ? (
                   <button
                     type="button"
                     onClick={() => onOffered(exit.choiceId!)}
@@ -304,24 +314,14 @@ export default function RoomStage({
                     title={
                       exit.neverShown
                         ? 'Hidden everywhere — no caller is ever offered this'
-                        : exit.hiddenIn > 0 || exit.gate?.behavior === 'hide'
-                          ? 'Only offered sometimes — tap to see when'
-                          : 'Always offered — tap to make it conditional'
+                        : 'Only offered sometimes — tap to see when'
                     }
                     className={[
                       'shrink-0 rounded border px-2 py-1.5 text-xs',
-                      exit.neverShown
-                        ? 'border-grave/60 text-grave'
-                        : exit.hiddenIn > 0 || exit.gate?.behavior === 'hide'
-                          ? 'border-torch/60 text-torch'
-                          : 'border-mortar/40 text-mortar',
+                      exit.neverShown ? 'border-grave/60 text-grave' : 'border-torch/60 text-torch',
                     ].join(' ')}
                   >
-                    {exit.neverShown
-                      ? 'never offered'
-                      : exit.hiddenIn > 0 || exit.gate?.behavior === 'hide'
-                        ? 'sometimes'
-                        : 'always'}
+                    {exit.neverShown ? 'never offered' : 'sometimes'}
                   </button>
                 ) : (
                   exit.hiddenIn > 0 && (
@@ -405,8 +405,9 @@ export default function RoomStage({
                 {/* One key, two rooms. Beside the destination it splits, and
                     when it does the second room is named here too — a door
                     that goes to two places must not read like one that goes to
-                    one. */}
-                {onFork && exit.choiceId && (
+                    one. Only when there is no door sheet to hold it: six icon
+                    buttons for three doors is what the sheet exists to end. */}
+                {!onOpenDoor && onFork && exit.choiceId && (
                   <button
                     onClick={() => onFork(exit.choiceId!)}
                     aria-label={`Where door ${exit.digit} forks`}
@@ -428,7 +429,7 @@ export default function RoomStage({
                     keypress and arriving. Beside the label because that is what
                     it answers, and marked so a room's doors can be scanned for
                     an unrecorded one without opening each. */}
-                {onReact && (
+                {!onOpenDoor && onReact && (
                   <button
                     onClick={() => onReact(exit.choiceId!)}
                     aria-label={`Reaction to door ${exit.digit}`}
@@ -449,6 +450,26 @@ export default function RoomStage({
                     ].join(' ')}
                   >
                     🔊
+                  </button>
+                )}
+
+                {/* One tap to everything else: the digit, the destination, the
+                    fork, the reaction, insert and remove. The row keeps what is
+                    worth scanning and nothing more. */}
+                {onOpenDoor && exit.choiceId && (
+                  <button
+                    onClick={() => onOpenDoor(exit.choiceId!)}
+                    aria-label={`Everything about door ${exit.digit}`}
+                    title="The digit, where it leads, the fork, the reaction, insert, remove"
+                    className={[
+                      'shrink-0 rounded border px-2 py-1.5 text-xs',
+                      exit.forksTo || exit.reaction !== 'none'
+                        ? 'border-torch/60 text-torch'
+                        : 'border-mortar/40 text-mortar',
+                    ].join(' ')}
+                  >
+                    ⋯{exit.forksTo ? ' ⑂' : ''}
+                    {exit.reaction === 'recorded' ? ' 🔊' : exit.reaction === 'written' ? ' ○' : ''}
                   </button>
                 )}
               </li>

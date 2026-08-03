@@ -8,6 +8,7 @@ import RoomStage from '@/features/room/RoomStage'
 import ReactionSheet from '@/features/room/ReactionSheet'
 import ForkSheet from '@/features/room/ForkSheet'
 import OfferedSheet from '@/features/room/OfferedSheet'
+import DoorSheet from '@/features/room/DoorSheet'
 import ReactionGate from '@/features/room/ReactionGate'
 import LoopBackSheet from '@/features/room/LoopBackSheet'
 import EditorSheet from '@/features/room/EditorSheet'
@@ -47,6 +48,8 @@ export default function Room() {
   const [forking, setForking] = useState<string | null>(null)
   /** Which door is having its "when is this offered?" question answered. */
   const [offering, setOffering] = useState<string | null>(null)
+  /** Which door has its whole sheet open. */
+  const [openingDoor, setOpeningDoor] = useState<string | null>(null)
   /** A door being walked through that has something to be heard first. */
   const [passing, setPassing] = useState<{ choiceId: string; toId: string } | null>(null)
   /** Which door is being pointed at a room, from the doors panel. */
@@ -350,6 +353,8 @@ export default function Room() {
         /* When a door is offered at all — one control over what used to be a
            hide gate in the Items tab and a checkbox grid in the readings. */
         onOffered={setOffering}
+        /* Everything about a door, in one sheet — so the row can be quiet. */
+        onOpenDoor={setOpeningDoor}
         /* A digit, not a choice: the blank arch has no choice row yet, and it
            is the one that most needs sending back. Making the row here rather
            than inside the picker means cancelling leaves an unlabelled bricked
@@ -366,6 +371,18 @@ export default function Room() {
       {forking && <ForkSheet choiceId={forking} onClose={() => setForking(null)} />}
 
       {offering && <OfferedSheet choiceId={offering} onClose={() => setOffering(null)} />}
+
+      {openingDoor && (
+        <DoorSheet
+          choiceId={openingDoor}
+          onClose={() => setOpeningDoor(null)}
+          /* Each of these closes this sheet and opens the next, so the stack
+             never gets two deep on a 430px screen. */
+          onFork={setForking}
+          onReact={setReacting}
+          onOffered={setOffering}
+        />
+      )}
 
       {wiring && (() => {
         const c = graph.choices.get(wiring)

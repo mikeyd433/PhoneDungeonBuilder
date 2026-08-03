@@ -82,14 +82,6 @@ export function keyConflicts(graph: StoryGraph, nodeId: string): KeyConflict[] {
   return out
 }
 
-/** True when this room has more than one door on any one key. */
-export function hasSharedKeys(graph: StoryGraph, nodeId: string): boolean {
-  for (const doors of doorsByDigit(graph, nodeId).values()) {
-    if (doors.length > 1) return true
-  }
-  return false
-}
-
 /**
  * The rows a new door needs so it does not collide with the one already on its
  * key.

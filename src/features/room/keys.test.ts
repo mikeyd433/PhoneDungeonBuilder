@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { doorForKey, doorsByDigit, hasSharedKeys, keyConflicts, slotsToHideNewDoor } from './keys'
+import { doorForKey, doorsByDigit, keyConflicts, slotsToHideNewDoor } from './keys'
 import { buildRoomView } from './roomModel'
 import { compileStory } from './../export/compile'
 import { PlaytestEngine } from '@/features/playtest/engine'
@@ -67,7 +67,6 @@ describe('grouping doors by key', () => {
   it('puts both doors on digit 2 together', () => {
     const { g } = cell()
     expect(doorsByDigit(g, idOf(g, 'CELL')).get('2')).toHaveLength(2)
-    expect(hasSharedKeys(g, idOf(g, 'CELL'))).toBe(true)
   })
 
   it('says which door a key opens, per state', () => {

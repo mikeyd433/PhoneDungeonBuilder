@@ -57,6 +57,14 @@ export function counterSetLiquid(_slug: string, amount: number): string {
  * to precompute the whole boolean in Liquid and split on the result — arbitrary
  * gate logic collapses to exactly two widgets.
  */
+/**
+ * NOT DEAD CODE, despite nothing in `src/` calling it.
+ *
+ * `compile` is private and is where the substring trap, the negation pushdown
+ * and the empty-and/or identities all live. This is the seam its tests reach it
+ * through — `gateAssignmentLiquid` wraps the result in a preamble and an
+ * if/else, which would make every one of those assertions about padding.
+ */
 export function gateConditionLiquid(expression: GateExpression): string {
   return compile(expression)
 }
