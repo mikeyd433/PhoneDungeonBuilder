@@ -133,8 +133,16 @@ export default function RoomStage({
           are wrong. */}
       {peek && editable.length > 0 && (
         <ul className="flex flex-col gap-2 px-4 pt-2">
-          {editable.map((exit) => {
+          {editable.map((exit, i) => {
             const target = exit.targetId
+            // Doors that converge. Three doors granting three different items
+            // and landing in one room is the ordinary shape here, not an edge
+            // case — but rendering that one room's name in three identical
+            // boxes read as three separate fields, so typing in one looked like
+            // it had wrongly changed the other two. Name it once; say so on the
+            // rest.
+            const firstHere = editable.findIndex((e) => e.targetId && e.targetId === target)
+            const sharedWith = target && firstHere !== i ? editable[firstHere].digit : null
             return (
               <li
                 key={exit.choiceId}
@@ -177,7 +185,13 @@ export default function RoomStage({
                     ))}
                   </span>
                 )}
-                {target ? (
+                {sharedWith ? (
+                  <span className="min-w-0 flex-1 basis-40 px-2 py-1.5 text-xs text-cold">
+                    → the same room as door {sharedWith}
+                    {exit.targetTitle ? `, ${exit.targetTitle}` : ''}. This door&apos;s own words
+                    are on the left.
+                  </span>
+                ) : target ? (
                   <input
                     key={`title:${target}:${exit.targetTitle ?? ''}`}
                     // Empty when the room is unnamed, so the placeholder shows
