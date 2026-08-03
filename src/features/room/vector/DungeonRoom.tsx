@@ -5,6 +5,7 @@ import { archBox, archPath, archX, BACK, TORCH, VIEW, WALLS, wrapToPlate } from 
 import { designFor } from './designs'
 import { FloorMotifLayer, WallMotifLayer, WallTextureLayer } from './Texture'
 import Arena from './Arena'
+import Figures from './Figures'
 
 interface Props {
   view: RoomView
@@ -447,6 +448,11 @@ export default function DungeonRoom({ view, flare, onExit, peek = false }: Props
           />
         ))
       )}
+
+      {/* Whoever is standing here, in front of the doors. After the archways so
+          a figure is nearer to you than the wall is, and before the torch wash
+          so the same light falls on them as on everything else. */}
+      {!view.fight && <Figures figures={view.figures} lit={lit} />}
 
       {/* Arrival effects sit centre-floor: the node granted them, not a door. */}
       {view.arrivalGrants.length > 0 && (

@@ -2,12 +2,13 @@ import { useEffect, useMemo, useState } from 'react'
 import { deriveGraph } from '@/features/graph/derived'
 import { buildRoomView } from '@/features/room/roomModel'
 import DungeonRoom from '@/features/room/vector/DungeonRoom'
-import { addFight, makeGraph } from '@/test/factory'
+import { addCharacter, addFight, addLines, makeGraph } from '@/test/factory'
 import type { RoomView } from '@/features/room/roomModel'
 import Automap from '@/features/automap/Automap'
 import { layoutAutomap, type MapLayout } from '@/features/automap/layout'
 import { MAX_WALL_ARCHES } from '@/features/room/vector/geometry'
 import { ROOM_DESIGNS } from '@/features/room/vector/designs'
+import type { FigureKind } from '@/types/domain'
 
 /**
  * The art bench, as something you can actually look at one thing in.
@@ -28,6 +29,10 @@ interface Piece {
   name: string
   note: string
   build: () => RoomView | null
+  /** Threshold plates are an overlay the room does not normally wear. On for
+   *  most pieces because the labels are the point; off where they would sit on
+   *  top of the thing being judged. */
+  peek?: boolean
 }
 
 function roomFrom(
@@ -150,6 +155,48 @@ const STATES: Piece[] = [
  * Every wall here has one blank arch to chisel through on top of its real
  * doors, which is why the counts run one ahead of the number of ways onward.
  */
+/** Somebody standing in the room, one silhouette per bench entry. */
+const FIGURE_PIECES: Piece[] = [
+  ['standing', 'Standing', 'A person. The default when somebody is simply there.'],
+  ['looming', 'Looming', 'Taller, leaning over you. Bigger than you are.'],
+  ['small', 'Small', 'A child, or something low to the ground.'],
+  ['seated', 'Seated', 'Not going anywhere, and not getting up for you.'],
+  ['beast', 'Beast', 'On four legs. Reads as not-a-person before anything else.'],
+].map(([kind, name, note]) => ({
+  id: `figure-${kind}`,
+  name,
+  note,
+  peek: false,
+  build: () => {
+    const g = makeGraph(['HERE', 'B', 'C'], ['HERE>B', 'HERE>C'], { recorded: ['HERE'] })
+    addCharacter(g, 'innkeeper', {
+      name,
+      figure: kind as FigureKind,
+      color: kind === 'beast' ? 'grave' : 'ember',
+    })
+    addLines(g, 'HERE', ['innkeeper|We are closed.'])
+    const node = [...g.nodes.values()].find((n) => n.slug === 'HERE')!
+    g.nodes.set(node.id, { ...node, title: 'HERE', narration: 'Somebody is already here.' })
+    return buildRoomView(g, deriveGraph(g), node.id)
+  },
+}))
+
+const CROWD: Piece = {
+  id: 'figure-several',
+  name: 'Two in the room',
+  note: 'Spread across the floor, each in their own speaker colour. Four is the most it draws.',
+  peek: false,
+  build: () => {
+    const g = makeGraph(['HERE', 'B', 'C'], ['HERE>B', 'HERE>C'], { recorded: ['HERE'] })
+    addCharacter(g, 'innkeeper', { name: 'Innkeeper', figure: 'standing', color: 'ember' })
+    addCharacter(g, 'thing', { name: 'The thing', figure: 'looming', color: 'grave' })
+    addLines(g, 'HERE', ['innkeeper|We are closed.', 'thing|Not to me.'])
+    const node = [...g.nodes.values()].find((n) => n.slug === 'HERE')!
+    g.nodes.set(node.id, { ...node, title: 'HERE', narration: 'Two of them, and one is wrong.' })
+    return buildRoomView(g, deriveGraph(g), node.id)
+  },
+}
+
 const WALLS: Piece[] = Array.from({ length: MAX_WALL_ARCHES }, (_, i) => {
   const doors = i + 1
   return {
@@ -177,6 +224,7 @@ const DESIGNS: Piece[] = ROOM_DESIGNS.map((design) => ({
 const SECTIONS = [
   { id: 'states', label: 'Room states', pieces: STATES },
   { id: 'walls', label: 'Door layouts', pieces: WALLS },
+  { id: 'figures', label: 'Figures', pieces: [...FIGURE_PIECES, CROWD] },
   { id: 'designs', label: 'Designs', pieces: DESIGNS },
 ] as const
 
@@ -284,7 +332,7 @@ export default function Preview() {
             <p className="mb-4 max-w-prose text-sm text-cold">{piece.note}</p>
             {view ? (
               <div className="mx-auto max-w-2xl rounded border border-mortar/40 bg-stone/40 p-3">
-                <DungeonRoom view={view} flare={false} onExit={() => {}} peek />
+                <DungeonRoom view={view} flare={false} onExit={() => {}} peek={piece.peek ?? true} />
               </div>
             ) : (
               <p className="text-grave">could not build</p>

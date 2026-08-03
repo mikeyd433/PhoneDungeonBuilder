@@ -227,6 +227,7 @@ export function buildDemoStory(): StoryGraph {
       is_playable: playable,
       voice_actor: actor,
       color,
+      figure: null,
       notes: null,
       created_at: STAMP,
       updated_at: STAMP,

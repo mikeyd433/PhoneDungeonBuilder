@@ -4,6 +4,7 @@ import type {
   Digit,
   Effect,
   EndingKind,
+  FigureKind,
   Gate,
   StoryGraph,
   StoryNode,
@@ -96,6 +97,14 @@ export interface RoomView {
   /** F1.14 — the narration, split by who says it. Empty when nobody has split
    *  this room's text into lines yet. */
   lines: Array<{ id: string; speaker: string | null; color: string; text: string }>
+  /**
+   * Who is standing in the room, in the order they first speak.
+   *
+   * Not everyone who speaks: only characters somebody has given a figure to.
+   * The party is the caller and the narrator is nobody, so drawing every voice
+   * would put three people in a room you are alone in.
+   */
+  figures: Array<{ id: string; name: string; color: string; kind: FigureKind }>
 }
 
 /**
@@ -132,6 +141,30 @@ function reactionState(graph: StoryGraph, choiceId: string): 'none' | 'written' 
   const parts = reactionPlaybackFor(graph, choiceId)
   if (parts.length === 0) return 'none'
   return parts.every((p) => p.audioPath) ? 'recorded' : 'written'
+}
+
+/**
+ * The characters with a figure who speak in this room, first-spoken first.
+ *
+ * Deduplicated by character: somebody with four lines is one person standing
+ * there, not four.
+ */
+function figuresIn(graph: StoryGraph, nodeId: string): RoomView['figures'] {
+  const out: RoomView['figures'] = []
+  const seen = new Set<string>()
+  for (const line of linesFor(graph, nodeId)) {
+    if (!line.character_id || seen.has(line.character_id)) continue
+    const character = graph.characters.get(line.character_id)
+    if (!character?.figure) continue
+    seen.add(character.id)
+    out.push({
+      id: character.id,
+      name: character.name,
+      color: character.color,
+      kind: character.figure,
+    })
+  }
+  return out
 }
 
 export function buildRoomView(
@@ -266,6 +299,7 @@ export function buildRoomView(
     // lighting it would be exactly the atmosphere-over-data §0 forbids.
     torchLit: isFullyRecorded(graph, nodeId),
     design: node.room_design || 'stone',
+    figures: figuresIn(graph, nodeId),
     isEnding,
     endingKind: isEnding ? (node.ending_kind ?? 'death') : null,
     depth: derived.depth.get(nodeId) ?? null,

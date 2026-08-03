@@ -2,6 +2,16 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useDelve } from '@/features/graph/store'
 import { castList, suggestCast, workloads } from '@/features/cast/dialogue'
+import { FIGURES, type FigureKind } from '@/types/domain'
+
+/** What each silhouette is for, in the terms an author picks by. */
+const FIGURE_LABELS: Record<FigureKind, string> = {
+  standing: 'Standing — a person',
+  looming: 'Looming — bigger than you',
+  small: 'Small — a child, or something low',
+  seated: 'Seated — not going anywhere',
+  beast: 'Beast — on four legs',
+}
 import CallSheet from '@/features/cast/CallSheetPanel'
 import { useCallSheets } from '@/features/cast/useCallSheets'
 import { SPEAKER_COLORS, speakerHex } from '@/features/cast/colors'
@@ -125,6 +135,27 @@ export default function Cast() {
                   {SPEAKER_COLORS.map((s) => (
                     <option key={s.id} value={s.id}>
                       {s.name}
+                    </option>
+                  ))}
+                </select>
+                {/* Who is PRESENT, which is not the same question as who
+                    speaks. The party is the caller and the narrator is nobody,
+                    so this stays off unless somebody turns it on. */}
+                <select
+                  disabled={!editable}
+                  value={c.figure ?? ''}
+                  onChange={(e) =>
+                    void editCharacter(c.id, {
+                      figure: (e.target.value || null) as FigureKind | null,
+                    })
+                  }
+                  title="Stand a figure in every room this character speaks in"
+                  className={field}
+                >
+                  <option value="">— not in the room —</option>
+                  {FIGURES.map((f) => (
+                    <option key={f} value={f}>
+                      {FIGURE_LABELS[f]}
                     </option>
                   ))}
                 </select>

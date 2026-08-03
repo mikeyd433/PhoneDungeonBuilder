@@ -232,6 +232,7 @@ export function addCharacter(
     is_playable: false,
     voice_actor: null,
     color: 'parchment',
+    figure: null,
     notes: null,
     created_at: STAMP,
     updated_at: STAMP,

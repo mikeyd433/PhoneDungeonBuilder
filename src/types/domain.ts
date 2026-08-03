@@ -171,6 +171,16 @@ export interface Membership {
  * Play widget, so a conversation voiced by two people costs a widget per line
  * rather than one for the room.
  */
+/**
+ * A silhouette to stand in the room when this character speaks there.
+ *
+ * Opt-in per character, because "who speaks" and "who is present" are different
+ * questions: the party is the caller, and the narrator is nobody, so drawing a
+ * figure for every voice would put three people in a room you are alone in.
+ */
+export const FIGURES = ['standing', 'looming', 'small', 'seated', 'beast'] as const
+export type FigureKind = (typeof FIGURES)[number]
+
 export interface Character {
   id: string
   story_id: string
@@ -180,6 +190,8 @@ export interface Character {
   is_playable: boolean
   voice_actor: string | null
   color: string
+  /** Null draws nobody, which is right for the party and for the narrator. */
+  figure: FigureKind | null
   notes: string | null
   created_at: string
   updated_at: string
