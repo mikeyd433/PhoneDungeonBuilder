@@ -12,6 +12,8 @@ import {
   roundsOf,
 } from '@/features/fight/model'
 import {
+  consumeAllLiquid,
+  consumeLiquid,
   counterAddLiquid,
   counterSetLiquid,
   counterVar,
@@ -19,8 +21,12 @@ import {
   gateVarName,
   grantLiquid,
   INV_VAR,
+  readingAssignmentLiquid,
+  readingVarName,
   revokeLiquid,
 } from './liquid'
+import { consumePlan } from '@/features/state/consume'
+import { variantProblems, variantsOf } from '@/features/room/variants'
 
 /**
  * Compile a story into a Twilio Studio widget graph (§6.2, §6.5, §6.7).
@@ -231,11 +237,22 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
     return wname(n.slug, 'gather')
   }
 
-  /** Replaying a room: its audio again if it has any, else its choices. Used by
-   *  the timeout and wrong-keypress defaults, which must NOT re-run arrival
-   *  effects — granting the same item twice for hesitating would be a gift. */
-  const replayName = (n: StoryNode): string | null =>
+  /** The room read out as itself — no alternate reading in play. */
+  const baseAudioName = (n: StoryNode): string | null =>
     playbackFor(graph, n.id).some((p) => p.audioPath) ? playName(n.slug) : afterAudioName(n)
+
+  /**
+   * Replaying a room: its audio again if it has any, else its choices. Used by
+   * the timeout and wrong-keypress defaults, which must NOT re-run arrival
+   * effects — granting the same item twice for hesitating would be a gift.
+   *
+   * A room with alternate readings replays through the SPLIT, not through one
+   * of the readings: the caller who timed out hears the same version again, and
+   * routing straight at a play widget would have replayed the base reading to
+   * somebody the variant was written for.
+   */
+  const replayName = (n: StoryNode): string | null =>
+    variantsOf(graph, n.id).length > 0 ? `${n.slug}_read` : baseAudioName(n)
 
   /**
    * The first widget a caller ENTERING this room actually runs.
@@ -309,6 +326,94 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
       widgets.find((w) => w.name === wname(slug, 'fx'))!.transitions = [
         { event: 'next', next: replayName(node) },
       ]
+    }
+
+    // ---- which reading of this room the caller gets
+    //
+    // Numbered in Liquid and split on once, so N alternate readings cost two
+    // widgets rather than N — the same trick §6.3 plays on gates. `0` means no
+    // condition matched and the room reads itself out, exactly as a room
+    // without variants always has.
+    //
+    // Every variant stays in the chain even with no take, because the chain is
+    // what decides WHICH words play. Dropping an unrecorded reading would let
+    // the one below it answer for cases that were never its own — so it stays,
+    // routes to the choices, and is reported as the silence it is.
+    const variants = variantsOf(graph, node.id)
+    if (variants.length > 0) {
+      const variantPlay = (i: number) => `${slug}_alt${i + 1}`
+      widgets.push({
+        name: `${slug}_read`,
+        type: 'set-variables',
+        nodeId: node.id,
+        note: `Which of this room's ${variants.length} alternate reading(s) applies. 0 = the room's own.`,
+        variables: [
+          { key: readingVarName(slug), value: readingAssignmentLiquid(variants.map((v) => v.expression)) },
+        ],
+        transitions: [{ event: 'next', next: `${slug}_alt` }],
+      })
+      /**
+       * Where a reading leaves the caller.
+       *
+       * With no destination they stay here and are offered this room's doors —
+       * the ordinary case. With one, the check is an arrival fork and they walk
+       * straight into that room, which is how two outcomes get different
+       * dialogue and different exits: they are two rooms and one check.
+       *
+       * A destination pointing at THIS room is a loop with no keypress in it,
+       * so it is ignored here and reported by `variantProblems`.
+       */
+      const readingExit = (variant: (typeof variants)[number]): string | null => {
+        const target = variant.goto_node_id ? graph.nodes.get(variant.goto_node_id) : null
+        if (!target || target.id === node.id) return afterAudioName(node)
+        return entryName(target)
+      }
+
+      widgets.push({
+        name: `${slug}_alt`,
+        type: 'split-based-on',
+        nodeId: node.id,
+        note: 'Play that reading. No match means the room as written.',
+        splitOn: `{{flow.variables.${readingVarName(slug)}}}`,
+        transitions: [
+          ...variants.map((variant, i) => ({
+            event: 'match',
+            condition: `Equal To ${i + 1}`,
+            match: { type: 'equal_to' as const, value: String(i + 1) },
+            // No take: straight on to wherever it leads. An unrecorded check
+            // that only routes is not silence, it is a decision.
+            next: variant.audio_path ? variantPlay(i) : readingExit(variant),
+          })),
+          { event: 'noMatch', next: baseAudioName(node) },
+        ],
+      })
+
+      variants.forEach((variant, i) => {
+        if (!variant.audio_path) {
+          // Only worth saying when the reading had words to lose. A check that
+          // exists purely to route the caller has nothing to record.
+          if (variant.narration.trim()) {
+            warnings.push(
+              `${slug} reading ${i + 1} has no recording, so a caller it applies to hears nothing at all — not even the room's own words, which this reading replaces.`,
+            )
+          }
+          return
+        }
+        widgets.push({
+          name: variantPlay(i),
+          type: 'say-play',
+          nodeId: node.id,
+          note: variant.goto_node_id
+            ? `Alternate reading ${i + 1}, then straight on.`
+            : `Alternate reading ${i + 1}.`,
+          playUrl: `${audioBaseUrl}${variant.audio_path}`,
+          transitions: [{ event: 'audioComplete', next: readingExit(variant) }],
+        })
+      })
+
+      for (const problem of variantProblems(graph, node.id)) {
+        warnings.push(`${slug}: ${problem}`)
+      }
     }
 
     // ---- the room itself
@@ -590,6 +695,50 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
             ? `${slug} digit ${choice.digit} has a reaction written ("${reactParts[0].say.trim().slice(0, 40)}…") with no recording, so the caller hears nothing between pressing and arriving.`
             : `${slug} digit ${choice.digit}'s reaction plays line by line and ${reactMissing} of its ${reactParts.length} lines have no take — those lines are silent.`,
         )
+      }
+
+      // Spending what opened the door.
+      //
+      // This was honoured by the playtest and by the solver and emitted by
+      // NEITHER — so a consumable was used up in rehearsal and kept forever on
+      // the phone, which is the worst way round for a bug to sit: every test
+      // said the story worked.
+      //
+      // Inside the gate and before the choice's own effects, because a caller
+      // who was refused spends nothing, and an effect that grants something in
+      // exchange should see the payment already made.
+      if (gate?.consume_on_pass) {
+        const plan = consumePlan(gate.expression, (s) =>
+          Boolean([...graph.stateVars.values()].find((v) => v.slug === s)?.is_consumable),
+        )
+        if (plan.slugs.length > 0) {
+          const spendName = `${slug}_d${digitToken(choice.digit)}_spend`
+          widgets.push({
+            name: spendName,
+            type: 'set-variables',
+            nodeId: node.id,
+            note:
+              plan.mode === 'first'
+                ? `Spend whichever of ${plan.slugs.join(' / ')} opened this — only the one.`
+                : `Spend ${plan.slugs.join(', ')}, which this door required.`,
+            variables: [
+              {
+                key: INV_VAR,
+                value:
+                  plan.mode === 'first' ? consumeLiquid(plan.slugs) : consumeAllLiquid(plan.slugs),
+              },
+            ],
+            transitions: [{ event: 'next', next: dest }],
+          })
+          dest = spendName
+        } else {
+          // The checkbox is ticked and nothing it names is marked consumable, so
+          // nothing is spent. Said out loud, because from the editor it looks
+          // like it works.
+          warnings.push(
+            `${slug} digit ${choice.digit} is set to use up what opened it, but none of the items it requires are marked as used up — so nothing is spent.`,
+          )
+        }
       }
 
       // Choice effects: one widget, only if there is something to do (§6.2 —

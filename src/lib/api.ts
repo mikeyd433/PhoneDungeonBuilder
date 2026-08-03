@@ -12,6 +12,7 @@ import type {
   Gate,
   Membership,
   MembershipRole,
+  NodeVariant,
   StateVar,
   Story,
   StoryGraph,
@@ -30,6 +31,7 @@ export async function loadStoryGraph(storyId: string): Promise<StoryGraph> {
     stateVars,
     effects,
     gates,
+    variants,
     characters,
     dialogue,
     fights,
@@ -43,6 +45,7 @@ export async function loadStoryGraph(storyId: string): Promise<StoryGraph> {
     byStory('state_vars'),
     byStory('effects'),
     byStory('gates'),
+    byStory('node_variants'),
     byStory('characters'),
     byStory('dialogue_lines'),
     byStory('fights'),
@@ -58,6 +61,7 @@ export async function loadStoryGraph(storyId: string): Promise<StoryGraph> {
     stateVars,
     effects,
     gates,
+    variants,
     characters,
     dialogue,
     fights,
@@ -77,6 +81,7 @@ export async function loadStoryGraph(storyId: string): Promise<StoryGraph> {
     stateVars: index<StateVar>(stateVars.data),
     effects: index<Effect>(effects.data),
     gates: index<Gate>(gates.data),
+    variants: index<NodeVariant>(variants.data),
     characters: index<Character>(characters.data),
     dialogue: index<DialogueLine>(dialogue.data),
     fights: index<Fight>(fights.data),
@@ -272,6 +277,44 @@ export async function upsertGate(
 
 export async function deleteGate(choiceId: string): Promise<void> {
   const { error } = await supabase.from('gates').delete().eq('choice_id', choiceId)
+  if (error) throw error
+}
+
+// ------------------------------------------------------------ alternate readings
+
+/**
+ * A room's alternate readings. Written through `refresh()` like gates rather
+ * than through the store's optimistic path: the order of the rows IS the
+ * if/elsif chain, so a local reorder that the database rejected would show the
+ * author a story that reads differently from the one that exports.
+ */
+export async function createVariant(
+  storyId: string,
+  nodeId: string,
+  patch: Partial<NodeVariant> = {},
+): Promise<NodeVariant> {
+  const { data, error } = await supabase
+    .from('node_variants')
+    .insert({ story_id: storyId, node_id: nodeId, ...patch })
+    .select()
+    .single()
+  if (error) throw error
+  return data as NodeVariant
+}
+
+export async function updateVariant(id: string, patch: Partial<NodeVariant>): Promise<NodeVariant> {
+  const { data, error } = await supabase
+    .from('node_variants')
+    .update(patch)
+    .eq('id', id)
+    .select()
+    .single()
+  if (error) throw error
+  return data as NodeVariant
+}
+
+export async function deleteVariant(id: string): Promise<void> {
+  const { error } = await supabase.from('node_variants').delete().eq('id', id)
   if (error) throw error
 }
 

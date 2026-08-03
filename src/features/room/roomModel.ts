@@ -11,7 +11,8 @@ import type {
 } from '@/types/domain'
 
 import { buildFightView, type FightView } from '@/features/fight/model'
-import { isFullyRecorded, linesFor, reactionPlaybackFor } from '@/features/cast/dialogue'
+import { linesFor, reactionPlaybackFor } from '@/features/cast/dialogue'
+import { allReadings, variantsOf } from './variants'
 import { MAX_WALL_ARCHES } from './vector/geometry'
 
 /**
@@ -94,6 +95,10 @@ export interface RoomView {
   /** A fight room that also has doors: the doors are never offered, because the
    *  fight decides where the caller goes. */
   fightWithExits: boolean
+  /** How many alternate readings this room has. The plaque says so, because a
+   *  room that reads three ways is not a room you can judge by looking at one
+   *  of them. */
+  readings: number
   /** F1.14 — the narration, split by who says it. Empty when nobody has split
    *  this room's text into lines yet. */
   lines: Array<{ id: string; speaker: string | null; color: string; text: string }>
@@ -297,7 +302,15 @@ export function buildRoomView(
     // assembled line by line that is only true once every line has a take. One
     // recorded line out of four is a scene with three silences in it, and
     // lighting it would be exactly the atmosphere-over-data §0 forbids.
-    torchLit: isFullyRecorded(graph, nodeId),
+    torchLit: (() => {
+      // F1.5 — "there is audio for this room", which now has to mean every way
+      // the room can read. A finished base and an unrecorded alternate is a
+      // room that plays silence to anyone carrying the thing it is about, and
+      // lighting that would be exactly the atmosphere-over-data §0 forbids.
+      const parts = allReadings(graph, nodeId)
+      return parts.length > 0 && parts.every((p) => Boolean(p.audioPath))
+    })(),
+    readings: variantsOf(graph, nodeId).length,
     design: node.room_design || 'stone',
     figures: figuresIn(graph, nodeId),
     isEnding,

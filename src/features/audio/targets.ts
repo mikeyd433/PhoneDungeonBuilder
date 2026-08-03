@@ -1,6 +1,8 @@
 import type { StoryGraph } from '@/types/domain'
 import { buildFightView } from '@/features/fight/model'
 import { linesFor, linesOf } from '@/features/cast/dialogue'
+import { variantsOf } from '@/features/room/variants'
+import { describeExpression } from '@/features/state/describe'
 
 /**
  * Every slot in a story that somebody could record, named the same way twice.
@@ -18,6 +20,7 @@ export type TargetKind =
   | 'room'
   | 'line'
   | 'fight round'
+  | 'reading'
   | 'reaction'
   | 'refusal'
   | 'item'
@@ -40,6 +43,7 @@ export interface AudioTarget {
     | { kind: 'room'; nodeId: string }
     | { kind: 'line'; lineId: string }
     | { kind: 'fight round'; roundId: string }
+    | { kind: 'reading'; variantId: string }
     | { kind: 'reaction'; choiceId: string }
     | { kind: 'refusal'; gateId: string; choiceId: string }
     | { kind: 'item'; varId: string }
@@ -81,6 +85,23 @@ export function audioTargets(graph: StoryGraph): AudioTarget[] {
         })
       })
     }
+
+    // An alternate reading is its own take, and always ONE take — the base
+    // narration can split between two actors, a variant cannot. Numbered by
+    // position because that is what decides which one plays, so a file called
+    // ROOM__alt2 is unambiguous even after the conditions are rewritten.
+    variantsOf(graph, node.id).forEach((variant, i) => {
+      out.push({
+        key: `${node.slug}#alt${i + 1}`,
+        kind: 'reading',
+        file: `${node.slug}__alt${i + 1}`,
+        label: `${node.slug} — when ${describeExpression([...graph.stateVars.values()], variant.expression)}`,
+        text: variant.narration,
+        currentPath: variant.audio_path,
+        currentDurationMs: variant.audio_duration_ms,
+        ref: { kind: 'reading', variantId: variant.id },
+      })
+    })
 
     const fight = buildFightView(graph, node.id)
     if (fight) {

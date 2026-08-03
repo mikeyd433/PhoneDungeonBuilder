@@ -2,6 +2,7 @@ import type { StoryGraph } from '@/types/domain'
 import type { EffectLike } from './expression'
 import type { SolverChoice, SolverInput, SolverNode } from './solver'
 import { graphEdges } from '@/features/graph/edges'
+import { variantsOf } from '@/features/room/variants'
 
 /** Flatten the live graph into the plain, structured-cloneable shape the worker
  *  takes. Effects are resolved from state_var_id to slug here so the solver
@@ -38,13 +39,22 @@ export function toSolverInput(graph: StoryGraph): SolverInput {
     slug: n.slug,
     isEnding: n.node_type === 'ending',
     effects: (nodeEffects.get(n.id) ?? []).map(asEffect).filter((e) => e.varSlug),
+    redirects: variantsOf(graph, n.id)
+      .filter((v) => v.goto_node_id && v.goto_node_id !== n.id)
+      .map((v) => ({ expression: v.expression, toId: v.goto_node_id! })),
   }))
 
   // Fight outcomes come through as choices with no gate and no effects. Winning
   // a fight needs nothing in the satchel — only the right digits — so both
   // outcomes are always available, and the solver is right to treat the rooms
   // beyond them as reachable with whatever the caller walked in carrying.
-  const choices: SolverChoice[] = graphEdges(graph).map((e) => {
+  // Reading edges are deliberately NOT choices. They are real structure — the
+  // map and the reachability check need them — but the caller never presses
+  // anything to take one, and modelling one as a free ungated choice would let
+  // the solver walk it without the item the check is asking about.
+  const choices: SolverChoice[] = graphEdges(graph)
+    .filter((e) => e.kind !== 'reading')
+    .map((e) => {
     const gate = e.choice ? gateByChoice.get(e.choice.id) : undefined
     return {
       id: e.id,

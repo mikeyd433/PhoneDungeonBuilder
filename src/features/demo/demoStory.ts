@@ -9,6 +9,7 @@ import type {
   FightRound,
   FightRoundOutcome,
   Gate,
+  NodeVariant,
   StateVar,
   Story,
   StoryGraph,
@@ -216,6 +217,46 @@ export function buildDemoStory(): StoryGraph {
   }
   gates.set(gate.id, gate)
 
+  // The shore, read two ways. Carrying the rope changes what the room SAYS —
+  // not only which doors it offers — which is the case a gate alone could
+  // never cover: the locker is worth mentioning once you can do something
+  // about it.
+  const variants = new Map<string, NodeVariant>()
+  const shoreWithRope: NodeVariant = {
+    id: nextId('alt'),
+    story_id: story.id,
+    node_id: shore,
+    expression: { op: 'has', var: 'ROPE' },
+    narration:
+      'You drag yourself up the shingle. The rope is still round your fist, and there is a locker half-buried at the tideline with a lid you could haul on.',
+    audio_path: null,
+    audio_duration_ms: null,
+    goto_node_id: null,
+    sort_order: 0,
+    created_at: STAMP,
+    updated_at: STAMP,
+  }
+  variants.set(shoreWithRope.id, shoreWithRope)
+
+  // And the check that happens on the way IN rather than on a door: arriving in
+  // the locker without the rope is not the locker scene at all, so the caller
+  // never stands there — they are put straight back on the shore. Written once,
+  // on the room, rather than once per door leading into it.
+  const lockerEmptyHanded: NodeVariant = {
+    id: nextId('alt'),
+    story_id: story.id,
+    node_id: locker,
+    expression: { op: 'lacks', var: 'ROPE' },
+    narration: '',
+    audio_path: null,
+    audio_duration_ms: null,
+    goto_node_id: shore,
+    sort_order: 0,
+    created_at: STAMP,
+    updated_at: STAMP,
+  }
+  variants.set(lockerEmptyHanded.id, lockerEmptyHanded)
+
   // Cast.
   const characters = new Map<string, Character>()
   const cast = (slug: string, name: string, actor: string | null, color: string, playable: boolean) => {
@@ -331,6 +372,7 @@ export function buildDemoStory(): StoryGraph {
     stateVars,
     effects,
     gates,
+    variants,
     characters,
     dialogue,
     fights,

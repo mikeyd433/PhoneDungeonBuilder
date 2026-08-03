@@ -76,17 +76,31 @@ export default function Playtest() {
    * named — the conversation plays out, and only then are the exits offered.
    */
   const roomLines = useCallback(
-    (nodeId: string, slug: string): Line[] => {
-      if (!graph) return []
-      const parts = playbackFor(graph, nodeId)
+    (at: PlaytestState, nodeId: string, slug: string): Line[] => {
+      if (!graph || !engine) return []
+      // Asked of the engine, not of the node: a room with alternate readings
+      // plays the first one this caller's inventory satisfies, and the
+      // transcript has to be the version they would actually hear or the
+      // playtest is rehearsing a different story from the one that ships.
+      const parts = engine.playback(at, nodeId)
+      const reading = engine.readingAt(at, nodeId)
       const written = parts.filter((p) => p.say.trim())
-      if (written.length === 0) return [{ who: 'story', text: `(${slug} has no script yet)` }]
+      if (written.length === 0) {
+        return [
+          {
+            who: 'story',
+            text: reading
+              ? `(${slug} has an alternate reading for this caller, with no words in it yet)`
+              : `(${slug} has no script yet)`,
+          },
+        ]
+      }
       return written.map((p) => ({
         who: 'story',
         text: p.speaker ? `${p.speaker}: ${p.say}` : p.say,
       }))
     },
-    [graph],
+    [graph, engine],
   )
 
   const begin = useCallback(() => {
@@ -95,7 +109,7 @@ export default function Playtest() {
     const start = engine.start()
     setState(start)
     const first = graph.nodes.get(start.nodeId)
-    const opening: Line[] = first ? roomLines(first.id, first.slug) : []
+    const opening: Line[] = first ? roomLines(start, first.id, first.slug) : []
     // A fight room reads its lead-in, then the first round.
     const round = engine.roundPrompt(start)
     if (round) opening.push({ who: 'story', text: round })
@@ -118,7 +132,10 @@ export default function Playtest() {
   // trailing unrecorded line was ever heard.
   useEffect(() => {
     if (!node || !graph) return
-    const parts = playbackFor(graph, node.id)
+    // The same question the transcript asked: which reading is this caller
+    // getting? Reading the node's own parts here would have played the base
+    // narration over an alternate transcript.
+    const parts = engine && state ? engine.playback(state, node.id) : playbackFor(graph, node.id)
     let cancelled = false
     let index = 0
     setPlaying(parts.length > 0)
@@ -150,6 +167,11 @@ export default function Playtest() {
       if (el) el.onended = null
       speechSynthesis?.cancel?.()
     }
+    // Deliberately keyed on the ROOM, not on the state. `node` is derived from
+    // `state.nodeId`, so walking somewhere re-runs this with the state that
+    // arrival produced — which is the state the alternate reading is chosen
+    // against. Adding `state` would replay the room on every refused keypress.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [node, graph, speakThen])
 
   // F5.4 — the timeout branch fires if the caller says nothing in time.
@@ -188,7 +210,7 @@ export default function Playtest() {
     if (spoken) added.push({ who: 'story', text: spoken })
     const movedTo = next.nodeId !== state?.nodeId ? graph.nodes.get(next.nodeId) : null
     if (movedTo) {
-      added.push(...roomLines(movedTo.id, movedTo.slug))
+      added.push(...roomLines(next, movedTo.id, movedTo.slug))
       // Walking into a fight: its first round follows the room's lead-in.
       const opening = engine?.roundPrompt(next)
       if (opening) added.push({ who: 'story', text: opening })

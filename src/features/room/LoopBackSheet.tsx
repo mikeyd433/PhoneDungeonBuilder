@@ -16,29 +16,45 @@ import { loopTargets, matchCandidates, type LoopCandidate } from './loopBack'
  * loop is what draws as a stairwell rather than a door (F1.6).
  */
 export default function LoopBackSheet({
-  choiceId,
+  fromNodeId,
+  currentId,
+  heading,
+  blurb,
+  wayHint,
+  clearLabel,
+  onPick,
   onClose,
 }: {
-  choiceId: string
+  /** The room the caller is leaving — what "the way you came" is measured from. */
+  fromNodeId: string
+  /** Where it points now, so that row can say so. */
+  currentId: string | null
+  heading: string
+  blurb: string
+  /** What picking from "the way you came" means here. A door looping back and
+   *  an arrival check sending the caller back are the same edge and not the
+   *  same sentence. */
+  wayHint: string
+  /** Wording for the unwire button, or null where clearing makes no sense. */
+  clearLabel: string | null
+  onPick: (nodeId: string | null) => void
   onClose: () => void
 }) {
   const graph = useDelve((s) => s.graph)
   const derived = useDelve((s) => s.derived)
   const trail = useDelve((s) => s.trail)
-  const updateChoice = useDelve((s) => s.updateChoice)
   const [query, setQuery] = useState('')
 
-  const choice = graph?.choices.get(choiceId)
   const groups = useMemo(
-    () => (graph && derived && choice ? loopTargets(graph, derived, choice.from_node_id, trail) : null),
-    [graph, derived, choice, trail],
+    () => (graph && derived ? loopTargets(graph, derived, fromNodeId, trail) : null),
+    [graph, derived, fromNodeId, trail],
   )
 
-  if (!graph || !choice || !groups) return null
+  if (!graph || !groups) return null
 
-  const from = graph.nodes.get(choice.from_node_id)
+  const from = graph.nodes.get(fromNodeId)
   const wire = (id: string | null) => {
-    void updateChoice(choice.id, { to_node_id: id })
+    onPick(id)
     onClose()
   }
 
@@ -46,7 +62,7 @@ export default function LoopBackSheet({
     {
       key: 'way',
       label: 'The way you came',
-      hint: 'Wiring a door to one of these makes a loop — the caller can come round again.',
+      hint: wayHint,
       list: matchCandidates(groups.wayHere, query),
     },
     {
@@ -74,17 +90,13 @@ export default function LoopBackSheet({
         className="max-h-[80vh] w-full overflow-y-auto rounded-t-2xl border-t border-mortar bg-depth p-4"
       >
         <div className="mb-2 flex items-center justify-between">
-          <h3 className="text-sm text-torch">
-            Pressing {choice.digit}
-            {choice.label ? ` — ${choice.label}` : ''} leads to…
-          </h3>
+          <h3 className="text-sm text-torch">{heading}</h3>
           <button onClick={onClose} className="text-sm text-mortar underline">
             Cancel
           </button>
         </div>
         <p className="mb-3 text-xs text-cold">
-          From {from?.title || from?.slug}. Pointing a door at a room the caller has already passed
-          is how a middle keeps looping while its other doors go on to an ending.
+          From {from?.title || from?.slug}. {blurb}
         </p>
 
         <input
@@ -110,7 +122,7 @@ export default function LoopBackSheet({
                         onClick={() => wire(c.id)}
                         className={[
                           'flex w-full items-baseline gap-2 rounded border px-3 py-2 text-left text-sm',
-                          c.id === choice.to_node_id
+                          c.id === currentId
                             ? 'border-torch text-torch'
                             : 'border-mortar/40 hover:border-torch',
                         ].join(' ')}
@@ -124,7 +136,7 @@ export default function LoopBackSheet({
                         <span className="shrink-0 text-xs text-mortar">
                           {c.depth === null ? 'sealed' : `depth ${c.depth}`}
                         </span>
-                        {c.id === choice.to_node_id && (
+                        {c.id === currentId && (
                           <span className="shrink-0 text-xs">current</span>
                         )}
                       </button>
@@ -143,12 +155,12 @@ export default function LoopBackSheet({
           </p>
         )}
 
-        {choice.to_node_id && (
+        {currentId && clearLabel && (
           <button
             onClick={() => wire(null)}
             className="w-full rounded border border-grave/60 px-3 py-2 text-sm text-grave"
           >
-            Unwire — leave this door bricked
+            {clearLabel}
           </button>
         )}
       </div>

@@ -8,6 +8,7 @@ const node = (id: string, extra: Partial<SolverNode> = {}): SolverNode => ({
   slug: id,
   isEnding: false,
   effects: [],
+  redirects: [],
   ...extra,
 })
 

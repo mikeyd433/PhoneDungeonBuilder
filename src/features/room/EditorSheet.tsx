@@ -11,6 +11,7 @@ import AudioPanel from '@/features/audio/AudioPanel'
 import ItemsSection from '@/features/state/ItemsSection'
 import CollabPanel from '@/features/collab/CollabPanel'
 import DialogueSection from '@/features/cast/DialogueSection'
+import ReadingsSection from './ReadingsSection'
 import FightSection from '@/features/fight/FightSection'
 import { ROOM_DESIGNS } from './vector/designs'
 import { DIGITS, canWrite, type Digit, type StoryNode } from '@/types/domain'
@@ -465,6 +466,8 @@ export default function EditorSheet({ nodeId, onClose }: { nodeId: string; onClo
           />
         </label>
 
+        <ReadingsSection nodeId={nodeId} />
+
         {/* The doors, as the words that offer them. Press it again after editing
             a label: it replaces the block it wrote rather than stacking a
             second copy, so the script never drifts from the graph. */}
@@ -806,7 +809,22 @@ export default function EditorSheet({ nodeId, onClose }: { nodeId: string; onClo
         )}
       </fieldset>
 
-      {wiring && <LoopBackSheet choiceId={wiring} onClose={() => setWiring(null)} />}
+      {wiring && (() => {
+        const c = graph.choices.get(wiring)
+        if (!c) return null
+        return (
+          <LoopBackSheet
+            fromNodeId={c.from_node_id}
+            currentId={c.to_node_id}
+            heading={`Pressing ${c.digit}${c.label ? ` — ${c.label}` : ''} leads to…`}
+            blurb="Pointing a door at a room the caller has already passed is how a middle keeps looping while its other doors go on to an ending."
+            wayHint="Wiring a door to one of these makes a loop — the caller can come round again."
+            clearLabel="Unwire — leave this door bricked"
+            onPick={(id) => void updateChoice(c.id, { to_node_id: id })}
+            onClose={() => setWiring(null)}
+          />
+        )
+      })()}
 
     </div>
   )

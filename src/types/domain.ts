@@ -155,6 +155,45 @@ export interface Gate {
   updated_at: string
 }
 
+/**
+ * An alternate reading of a room, chosen by what the caller is carrying.
+ *
+ * Tried in `sort_order`; the FIRST whose expression passes is what plays. None
+ * passing means the room's own narration plays, so the room itself is the
+ * "otherwise" rather than a fourth variant — which is what makes adding this to
+ * a story change nothing about a room that has none.
+ *
+ * One take, not a line split: a variant is an alternate reading, recorded the
+ * way an alternate reading is. And no effects — which reading plays depends on
+ * state, and if it could also change state the room would grant different
+ * things on different visits.
+ */
+export interface NodeVariant {
+  id: string
+  story_id: string
+  node_id: string
+  /** The same boolean tree a gate carries, built by the same builder. */
+  expression: GateExpression
+  narration: string
+  audio_path: string | null
+  audio_duration_ms: number | null
+  /**
+   * Where a caller this reading applies to ends up.
+   *
+   * Null means they stay put and are offered this room's doors — the ordinary
+   * case, and what 0016 shipped. Set, and the check becomes an arrival fork:
+   * hear this reading (if it has words), then walk on into that room.
+   *
+   * This is where two outcomes with DIFFERENT DIALOGUE diverge. A reading is
+   * one take and cannot split between two actors; the room it points at is an
+   * ordinary room with its own cast, its own split script and its own exits.
+   */
+  goto_node_id: string | null
+  sort_order: number
+  created_at: string
+  updated_at: string
+}
+
 export interface Membership {
   story_id: string
   user_id: string
@@ -315,7 +354,7 @@ export interface FightRound {
  * Structure is computed over these; the room's *exits* are still choices only,
  * because a fight is answered with moves rather than doors.
  */
-export type EdgeKind = 'choice' | 'fight-win' | 'fight-lose' | 'fight-move'
+export type EdgeKind = 'choice' | 'fight-win' | 'fight-lose' | 'fight-move' | 'reading'
 
 export interface GraphEdge {
   /** Real choice id, or `fight:<fightId>:win` / `:lose` for a fight outcome. */
@@ -359,6 +398,7 @@ export interface StoryGraph {
   stateVars: Map<string, StateVar>
   effects: Map<string, Effect>
   gates: Map<string, Gate>
+  variants: Map<string, NodeVariant>
   characters: Map<string, Character>
   dialogue: Map<string, DialogueLine>
   fights: Map<string, Fight>

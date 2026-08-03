@@ -11,12 +11,13 @@ import {
   buildVarIndex,
   emptyState,
   evaluate,
-  referencedVars,
   type CallerState,
   type EffectLike,
   type VarIndex,
 } from '@/features/state/expression'
-import { reactionPlaybackFor } from '@/features/cast/dialogue'
+import { consumedBy } from '@/features/state/consume'
+import { reactionPlaybackFor, type PlaybackPart } from '@/features/cast/dialogue'
+import { playbackWithState, readingFor, walkArrival } from '@/features/room/variants'
 
 /**
  * The playtest runtime (§4.4) — the same data, seen as the caller sees it.
@@ -89,15 +90,22 @@ export class PlaytestEngine {
         fightSilences: 0,
       }
     }
-    return {
-      nodeId: rootId,
-      caller: applyEffects(emptyState(this.index), this.nodeEffects(rootId), this.index),
-      path: [node.slug],
-      failedAttempts: 0,
-      finished: node.node_type === 'ending',
-      fightRound: this.openingRound(rootId),
-      fightSilences: 0,
-    }
+    // The entrance forks on arrival too. Nothing has been granted yet, so this
+    // is almost always a no-op — but "almost always" is not "never", and a
+    // story whose first room checks a flag would otherwise start in the wrong
+    // place in rehearsal and the right one on the phone.
+    return this.enter(
+      {
+        nodeId: rootId,
+        caller: emptyState(this.index),
+        path: [],
+        failedAttempts: 0,
+        finished: false,
+        fightRound: null,
+        fightSilences: 0,
+      },
+      rootId,
+    ).next
   }
 
   /** 0 when the room is a fight with something to answer, null otherwise. */
@@ -129,6 +137,24 @@ export class PlaytestEngine {
   /** The fight in the room the caller is standing in, if there is one. */
   fightAt(state: PlaytestState): FightView | null {
     return buildFightView(this.graph, state.nodeId)
+  }
+
+  /**
+   * What this room reads out to THIS caller.
+   *
+   * A room with alternate readings plays the first whose condition the caller
+   * satisfies, and its own narration when none of them do. Asked here rather
+   * than worked out by the transcript, so the playtest and the exported flow
+   * are answering the same question with the same code.
+   */
+  playback(state: PlaytestState, nodeId = state.nodeId): PlaybackPart[] {
+    return playbackWithState(this.graph, nodeId, state.caller, this.index)
+  }
+
+  /** The alternate reading in play, for the transcript's "which one is this?".
+   *  Null means the room's own narration — the ordinary case. */
+  readingAt(state: PlaytestState, nodeId = state.nodeId) {
+    return readingFor(this.graph, nodeId, state.caller, this.index)
   }
 
   /** What the opponent just did — read after the room's own narration. */
@@ -229,15 +255,15 @@ export class PlaytestEngine {
 
     let caller = state.caller
 
-    // F8.9 — spend the consumable that opened the gate.
+    // F8.9 — spend the consumable that opened the gate. `consumedBy` walks the
+    // expression rather than flattening it, so a door the crowbar OR the key
+    // opens spends only the one that opened it — flattening took both from a
+    // caller carrying both.
     if (offer.gate?.consumeOnPass) {
       const gate = [...this.graph.gates.values()].find((g) => g.choice_id === offer.choice.id)
-      const consumed = referencedVars(gate?.expression)
-        .filter((slug) => {
-          const v = [...this.graph.stateVars.values()].find((x) => x.slug === slug)
-          return v?.is_consumable
-        })
-        .map<EffectLike>((slug) => ({ varSlug: slug, operation: 'revoke', amount: null }))
+      const consumed = consumedBy(gate?.expression, caller, this.index, (slug) =>
+        Boolean([...this.graph.stateVars.values()].find((x) => x.slug === slug)?.is_consumable),
+      ).map<EffectLike>((slug) => ({ varSlug: slug, operation: 'revoke', amount: null }))
       caller = applyEffects(caller, consumed, this.index)
     }
 
@@ -363,21 +389,50 @@ export class PlaytestEngine {
     return { next: { ...state, failedAttempts: state.failedAttempts + 1 }, spoken: null }
   }
 
+  /**
+   * Walking into a room, and through any arrival check that sends them on.
+   *
+   * A check is not a choice: the caller does not press anything and cannot
+   * refuse it, so the whole chain resolves before they are standing anywhere.
+   * `walkArrival` is what the exported flow's `_read` -> `_alt` -> next room
+   * chain does, asked in TypeScript — and every room passed through goes on the
+   * path, because "which rooms did this call touch" is what the path log is for
+   * and a room they were routed through is one of them.
+   */
   private enter(state: PlaytestState, nodeId: string): { next: PlaytestState; spoken: string | null } {
     const node = this.graph.nodes.get(nodeId)
     if (!node) return { next: state, spoken: null }
-    const caller = applyEffects(state.caller, this.nodeEffects(nodeId), this.index)
+
+    const walk = walkArrival(this.graph, nodeId, state.caller, this.index, (id, at) =>
+      applyEffects(at, this.nodeEffects(id), this.index),
+    )
+    const landed = walk.steps[walk.steps.length - 1]
+    const here = this.graph.nodes.get(landed.nodeId)!
+
+    // Anything heard on the way through. The room they end up in reads itself
+    // out separately, the way it always has, so only the rooms PASSED THROUGH
+    // speak here — otherwise the arrival would be read out twice.
+    const passed = walk.steps
+      .slice(0, -1)
+      .map((step) => step.variant?.narration.trim())
+      .filter((text): text is string => Boolean(text))
+    if (walk.looped) {
+      passed.push(
+        '(These arrival checks send the caller round in a circle — on the phone this is a call that never lands.)',
+      )
+    }
+
     return {
       next: {
-        nodeId,
-        caller,
-        path: [...state.path, node.slug],
+        nodeId: landed.nodeId,
+        caller: walk.caller,
+        path: [...state.path, ...walk.steps.map((s) => this.graph.nodes.get(s.nodeId)!.slug)],
         failedAttempts: 0,
-        finished: node.node_type === 'ending',
-        fightRound: this.openingRound(nodeId),
+        finished: here.node_type === 'ending',
+        fightRound: this.openingRound(landed.nodeId),
         fightSilences: 0,
       },
-      spoken: null,
+      spoken: passed.length > 0 ? passed.join('\n') : null,
     }
   }
 

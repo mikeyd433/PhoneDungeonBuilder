@@ -28,6 +28,8 @@ export function roomOf(graph: StoryGraph, target: AudioTarget): string | null {
       const round = graph.fightRounds.get(ref.roundId)
       return round ? (graph.fights.get(round.fight_id)?.node_id ?? null) : null
     }
+    case 'reading':
+      return graph.variants.get(ref.variantId)?.node_id ?? null
     case 'reaction':
     case 'refusal':
       return graph.choices.get(ref.choiceId)?.from_node_id ?? null
@@ -48,6 +50,9 @@ function lineRoom(graph: StoryGraph, lineId: string): string | null {
 const WITHIN_ROOM: Record<AudioTarget['ref']['kind'], number> = {
   room: 0,
   line: 0,
+  // Straight after the room it replaces: an actor reads the version and then
+  // its alternates while the scene is still in their head.
+  reading: 0.5,
   'fight round': 1,
   refusal: 2,
   reaction: 3,

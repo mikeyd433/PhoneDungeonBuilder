@@ -8,6 +8,7 @@ import type {
   FightRound,
   FightRoundOutcome,
   Gate,
+  NodeVariant,
   StateVar,
   Story,
   StoryGraph,
@@ -108,6 +109,7 @@ export function makeGraph(
     stateVars: new Map<string, StateVar>(),
     effects: new Map(),
     gates: new Map<string, Gate>(),
+    variants: new Map<string, NodeVariant>(),
     characters: new Map<string, Character>(),
     dialogue: new Map<string, DialogueLine>(),
     fights: new Map<string, Fight>(),
@@ -311,6 +313,59 @@ export function addReactionLines(
 }
 
 /** Resolve a slug to its generated node id, for assertions. */
+/** An item or flag, and optionally a caller-visible name. */
+export function addVar(
+  graph: StoryGraph,
+  slug: string,
+  patch: Partial<StateVar> = {},
+): StateVar {
+  const v: StateVar = {
+    id: `var-${slug}`,
+    story_id: graph.story.id,
+    slug,
+    name: slug,
+    kind: 'item',
+    description: null,
+    is_consumable: false,
+    audio_path: null,
+    audio_duration_ms: null,
+    created_at: STAMP,
+    updated_at: STAMP,
+    ...patch,
+  }
+  graph.stateVars.set(v.id, v)
+  return v
+}
+
+/** An alternate reading of a room. Appended, so call order is the chain order. */
+export function addReading(
+  graph: StoryGraph,
+  atSlug: string,
+  expression: NodeVariant['expression'],
+  patch: Partial<NodeVariant> & { goto?: string } = {},
+): NodeVariant {
+  const { goto, ...rest } = patch
+  const nodeId = idOf(graph, atSlug)
+  const n = [...graph.variants.values()].filter((v) => v.node_id === nodeId).length
+  const variant: NodeVariant = {
+    id: `alt-${atSlug}-${n + 1}`,
+    story_id: graph.story.id,
+    node_id: nodeId,
+    expression,
+    narration: `reading ${n + 1}`,
+    audio_path: null,
+    audio_duration_ms: null,
+    goto_node_id: null,
+    sort_order: n,
+    created_at: STAMP,
+    updated_at: STAMP,
+    ...rest,
+    ...(goto ? { goto_node_id: idOf(graph, goto) } : {}),
+  }
+  graph.variants.set(variant.id, variant)
+  return variant
+}
+
 export function idOf(graph: StoryGraph, slug: string): string {
   for (const node of graph.nodes.values()) if (node.slug === slug) return node.id
   throw new Error(`no node with slug ${slug}`)

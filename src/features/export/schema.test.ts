@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { compileStory, type Widget } from './compile'
 import { studioFlowJson } from './outputs'
-import { addFight, makeGraph, setOutcome } from '@/test/factory'
+import { addFight, addReading, addVar, makeGraph, setOutcome } from '@/test/factory'
 import type { StoryGraph } from '@/types/domain'
 
 /**
@@ -83,10 +83,39 @@ function stories(): Array<[string, StoryGraph]> {
     updated_at: '2026-01-01T00:00:00Z',
   })
 
+  // A room that reads two ways, behind a door either of two items opens and
+  // spends. Both of those emit widgets nothing else in this table produces.
+  const readings = makeGraph(['HALL', 'VAULT'], ['HALL>VAULT'], { recorded: ['HALL', 'VAULT'] })
+  addVar(readings, 'CROWBAR', { is_consumable: true })
+  addVar(readings, 'KEY', { is_consumable: true })
+  addReading(readings, 'HALL', { op: 'has', var: 'CROWBAR' }, { audio_path: 'takes/alt1.mp3' })
+  addReading(readings, 'HALL', { op: 'has', var: 'KEY' })
+  readings.gates.set('g1', {
+    id: 'g1',
+    story_id: readings.story.id,
+    choice_id: [...readings.choices.values()][0].id,
+    expression: {
+      op: 'or',
+      args: [
+        { op: 'has', var: 'CROWBAR' },
+        { op: 'has', var: 'KEY' },
+      ],
+    },
+    fail_behavior: 'refuse',
+    fail_narration: 'It will not budge.',
+    fail_audio_path: 'takes/refuse.mp3',
+    fail_audio_duration_ms: null,
+    fail_node_id: null,
+    consume_on_pass: true,
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-01T00:00:00Z',
+  })
+
   return [
     ['a plain story', plain],
     ['a fight', fight],
     ['an inventory readback', inventory],
+    ['alternate readings and a two-item door', readings],
   ]
 }
 

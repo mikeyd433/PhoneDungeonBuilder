@@ -11,6 +11,7 @@ import {
   type EffectLike,
   type VarIndex,
 } from './expression'
+import { consumedBy } from './consume'
 
 /**
  * The state solver (§7).
@@ -54,6 +55,16 @@ export interface SolverNode {
   isEnding: boolean
   /** Node-level effects fire on arrival (§2). */
   effects: EffectLike[]
+  /**
+   * Arrival checks, in order — the first whose expression holds sends the
+   * caller straight on, with no keypress and no way to refuse.
+   *
+   * The solver has to follow these or it reports the wrong thing twice over:
+   * the room behind a check would look unreachable, and the room WITH the check
+   * would look like somewhere you can stand and pick a door while carrying the
+   * item, which on the phone you never can.
+   */
+  redirects: Array<{ expression: GateExpression; toId: string }>
 }
 
 export interface SolverInput {
@@ -117,6 +128,30 @@ export function solve(input: SolverInput): SolverResult {
   }
 
   /** Add a state to a node's arrival set; returns true if it was new. */
+  /**
+   * Where a caller actually ends up when they walk into a room.
+   *
+   * Arrival checks chain, so this is a loop rather than one hop; it stops when
+   * nothing matches, when the destination is missing, or when a room repeats —
+   * a cycle the caller could never break out of. Effects fire in every room
+   * passed through, because arriving is arriving.
+   */
+  const settle = (nodeId: string, state: CallerState): { id: string; state: CallerState } => {
+    let at = nodeId
+    let carrying = state
+    const seen = new Set([nodeId])
+    for (let hop = 0; hop < 10; hop++) {
+      const node = nodeById.get(at)
+      if (!node) break
+      const hit = node.redirects.find((r) => evaluate(r.expression, carrying, index))
+      if (!hit || !nodeById.has(hit.toId) || seen.has(hit.toId)) break
+      at = hit.toId
+      seen.add(at)
+      carrying = applyEffects(carrying, nodeById.get(at)!.effects, index)
+    }
+    return { id: at, state: carrying }
+  }
+
   const addArrival = (nodeId: string, state: CallerState): boolean => {
     const set = arrivals.get(nodeId)
     if (!set) return false
@@ -134,8 +169,9 @@ export function solve(input: SolverInput): SolverResult {
   // a starting item on the entrance node.
   if (input.rootId && nodeById.has(input.rootId)) {
     const root = nodeById.get(input.rootId)!
-    addArrival(input.rootId, applyEffects(emptyState(index), root.effects, index))
-    push(input.rootId)
+    const landed = settle(input.rootId, applyEffects(emptyState(index), root.effects, index))
+    addArrival(landed.id, landed.state)
+    push(landed.id)
   }
 
   let guard = 0
@@ -166,9 +202,12 @@ export function solve(input: SolverInput): SolverResult {
             gatePassed.add(choice.id)
             // F8.9 — a consumable spent to pass a gate is revoked as it opens.
             if (choice.gate.consumeOnPass) {
-              const consumed = referencedVars(choice.gate.expression)
-                .filter((slug) => input.vars.find((v) => v.slug === slug)?.isConsumable)
-                .map<EffectLike>((slug) => ({ varSlug: slug, operation: 'revoke', amount: null }))
+              // Walked, not flattened: a door the crowbar OR the key opens
+              // spends whichever one this state actually holds, so the solver
+              // explores the branch where the other is still in the satchel.
+              const consumed = consumedBy(choice.gate.expression, state, index, (slug) =>
+                Boolean(input.vars.find((v) => v.slug === slug)?.isConsumable),
+              ).map<EffectLike>((slug) => ({ varSlug: slug, operation: 'revoke', amount: null }))
               working = applyEffects(working, consumed, index)
             }
           }
@@ -188,7 +227,10 @@ export function solve(input: SolverInput): SolverResult {
         if (!target) continue
 
         const onArrival = applyEffects(working, target.effects, index)
-        if (addArrival(targetId, onArrival)) push(targetId)
+        // Not necessarily where they stay: an arrival check moves them again,
+        // and the room they were routed THROUGH is not one they can act in.
+        const landed = settle(targetId, onArrival)
+        if (addArrival(landed.id, landed.state)) push(landed.id)
       }
     }
   }

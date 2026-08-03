@@ -1,5 +1,7 @@
 import type { StateVar } from '@/types/domain'
 import { type FlatGate, type Leaf } from './gateShape'
+import { fromFlat } from './gateShape'
+import { describeExpression } from './describe'
 
 /**
  * F8.4 — a visual gate builder. Tap to add conditions, AND/OR/NOT toggles, no
@@ -39,21 +41,36 @@ export default function GateBuilder({
 
   return (
     <div className="flex flex-col gap-2">
+      {/* Two items that BOTH work is the commonest thing an item story wants —
+          the crowbar or the master key — and it used to be two bare words that
+          only appeared once you had already added a second condition. Now the
+          choice is spelled out, and each option says what it means, because
+          picking the wrong one of these builds a door nobody can open. */}
       {flat.leaves.length > 1 && (
-        <div className="flex items-center gap-2 text-xs">
-          <span className="text-mortar">Caller must satisfy</span>
-          {(['and', 'or'] as const).map((op) => (
-            <button
-              key={op}
-              onClick={() => onChange({ ...flat, root: op })}
-              className={[
-                'rounded border px-2 py-1 uppercase tracking-wider',
-                flat.root === op ? 'border-torch text-torch' : 'border-mortar/60 text-mortar',
-              ].join(' ')}
-            >
-              {op === 'and' ? 'all' : 'any'}
-            </button>
-          ))}
+        <div className="flex flex-col gap-1 text-xs">
+          <span className="text-mortar">The caller needs</span>
+          <div className="flex flex-wrap gap-2">
+            {(
+              [
+                ['and', 'all of these', 'Every condition below must hold.'],
+                ['or', 'any one of these', 'Any single one is enough — two different items can both work.'],
+              ] as const
+            ).map(([op, label, hint]) => (
+              <button
+                key={op}
+                type="button"
+                title={hint}
+                onClick={() => onChange({ ...flat, root: op })}
+                className={[
+                  'flex-1 basis-40 rounded border px-2 py-1.5 text-left',
+                  flat.root === op ? 'border-torch text-torch' : 'border-mortar/60 text-mortar',
+                ].join(' ')}
+              >
+                <span className="block">{label}</span>
+                <span className="block text-cold">{hint}</span>
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
@@ -128,6 +145,15 @@ export default function GateBuilder({
       >
         + Add condition
       </button>
+
+      {/* What the rows above actually say, as a sentence. Two conditions and a
+          toggle are easy to read as the opposite of what they are, and the one
+          place that misreading shows up otherwise is a phone call. */}
+      {flat.leaves.length > 0 && (
+        <p className="text-xs text-cold">
+          Reads as: <span className="text-mortar">{describeExpression(vars, fromFlat(flat))}</span>
+        </p>
+      )}
 
       {vars.length === 0 && (
         <p className="text-xs text-cold">Create an item first and it can be required here.</p>
