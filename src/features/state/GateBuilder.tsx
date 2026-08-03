@@ -2,6 +2,7 @@ import type { StateVar } from '@/types/domain'
 import { type FlatGate, type Leaf } from './gateShape'
 import { fromFlat } from './gateShape'
 import { describeExpression } from './describe'
+import NewItemButton from './NewItemButton'
 
 /**
  * F8.4 — a visual gate builder. Tap to add conditions, AND/OR/NOT toggles, no
@@ -31,6 +32,11 @@ export default function GateBuilder({
   vars: StateVar[]
   onChange: (next: FlatGate) => void
 }) {
+  /** Make an item and use it in one go. Creating one and leaving it unselected
+   *  would move the dead end rather than remove it. */
+  const addWithNew = (slug: string) =>
+    onChange({ ...flat, leaves: [...flat.leaves, { op: 'has', var: slug }] })
+
   const setLeaf = (i: number, leaf: Leaf) => {
     const leaves = [...flat.leaves]
     leaves[i] = leaf
@@ -133,18 +139,26 @@ export default function GateBuilder({
         )
       })}
 
-      <button
-        disabled={vars.length === 0}
-        onClick={() =>
-          onChange({
-            ...flat,
-            leaves: [...flat.leaves, { op: 'has', var: vars[0]?.slug ?? '' }],
-          })
-        }
-        className="self-start rounded border border-mortar px-3 py-2 text-xs hover:border-torch disabled:opacity-40"
-      >
-        + Add condition
-      </button>
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          disabled={vars.length === 0}
+          onClick={() =>
+            onChange({
+              ...flat,
+              leaves: [...flat.leaves, { op: 'has', var: vars[0]?.slug ?? '' }],
+            })
+          }
+          className="rounded border border-mortar px-3 py-2 text-xs hover:border-torch disabled:opacity-40"
+        >
+          + Add condition
+        </button>
+        {/* The answer beside the question. This control used to send you to
+            another tab that did not exist yet. */}
+        <NewItemButton
+          label={vars.length === 0 ? '+ Create the first item' : '+ New item'}
+          onCreated={addWithNew}
+        />
+      </div>
 
       {/* What the rows above actually say, as a sentence. Two conditions and a
           toggle are easy to read as the opposite of what they are, and the one
@@ -155,9 +169,7 @@ export default function GateBuilder({
         </p>
       )}
 
-      {vars.length === 0 && (
-        <p className="text-xs text-cold">Create an item first and it can be required here.</p>
-      )}
+
     </div>
   )
 }

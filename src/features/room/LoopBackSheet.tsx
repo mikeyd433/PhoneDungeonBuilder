@@ -43,7 +43,10 @@ export default function LoopBackSheet({
   const graph = useDelve((s) => s.graph)
   const derived = useDelve((s) => s.derived)
   const trail = useDelve((s) => s.trail)
+  const createLooseNode = useDelve((s) => s.createLooseNode)
   const [query, setQuery] = useState('')
+  const [making, setMaking] = useState(false)
+  const [busy, setBusy] = useState(false)
 
   const groups = useMemo(
     () => (graph && derived ? loopTargets(graph, derived, fromNodeId, trail) : null),
@@ -56,6 +59,17 @@ export default function LoopBackSheet({
   const wire = (id: string | null) => {
     onPick(id)
     onClose()
+  }
+
+  /** Make the room and point at it, in one go. Making one and leaving it
+   *  unpicked would be the same dead end one step further along. */
+  const cutNew = async () => {
+    const name = query.trim()
+    if (!name) return
+    setBusy(true)
+    const id = await createLooseNode(name)
+    setBusy(false)
+    if (id) wire(id)
   }
 
   const sections: Array<{ key: string; label: string; hint: string; list: LoopCandidate[] }> = [
@@ -104,8 +118,54 @@ export default function LoopBackSheet({
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search every room by name or slug"
           aria-label="Search rooms"
-          className="mb-3 w-full rounded border border-mortar/60 bg-stone px-3 py-2 text-sm outline-none focus:border-torch"
+          className="mb-2 w-full rounded border border-mortar/60 bg-stone px-3 py-2 text-sm outline-none focus:border-torch"
         />
+
+        {/* The room that does not exist yet.
+            This picker only ever offered rooms already in the story, so
+            anything wanting a NEW destination — a fork's second route above
+            all — could not be built forwards: you had to cut a door you did
+            not want, walk it, come back, and delete it. Typing a name here
+            makes the room and picks it in one go. */}
+        {making ? (
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <input
+              autoFocus
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void cutNew()
+                if (e.key === 'Escape') setMaking(false)
+              }}
+              placeholder="Name the new room"
+              aria-label="Name of the new room"
+              className="min-w-0 flex-1 basis-40 rounded border border-torch/60 bg-stone px-3 py-2 text-sm outline-none focus:border-torch"
+            />
+            <button
+              type="button"
+              disabled={!query.trim() || busy}
+              onClick={() => void cutNew()}
+              className="rounded border border-torch px-3 py-2 text-xs text-torch disabled:opacity-40"
+            >
+              Cut it
+            </button>
+            <button
+              type="button"
+              onClick={() => setMaking(false)}
+              className="text-xs text-mortar underline"
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setMaking(true)}
+            className="mb-3 w-full rounded border border-dashed border-mortar/60 px-3 py-2 text-left text-sm text-mortar hover:border-torch hover:text-torch"
+          >
+            ⛏ Cut a new room{query.trim() ? ` called “${query.trim()}”` : ''}
+          </button>
+        )}
 
         {sections.map(
           (section) =>

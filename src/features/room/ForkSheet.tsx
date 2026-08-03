@@ -5,6 +5,7 @@ import { errorText } from '@/lib/errorText'
 import { describeExpression } from '@/features/state/describe'
 import GateBuilder from '@/features/state/GateBuilder'
 import { fromFlat, toFlat, type FlatGate } from '@/features/state/gateShape'
+import NewItemButton from '@/features/state/NewItemButton'
 import LoopBackSheet from './LoopBackSheet'
 
 /**
@@ -109,21 +110,57 @@ export default function ForkSheet({
               for everybody. A fork sends them to a different room depending on what they are
               carrying — two ordinary rooms, each with its own name, script and doors.
             </p>
-            <button
-              type="button"
-              disabled={busy || vars.length === 0 || !choice.to_node_id}
-              onClick={startFork}
-              className="rounded border border-mortar px-3 py-2 text-xs hover:border-torch disabled:opacity-40"
-            >
-              ⑂ Make this door fork on an item
-            </button>
-            {vars.length === 0 && (
-              <p className="mt-2 text-xs text-cold">Create an item first, on the Items tab.</p>
-            )}
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                disabled={busy || vars.length === 0 || !choice.to_node_id}
+                title={
+                  vars.length === 0
+                    ? 'Make an item first — there is a button for it right here'
+                    : !choice.to_node_id
+                      ? 'Point this door at a room first'
+                      : undefined
+                }
+                onClick={startFork}
+                className="rounded border border-mortar px-3 py-2 text-xs hover:border-torch disabled:opacity-40"
+              >
+                ⑂ Make this door fork on an item
+              </button>
+              {/* Was: "Create an item first, on the Items tab" — a tab that did
+                  not exist until a checkbox on another tab was ticked. */}
+              {vars.length === 0 && (
+                <NewItemButton
+                  label="+ Create the first item"
+                  onCreated={(slug) =>
+                    run(() =>
+                      api.upsertGate(story.id, choiceId, {
+                        expression: { op: 'has', var: slug },
+                        fail_behavior: 'divert',
+                        fail_node_id: choice.to_node_id,
+                        consume_on_pass: false,
+                      }),
+                    )
+                  }
+                />
+              )}
+            </div>
+            {/* A `divert` gate must carry a destination — the database says so
+                — so a door leading nowhere genuinely cannot fork yet. Made
+                actionable rather than merely explained: the picker behind this
+                can cut the room as well as find it. */}
             {!choice.to_node_id && (
-              <p className="mt-2 text-xs text-cold">
-                Point this door at a room first — a fork needs somewhere to fork from.
-              </p>
+              <div className="mt-2 flex flex-col gap-1">
+                <p className="text-xs text-cold">
+                  A fork needs somewhere to fork from, and this door leads nowhere yet.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setPicking('main')}
+                  className="self-start rounded border border-mortar px-3 py-2 text-xs hover:border-torch"
+                >
+                  Point this door at a room →
+                </button>
+              </div>
             )}
           </>
         ) : (

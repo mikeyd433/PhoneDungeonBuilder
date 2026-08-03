@@ -58,6 +58,16 @@ interface DelveState {
   clearError: () => void
 
   createChildNode: (fromChoiceId: string, title?: string) => Promise<string | null>
+  /**
+   * A room with nothing pointing at it yet, and no walking anywhere.
+   *
+   * Every other way to make a room wires it to something and walks you in,
+   * which is right when the door comes first. It is wrong when the ROOM comes
+   * first: a fork needs a second destination before it can be a fork, and
+   * until this existed the only way to get one was to cut a door you did not
+   * want, take it, and come back. Returns the new node's id.
+   */
+  createLooseNode: (title: string) => Promise<string | null>
   /** Splice a room out, joining what led to it to whatever it led to.
    *  Returns false and sets `error` when the room can't be collapsed. */
   collapseRoom: (nodeId: string) => Promise<boolean>
@@ -285,6 +295,39 @@ export const useDelve = create<DelveState>((set, get) => {
 
     /** F1.3 — tap a bricked arch to chisel through it: creates the node, wires
      *  the choice to it, and walks you in. */
+    async createLooseNode(title) {
+      if (readOnly()) return null
+      const { graph } = get()
+      if (!graph) return null
+
+      const name = title.trim() || 'New room'
+      const slug = uniqueSlug(
+        name,
+        [...graph.nodes.values()].map((n) => n.slug),
+      )
+      try {
+        const node = await api.createNode(graph.story.id, { slug, title: name })
+        patchGraph((g) => ({ ...g, nodes: new Map(g.nodes).set(node.id, node) }))
+        pushUndo({
+          label: `add ${slug}`,
+          // Nothing points at it yet, so deleting is the whole inverse — no
+          // door to reconnect and no trail to rewind.
+          invert: async () => {
+            await api.deleteNode(node.id)
+            patchGraph((g) => {
+              const nodes = new Map(g.nodes)
+              nodes.delete(node.id)
+              return { ...g, nodes }
+            })
+          },
+        })
+        return node.id
+      } catch (e) {
+        set({ error: errorText(e) })
+        return null
+      }
+    },
+
     async createChildNode(fromChoiceId, title) {
       if (readOnly()) return null
       const { graph } = get()

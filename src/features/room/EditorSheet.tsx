@@ -312,6 +312,9 @@ export default function EditorSheet({
     [graph, node],
   )
 
+  /** Any item, flag or counter anywhere in the story. */
+  const storyHasItems = (graph?.stateVars.size ?? 0) > 0
+
   const [announcing, setAnnouncing] = useState(false)
   /** Which door is having its destination chosen. */
   const [wiring, setWiring] = useState<string | null>(null)
@@ -448,7 +451,17 @@ export default function EditorSheet({
 
       {/* Outside the fieldset: a read-only role can still look around. */}
       <nav className="mb-4 flex flex-wrap gap-1">
-        {TABS.filter((t) => !t.needs || shown[t.needs] || kinds?.[t.needs]).map((t) => (
+        {TABS.filter(
+          (t) =>
+            !t.needs ||
+            shown[t.needs] ||
+            kinds?.[t.needs] ||
+            // Once a STORY has items, every room's Items tab is a place you
+            // might want to go — the tab was hidden until the room already had
+            // item logic, so the only way to add the first was to tick a box on
+            // another tab, and every control that pointed here dead-ended.
+            (t.needs === 'items' && storyHasItems),
+        ).map((t) => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
