@@ -27,6 +27,8 @@ export function makeGraph(
   opts: {
     root?: string
     endings?: string[]
+    /** Endings the caller WON. Everything else reads as a death. */
+    wins?: string[]
     recorded?: string[]
   } = {},
 ): StoryGraph {
@@ -58,6 +60,7 @@ export function makeGraph(
       title: slug,
       narration: '',
       node_type: opts.endings?.includes(slug) ? 'ending' : 'room',
+      ending_kind: opts.wins?.includes(slug) ? 'win' : null,
       audio_path: opts.recorded?.includes(slug) ? `audio/${slug}.mp3` : null,
       audio_duration_ms: null,
       status: opts.recorded?.includes(slug) ? 'recorded' : 'stub',

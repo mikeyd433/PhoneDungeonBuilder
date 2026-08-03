@@ -162,7 +162,7 @@ export default function MapScreen() {
               `${selected.doors} door${selected.doors === 1 ? '' : 's'}`,
               selected.looseDoors > 0 ? `${selected.looseDoors} leading nowhere` : null,
               selected.recorded ? 'recorded' : selected.isStub ? 'nothing written' : 'not recorded',
-              selected.isEnding ? 'an ending' : null,
+              selected.isEnding ? (selected.endingKind === 'win' ? 'a win' : 'a death') : null,
               selected.isFight ? 'a fight' : null,
               selected.isOrphan ? 'nothing leads here' : null,
             ]

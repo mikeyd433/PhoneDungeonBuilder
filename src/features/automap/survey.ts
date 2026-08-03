@@ -18,6 +18,7 @@ export type SurveyKey =
   | 'written'
   | 'stub'
   | 'ending'
+  | 'win'
   | 'fight'
   | 'unreachable'
   | 'unwritten'
@@ -70,6 +71,7 @@ export function surveyStory(graph: StoryGraph, derived: DerivedGraph): Survey {
   const written = new Set<string>()
   const stub = new Set<string>()
   const ending = new Set<string>()
+  const win = new Set<string>()
   const unreachable = new Set<string>()
 
   for (const node of graph.nodes.values()) {
@@ -82,7 +84,12 @@ export function surveyStory(graph: StoryGraph, derived: DerivedGraph): Survey {
     else if (hasWords) written.add(node.id)
     else stub.add(node.id)
 
-    if (node.node_type === 'ending') ending.add(node.id)
+    if (node.node_type === 'ending') {
+      // Split, because "12 endings" says nothing about whether the story can
+      // be won — and a story with no win at all is worth noticing.
+      if ((node.ending_kind ?? 'death') === 'win') win.add(node.id)
+      else ending.add(node.id)
+    }
     // Orphans are folded in here on purpose: to an author they are the same
     // problem — a room no caller will ever stand in — and two near-identical
     // tallies side by side would just be two things to squint at.
@@ -136,10 +143,17 @@ export function surveyStory(graph: StoryGraph, derived: DerivedGraph): Survey {
       ids: unreachable,
     },
     {
+      key: 'win',
+      label: 'wins',
+      one: 'win',
+      hint: 'Endings the caller was trying to reach. A story with none cannot be won.',
+      ids: win,
+    },
+    {
       key: 'ending',
-      label: 'endings',
-      one: 'ending',
-      hint: 'The call is read out and then hung up.',
+      label: 'deaths',
+      one: 'death',
+      hint: 'Endings that go badly. The call is read out and then hung up.',
       ids: ending,
     },
     {

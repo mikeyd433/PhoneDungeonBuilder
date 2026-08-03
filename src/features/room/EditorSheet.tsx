@@ -689,6 +689,47 @@ export default function EditorSheet({ nodeId, onClose }: { nodeId: string; onClo
           </select>
         </label>
 
+        {/* Both endings hang up the call, so nothing about the exported flow
+            tells them apart. This is the author's own bookkeeping — and what
+            the room and the map draw, so a caller who got out never looks
+            like one who drowned. */}
+        {value('node_type') === 'ending' && (
+          <div className="flex flex-col gap-2">
+            <span className="text-xs uppercase tracking-wider text-mortar">How it ends</span>
+            <div className="flex gap-2">
+              {(
+                [
+                  ['death', '💀 A death', 'Rubble and a skull. The way ends badly.'],
+                  ['win', '🌅 A win', 'The wall opens into daylight. They got out.'],
+                ] as const
+              ).map(([kind, label, hint]) => {
+                const on = (value('ending_kind') ?? 'death') === kind
+                return (
+                  <button
+                    key={kind}
+                    type="button"
+                    title={hint}
+                    onClick={() => {
+                      setDraft((dd) => ({ ...dd, ending_kind: kind }))
+                      void updateNode(node.id, { ending_kind: kind })
+                    }}
+                    className={[
+                      'flex-1 rounded border px-3 py-2 text-left text-sm',
+                      on ? 'border-torch text-torch' : 'border-mortar/60 text-mortar',
+                    ].join(' ')}
+                  >
+                    <span className="block">{label}</span>
+                    <span className="block text-xs text-cold">{hint}</span>
+                  </button>
+                )
+              })}
+            </div>
+            <p className="text-xs text-cold">
+              The call ends the same way either way — this is what you and the map see.
+            </p>
+          </div>
+        )}
+
         <details>
           <summary className="cursor-pointer text-xs uppercase tracking-wider text-mortar">
             Timeout &amp; invalid keypress

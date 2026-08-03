@@ -2,6 +2,10 @@
 // keep the two in step, and when they disagree the migration wins.
 
 export type NodeType = 'room' | 'ending'
+
+/** An ending is read out and then hung up on either way; which of the two it
+ *  is, is the author's bookkeeping and what the room and the map draw. */
+export type EndingKind = 'death' | 'win'
 export type NodeStatus = 'stub' | 'scripted' | 'recorded' | 'approved'
 export type StateVarKind = 'item' | 'flag' | 'counter'
 export type EffectOperation = 'grant' | 'revoke' | 'set' | 'add'
@@ -50,6 +54,9 @@ export interface StoryNode {
   title: string
   narration: string
   node_type: NodeType
+  /** Only meaningful on an ending. Null reads as a death, which is what every
+   *  ending was before this existed. */
+  ending_kind: EndingKind | null
   audio_path: string | null
   audio_duration_ms: number | null
   status: NodeStatus

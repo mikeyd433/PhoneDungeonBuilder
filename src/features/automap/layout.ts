@@ -1,5 +1,5 @@
 import type { ElkNode, ElkExtendedEdge } from 'elkjs/lib/elk.bundled.js'
-import type { DerivedGraph, StoryGraph } from '@/types/domain'
+import type { DerivedGraph, EndingKind, StoryGraph } from '@/types/domain'
 import { graphEdges } from '@/features/graph/edges'
 import { isFullyRecorded, linesOf } from '@/features/cast/dialogue'
 
@@ -31,6 +31,8 @@ export interface MapRoom {
   written: boolean
   recorded: boolean
   isEnding: boolean
+  /** Which kind, so a win never draws as the red X that means 'you died'. */
+  endingKind: EndingKind | null
   isOrphan: boolean
   isUnreachable: boolean
   depth: number | null
@@ -158,6 +160,7 @@ export async function layoutAutomap(
       // every line has one.
       recorded: isFullyRecorded(graph, n.id),
       isEnding: n.node_type === 'ending',
+      endingKind: n.node_type === 'ending' ? (n.ending_kind ?? 'death') : null,
       isOrphan: derived.orphans.has(n.id),
       isUnreachable: derived.unreachable.has(n.id),
       depth: derived.depth.get(n.id) ?? null,

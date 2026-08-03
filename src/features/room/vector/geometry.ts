@@ -25,18 +25,47 @@ export const WALLS = {
 /** Where the torch is bracketed, on the left wall (§3). */
 export const TORCH = { x: 30, y: 120 } as const
 
-const ARCH_W = 70
-const ARCH_TOP = 112
+/** The most archways the back wall can hold before the rest stack below it. */
+export const MAX_WALL_ARCHES = 5
+
 const GAP = 10
 
-/** Left / centre / right archway placement on the back wall. */
-export function archX(slot: number): number {
-  const total = ARCH_W * 3 + GAP * 2
-  const start = BACK.x0 + ((BACK.x1 - BACK.x0) - total) / 2
-  return start + slot * (ARCH_W + GAP)
+/**
+ * How wide and how tall an archway is, given how many share the wall.
+ *
+ * One door is not three doors with two missing — it is a different room, and it
+ * should read as one: a single tall arch centred on the back wall, not a narrow
+ * one adrift in empty stone. Fewer doors means each is grander; five means they
+ * are a row of openings.
+ *
+ * Tabled rather than computed so each count could be looked at and tuned. Three
+ * keeps exactly the numbers it always had, so no existing room moves.
+ */
+const SIZES: Record<number, { w: number; top: number }> = {
+  1: { w: 118, top: 92 },
+  2: { w: 96, top: 102 },
+  3: { w: 70, top: 112 },
+  4: { w: 56, top: 120 },
+  5: { w: 46, top: 126 },
 }
 
-export const ARCH = { w: ARCH_W, top: ARCH_TOP, bottom: BACK.y1 } as const
+const sizeFor = (count: number) => SIZES[Math.min(MAX_WALL_ARCHES, Math.max(1, count))]
+
+/** Archway placement on the back wall, centred as a group. */
+export function archX(slot: number, count: number): number {
+  const { w } = sizeFor(count)
+  const n = Math.min(MAX_WALL_ARCHES, Math.max(1, count))
+  const total = w * n + GAP * (n - 1)
+  const start = BACK.x0 + (BACK.x1 - BACK.x0 - total) / 2
+  return start + slot * (w + GAP)
+}
+
+/** The arch box for a wall of `count` doors. `bottom` never moves: every
+ *  archway stands on the floor line, whatever else changes. */
+export function archBox(count: number) {
+  const { w, top } = sizeFor(count)
+  return { w, top, bottom: BACK.y1 } as const
+}
 
 /**
  * Greedy word wrap for a threshold nameplate.
@@ -87,15 +116,16 @@ export function wrapToPlate(text: string, maxChars: number, maxLines: number): s
 }
 
 /** A rounded archway: straight jambs, semicircular head. */
-export function archPath(slot: number): string {
-  const x = archX(slot)
-  const r = ARCH_W / 2
-  const springLine = ARCH_TOP + r
+export function archPath(slot: number, count: number): string {
+  const { w, top, bottom } = archBox(count)
+  const x = archX(slot, count)
+  const r = w / 2
+  const springLine = top + r
   return [
-    `M ${x} ${ARCH.bottom}`,
+    `M ${x} ${bottom}`,
     `L ${x} ${springLine}`,
-    `A ${r} ${r} 0 0 1 ${x + ARCH_W} ${springLine}`,
-    `L ${x + ARCH_W} ${ARCH.bottom}`,
+    `A ${r} ${r} 0 0 1 ${x + w} ${springLine}`,
+    `L ${x + w} ${bottom}`,
     'Z',
   ].join(' ')
 }

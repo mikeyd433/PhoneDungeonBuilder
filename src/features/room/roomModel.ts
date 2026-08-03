@@ -3,13 +3,15 @@ import type {
   DerivedGraph,
   Digit,
   Effect,
+  EndingKind,
   Gate,
   StoryGraph,
   StoryNode,
 } from '@/types/domain'
-import { WALL_EXITS } from '@/types/domain'
+
 import { buildFightView, type FightView } from '@/features/fight/model'
 import { isFullyRecorded, linesFor, reactionPlaybackFor } from '@/features/cast/dialogue'
+import { MAX_WALL_ARCHES } from './vector/geometry'
 
 /**
  * What one room shows, derived from a single node's record.
@@ -72,8 +74,10 @@ export interface RoomView {
   torchLit: boolean
   /** Which of the ten room designs this room is dressed in. */
   design: string
-  /** F1.9 — rubble and a skull, no exits. */
+  /** F1.9 — no exits, and the way ends here. */
   isEnding: boolean
+  /** Rubble and a skull, or a way out into the light. Null when not an ending. */
+  endingKind: EndingKind | null
   /** F1.10 — depth notches on the wall. Null when unreachable. */
   depth: number | null
   /** Effects that fire on arrival: a chest on the floor, centre. */
@@ -182,24 +186,31 @@ export function buildRoomView(
     }
   }
 
-  const exits: ExitView[] = outgoing.slice(0, WALL_EXITS).map(toExit)
+  const exits: ExitView[] = outgoing.slice(0, MAX_WALL_ARCHES).map(toExit)
   const overflowExits: ExitView[] = outgoing
-    .slice(WALL_EXITS)
-    .map((c, i) => toExit(c, WALL_EXITS + i))
+    .slice(MAX_WALL_ARCHES)
+    .map((c, i) => toExit(c, MAX_WALL_ARCHES + i))
 
   const fight = buildFightView(graph, nodeId)
 
-  // Pad the walls out to three so empty slots render as bricked archways you can
-  // chisel through — the primary way new rooms get made (F1.3). A fight room is
-  // not padded: its way onward is won, not chosen, so offering a bricked arch
-  // there would invite the author to build a door the caller never sees.
+  // ONE bricked archway, not a wall padded out to three.
+  //
+  // Chiselling through a blank arch is still the primary way rooms get made
+  // (F1.3), so there has to be one — but three of them meant a room with a
+  // single door could never LOOK like a room with a single door. The wall now
+  // shows the doors that exist plus one place to cut, and the arch geometry
+  // sizes itself to however many that comes to.
+  //
+  // A fight room gets none: its way onward is won, not chosen, so offering a
+  // bricked arch there would invite the author to build a door the caller never
+  // sees. Nor does an ending.
   const usedDigits = new Set(outgoing.map((c) => c.digit))
   const isEnding = node.node_type === 'ending'
   if (!isEnding && !fight) {
     let nextDigit = 1
-    while (exits.length < WALL_EXITS) {
+    if (exits.length < MAX_WALL_ARCHES) {
       while (nextDigit <= 9 && usedDigits.has(String(nextDigit) as Digit)) nextDigit++
-      if (nextDigit > 9) break
+      if (nextDigit <= 9) {
       exits.push({
         kind: 'bricked',
         digit: String(nextDigit) as Digit,
@@ -214,8 +225,7 @@ export function buildRoomView(
         gate: null,
         reaction: 'none',
       })
-      usedDigits.add(String(nextDigit) as Digit)
-      nextDigit++
+      }
     }
   }
   exits.forEach((e, i) => (e.slot = i))
@@ -257,6 +267,7 @@ export function buildRoomView(
     torchLit: isFullyRecorded(graph, nodeId),
     design: node.room_design || 'stone',
     isEnding,
+    endingKind: isEnding ? (node.ending_kind ?? 'death') : null,
     depth: derived.depth.get(nodeId) ?? null,
     arrivalGrants: arrival.grants,
     arrivalRevokes: arrival.revokes,

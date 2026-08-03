@@ -278,11 +278,18 @@ export default function Playtest() {
             {line.text}
           </p>
         ))}
-        {state.finished && (
-          <p className="mt-6 font-carved uppercase tracking-[0.12em] text-grave">
-            ☠ The line goes dead.
-          </p>
-        )}
+        {/* Both hang up, but the caller is meant to be able to tell which one
+            they got — and so is whoever is rehearsing the story. */}
+        {state.finished &&
+          ((node?.ending_kind ?? 'death') === 'win' ? (
+            <p className="mt-6 font-carved uppercase tracking-[0.12em] text-torch">
+              ☀ You got out. The line goes quiet.
+            </p>
+          ) : (
+            <p className="mt-6 font-carved uppercase tracking-[0.12em] text-grave">
+              ☠ The line goes dead.
+            </p>
+          ))}
       </div>
 
       {!state.finished && (

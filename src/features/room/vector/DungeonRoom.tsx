@@ -1,7 +1,7 @@
 import { type KeyboardEvent } from 'react'
 import type { ExitView, RoomView } from '../roomModel'
 import Torch from './Torch'
-import { ARCH, archPath, archX, BACK, TORCH, VIEW, WALLS, wrapToPlate } from './geometry'
+import { archBox, archPath, archX, BACK, TORCH, VIEW, WALLS, wrapToPlate } from './geometry'
 import { designFor } from './designs'
 import { FloorMotifLayer, WallMotifLayer, WallTextureLayer } from './Texture'
 import Arena from './Arena'
@@ -31,8 +31,9 @@ function keyActivate(handler: () => void) {
  * puts them. The screen reader has always had both in the archway's aria-label
  * — this is the same two facts, made visible.
  */
-function Nameplate({ exit, lit }: { exit: ExitView; lit: boolean }) {
-  const x = archX(exit.slot)
+function Nameplate({ exit, lit, count }: { exit: ExitView; lit: boolean; count: number }) {
+  const ARCH = archBox(count)
+  const x = archX(exit.slot, count)
   const mid = x + ARCH.w / 2
   const top = ARCH.bottom + 6
 
@@ -144,19 +145,87 @@ function Nameplate({ exit, lit }: { exit: ExitView; lit: boolean }) {
   )
 }
 
+/**
+ * F1.9 — the way ends here, one of two ways.
+ *
+ * Both hang up the call, so nothing about the exported flow tells them apart.
+ * What differs is what the author is looking at: rubble and a skull said "you
+ * lost" over every ending, including the one where the caller got out. A win
+ * is the back wall opening into daylight — the only place in this dungeon
+ * where light comes from somewhere other than the torch.
+ */
+function Ending({ kind, lit }: { kind: 'death' | 'win'; lit: boolean }) {
+  if (kind === 'win') {
+    const w = 110
+    const x = VIEW.w / 2 - w / 2
+    const top = 96
+    const r = w / 2
+    return (
+      <g>
+        {/* The opening itself, and the light standing in it. */}
+        <path
+          d={`M ${x} ${BACK.y1} L ${x} ${top + r} A ${r} ${r} 0 0 1 ${x + w} ${top + r} L ${x + w} ${BACK.y1} Z`}
+          fill={lit ? '#F0D9A0' : '#6B5A47'}
+          stroke={lit ? '#F0C878' : '#8FB0C2'}
+          strokeWidth={2}
+        />
+        {/* Light spilling across the floor, in the same one-point perspective
+            as everything else: it widens as it comes toward you. */}
+        <path
+          d={`M ${x + 6} ${BACK.y1} L ${x + w - 6} ${BACK.y1} L ${VIEW.w / 2 + 96} ${VIEW.h} L ${VIEW.w / 2 - 96} ${VIEW.h} Z`}
+          fill={lit ? '#F0C878' : '#8FB0C2'}
+          opacity={lit ? 0.16 : 0.08}
+        />
+        {/* Two bars across the threshold: a finish line, not a portcullis —
+            thin, and stopping short of the jambs so it never reads as barred. */}
+        {[0, 1].map((i) => (
+          <line
+            key={i}
+            x1={x + 22}
+            x2={x + w - 22}
+            y1={BACK.y1 - 16 - i * 9}
+            y2={BACK.y1 - 16 - i * 9}
+            stroke={lit ? '#B85C1E' : '#41525C'}
+            strokeWidth={2}
+            opacity={0.7}
+          />
+        ))}
+      </g>
+    )
+  }
+
+  return (
+    <g>
+      <path
+        d={`M ${BACK.x0 + 30} ${BACK.y1} l 40 -34 l 46 20 l 44 -28 l 52 42 Z`}
+        fill="#241E19"
+        stroke="#6B5A47"
+        strokeWidth={1.5}
+      />
+      <text x={VIEW.w / 2} y={BACK.y1 - 12} textAnchor="middle" fontSize={30}>
+        💀
+      </text>
+    </g>
+  )
+}
+
 function Archway({
   exit,
   lit,
   peek,
+  count,
   onActivate,
 }: {
   exit: ExitView
   lit: boolean
   peek: boolean
+  /** How many archways share this wall — the arch's size follows from it. */
+  count: number
   onActivate: () => void
 }) {
-  const x = archX(exit.slot)
-  const path = archPath(exit.slot)
+  const ARCH = archBox(count)
+  const x = archX(exit.slot, count)
+  const path = archPath(exit.slot, count)
   const label =
     exit.kind === 'bricked'
       ? `Bricked archway on digit ${exit.digit}. Tap to chisel through.`
@@ -288,7 +357,7 @@ function Archway({
         />
       )}
 
-      {peek && <Nameplate exit={exit} lit={lit} />}
+      {peek && <Nameplate exit={exit} lit={lit} count={count} />}
     </g>
   )
 }
@@ -365,18 +434,7 @@ export default function DungeonRoom({ view, flare, onExit, peek = false }: Props
            are no archways to draw. */
         <Arena fight={view.fight} lit={lit} />
       ) : view.isEnding ? (
-        /* F1.9 — rubble and a skull. No exits, and the way ends here. */
-        <g>
-          <path
-            d={`M ${BACK.x0 + 30} ${BACK.y1} l 40 -34 l 46 20 l 44 -28 l 52 42 Z`}
-            fill="#241E19"
-            stroke="#6B5A47"
-            strokeWidth={1.5}
-          />
-          <text x={VIEW.w / 2} y={BACK.y1 - 12} textAnchor="middle" fontSize={30}>
-            💀
-          </text>
-        </g>
+        <Ending kind={view.endingKind ?? 'death'} lit={lit} />
       ) : (
         view.exits.map((exit) => (
           <Archway
@@ -384,6 +442,7 @@ export default function DungeonRoom({ view, flare, onExit, peek = false }: Props
             exit={exit}
             lit={lit}
             peek={peek}
+            count={view.exits.length}
             onActivate={() => onExit(exit)}
           />
         ))

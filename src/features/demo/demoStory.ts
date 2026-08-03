@@ -72,6 +72,7 @@ export function buildDemoStory(): StoryGraph {
       title,
       narration,
       node_type: 'room',
+      ending_kind: null,
       audio_path: null,
       audio_duration_ms: null,
       status: 'scripted',
@@ -119,6 +120,7 @@ export function buildDemoStory(): StoryGraph {
   )
   const drowned = room('DROWNED', 'Down', 'The water closes. The line goes dead.', {
     node_type: 'ending',
+    ending_kind: null,
     room_design: 'void',
     audio_path: 'demo/drowned.mp3',
     audio_duration_ms: 2600,
@@ -129,6 +131,8 @@ export function buildDemoStory(): StoryGraph {
   })
   const fin = room('FIN', 'Ashore', 'You make it out. You do not look back.', {
     node_type: 'ending',
+    // The one ending you want: the walkthrough should show both kinds.
+    ending_kind: 'win',
     room_design: 'chapel',
   })
   room('CUT_SCENE', 'A room nothing leads to', 'Written, then stranded.', { room_design: 'smoke' })

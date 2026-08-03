@@ -2,12 +2,29 @@ import { describe, expect, it } from 'vitest'
 import { designFor, DEFAULT_DESIGN, ROOM_DESIGNS } from './designs'
 
 describe('room designs', () => {
-  it('offers ten', () => {
-    expect(ROOM_DESIGNS).toHaveLength(10)
+  it('offers enough places that a long story is not one room repeated', () => {
+    expect(ROOM_DESIGNS.length).toBeGreaterThanOrEqual(12)
   })
 
   it('has unique ids', () => {
     expect(new Set(ROOM_DESIGNS.map((d) => d.id)).size).toBe(ROOM_DESIGNS.length)
+  })
+
+  /**
+   * The point of adding a design is that it looks like somewhere else.
+   *
+   * Two designs sharing a texture, a floor and a palette are the same room with
+   * two names in the picker — which is exactly what "a cave" was before the
+   * dripping one, the crystal one and the crawl were told apart.
+   */
+  it('never draws two designs the same way', () => {
+    const seen = new Map<string, string>()
+    for (const d of ROOM_DESIGNS) {
+      const key = [d.texture, d.floorMotif, d.wallMotif ?? 'none', d.wall.lit, d.edge.lit].join('|')
+      const clash = seen.get(key)
+      expect(clash, `${d.id} is indistinguishable from ${clash}`).toBeUndefined()
+      seen.set(key, d.id)
+    }
   })
 
   it('falls back to stone for an unknown or missing id', () => {

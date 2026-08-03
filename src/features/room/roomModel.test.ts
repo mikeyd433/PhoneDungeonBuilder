@@ -9,24 +9,45 @@ function view(graph: ReturnType<typeof makeGraph>, slug: string) {
 }
 
 describe('buildRoomView — exits', () => {
-  it('pads empty walls with bricked archways so there is always somewhere to dig', () => {
+  /**
+   * ONE blank arch, not a wall padded out to three.
+   *
+   * Chiselling is still how rooms get made, so there has to be somewhere to
+   * dig — but three of them meant a room with a single door could never look
+   * like a room with a single door, which is the whole point of sizing the
+   * arches to how many there are.
+   */
+  it('offers exactly one blank archway to chisel through', () => {
     const g = makeGraph(['A', 'B'], ['A>B'])
     const v = view(g, 'A')
-    expect(v.exits).toHaveLength(3)
+    expect(v.exits).toHaveLength(2)
     expect(v.exits[0].kind).toBe('door')
-    expect(v.exits.slice(1).every((e) => e.kind === 'bricked')).toBe(true)
-    // Padding must not reuse a digit that is already spoken for.
-    expect(v.exits.map((e) => e.digit)).toEqual(['1', '2', '3'])
+    expect(v.exits[1].kind).toBe('bricked')
+    expect(v.exits.map((e) => e.digit)).toEqual(['1', '2'])
+  })
+
+  it('leaves a room with no doors one place to cut', () => {
+    const g = makeGraph(['A'], [])
+    const v = view(g, 'A')
+    expect(v.exits).toHaveLength(1)
+    expect(v.exits[0].kind).toBe('bricked')
   })
 
   it('does not reuse an occupied digit when padding', () => {
     const g = makeGraph(['A', 'B'], ['A>B'])
-    // Move the real exit to digit 2; padding should fill 1 and 3.
+    // Move the real exit to digit 2; the blank arch should take 1.
     const choice = [...g.choices.values()][0]
     g.choices.set(choice.id, { ...choice, digit: '2' })
     const v = view(g, 'A')
-    expect(v.exits.map((e) => e.digit).sort()).toEqual(['1', '2', '3'])
+    expect(v.exits.map((e) => e.digit).sort()).toEqual(['1', '2'])
     expect(v.exits.find((e) => e.digit === '2')!.kind).toBe('door')
+  })
+
+  it('stops offering one once the wall is full', () => {
+    const g = makeGraph(['A', 'B', 'C', 'D', 'E', 'F'], ['A>B', 'A>C', 'A>D', 'A>E', 'A>F'])
+    const v = view(g, 'A')
+    expect(v.exits).toHaveLength(5)
+    expect(v.exits.every((e) => e.kind === 'door')).toBe(true)
   })
 
   it('renders a back-edge as a portal, not a door', () => {
@@ -51,12 +72,15 @@ describe('buildRoomView — exits', () => {
     expect(view(g, 'FIN').endingWithExits).toBe(true)
   })
 
-  it('spills digits 4+ into the stacked overflow list (F1.13)', () => {
-    const g = makeGraph(['A', 'B', 'C', 'D', 'E'], ['A>B', 'A>C', 'A>D', 'A>E'])
+  it('spills the sixth door and beyond into the stacked list (F1.13)', () => {
+    const g = makeGraph(
+      ['A', 'B', 'C', 'D', 'E', 'F', 'G'],
+      ['A>B', 'A>C', 'A>D', 'A>E', 'A>F', 'A>G'],
+    )
     const v = view(g, 'A')
-    expect(v.exits).toHaveLength(3)
+    expect(v.exits).toHaveLength(5)
     expect(v.overflowExits).toHaveLength(1)
-    expect(v.overflowExits[0].digit).toBe('4')
+    expect(v.overflowExits[0].digit).toBe('6')
   })
 })
 

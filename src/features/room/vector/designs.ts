@@ -24,12 +24,31 @@ export type WallTexture =
   | 'bone' // stacked long bones
   | 'tiles' // small glazed tiles
   | 'ribs' // structural ribs, like a hull or a ribcage
+  | 'flowstone' // sheeted mineral curtains — wet limestone
+  | 'facets' // angular crystal faces
+  | 'timbers' // mine framing: uprights under a header
+  | 'brick' // small hard brick, the arch of a tunnel
+  | 'frost' // ice, cracked in long shards
   | 'none'
 
-export type FloorMotif = 'none' | 'water' | 'rubble' | 'grate' | 'sand'
+export type FloorMotif =
+  | 'none'
+  | 'water'
+  | 'rubble'
+  | 'grate'
+  | 'sand'
+  | 'chasm' // a gap across the floor, and nothing under it
+  | 'rails' // a mine cart track running away from you
+  | 'channel' // a sewer's centre gutter
+  | 'pool' // a still, reflective plane
 
 /** An extra mark on the back wall, where a texture alone doesn't say enough. */
-export type WallMotif = 'none' | 'receding'
+export type WallMotif =
+  | 'none'
+  | 'receding'
+  | 'stalactites' // teeth from the ceiling — the thing that says "cave"
+  | 'shelves' // horizontal runs, packed
+  | 'squeeze' // the walls close in: the opening is smaller than the room
 
 export interface RoomDesign {
   id: string
@@ -55,8 +74,10 @@ export interface RoomDesign {
 }
 
 /**
- * The ten. Ordered roughly by how far from ordinary stone they are, so the
- * picker reads as a gradient rather than a grab bag.
+ * Ordered roughly by how far from ordinary stone they are, so the picker reads
+ * as a gradient rather than a grab bag. The caves sit together near the top —
+ * "a cave" is not one place, and a story that spends twenty rooms underground
+ * needs the dripping one to look nothing like the crystal one or the crawl.
  */
 export const ROOM_DESIGNS: RoomDesign[] = [
   {
@@ -82,6 +103,105 @@ export const ROOM_DESIGNS: RoomDesign[] = [
     glow: { inner: '#E8A33D', outer: '#B85C1E' },
     texture: 'strata',
     floorMotif: 'rubble',
+  },
+  {
+    id: 'dripstone',
+    name: 'Dripstone cave',
+    blurb: 'Wet limestone, curtained and toothed. Everything here is still growing.',
+    wall: { lit: '#4A4238', dim: '#2A2521' },
+    wallShaded: { lit: '#3A342C', dim: '#221E1A' },
+    floor: { lit: '#332B22', dim: '#1E1915' },
+    edge: { lit: '#8A7A62', dim: '#43392E' },
+    glow: { inner: '#E8C89A', outer: '#5E8079' },
+    texture: 'flowstone',
+    floorMotif: 'pool',
+    wallMotif: 'stalactites',
+  },
+  {
+    id: 'crystal',
+    name: 'Crystal seam',
+    blurb: 'The rock has grown facets. The torch comes back at you from everywhere.',
+    wall: { lit: '#3A3A52', dim: '#20202E' },
+    wallShaded: { lit: '#2E2E42', dim: '#191926' },
+    floor: { lit: '#2C2C40', dim: '#181824' },
+    edge: { lit: '#8A9AD8', dim: '#414A6B' },
+    glow: { inner: '#9AB8F0', outer: '#6A5A9A' },
+    texture: 'facets',
+    floorMotif: 'rubble',
+  },
+  {
+    id: 'squeeze',
+    name: 'The crawl',
+    blurb: 'Rock to both shoulders. You go through this one sideways.',
+    wall: { lit: '#4B4038', dim: '#2A2420' },
+    wallShaded: { lit: '#3B322C', dim: '#221D1A' },
+    floor: { lit: '#33291F', dim: '#1E1813' },
+    edge: { lit: '#7A6552', dim: '#3E342C' },
+    glow: { inner: '#E8A33D', outer: '#B85C1E' },
+    texture: 'strata',
+    floorMotif: 'rubble',
+    wallMotif: 'squeeze',
+  },
+  {
+    id: 'chasm',
+    name: 'The chasm',
+    blurb: 'The floor stops. Whatever is under it does not answer.',
+    wall: { lit: '#453C36', dim: '#272220' },
+    wallShaded: { lit: '#372F2A', dim: '#1F1B19' },
+    floor: { lit: '#302823', dim: '#1C1815' },
+    edge: { lit: '#7A6552', dim: '#3E342C' },
+    glow: { inner: '#E8A33D', outer: '#41525C' },
+    texture: 'strata',
+    floorMotif: 'chasm',
+    openCeiling: true,
+  },
+  {
+    id: 'mine',
+    name: 'Cut workings',
+    blurb: 'Somebody dug this on purpose, and framed it before it fell in.',
+    wall: { lit: '#4A3E2E', dim: '#2A231A' },
+    wallShaded: { lit: '#3B3125', dim: '#221C15' },
+    floor: { lit: '#382E22', dim: '#201A14' },
+    edge: { lit: '#9A7A4A', dim: '#4C3B25' },
+    glow: { inner: '#E8A33D', outer: '#B85C1E' },
+    texture: 'timbers',
+    floorMotif: 'rails',
+  },
+  {
+    id: 'sewer',
+    name: 'Storm drain',
+    blurb: 'Hard brick, running with something. It carries sound a long way.',
+    wall: { lit: '#3E4238', dim: '#232620' },
+    wallShaded: { lit: '#313429', dim: '#1C1E19' },
+    floor: { lit: '#2C3230', dim: '#191D1C' },
+    edge: { lit: '#6E7A5E', dim: '#3A4032' },
+    glow: { inner: '#C8D89A', outer: '#41525C' },
+    texture: 'brick',
+    floorMotif: 'channel',
+  },
+  {
+    id: 'ice',
+    name: 'Frozen',
+    blurb: 'Cracked through, and cold enough that the torch does nothing for you.',
+    wall: { lit: '#3A4A52', dim: '#20292E' },
+    wallShaded: { lit: '#2E3A42', dim: '#192126' },
+    floor: { lit: '#31434A', dim: '#1B252A' },
+    edge: { lit: '#9AC8D8', dim: '#4A6470' },
+    glow: { inner: '#BEE0F0', outer: '#41525C' },
+    texture: 'frost',
+    floorMotif: 'pool',
+  },
+  {
+    id: 'forge',
+    name: 'The forge',
+    blurb: 'Still warm. Whatever was being made here, they left in a hurry.',
+    wall: { lit: '#52362E', dim: '#2E1E1A' },
+    wallShaded: { lit: '#422B24', dim: '#251815' },
+    floor: { lit: '#42281E', dim: '#251712' },
+    edge: { lit: '#C87A3A', dim: '#5E3A20' },
+    glow: { inner: '#F08A3A', outer: '#8C2F22' },
+    texture: 'brick',
+    floorMotif: 'grate',
   },
   {
     id: 'hull',

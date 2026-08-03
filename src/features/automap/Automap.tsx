@@ -315,7 +315,22 @@ export default function Automap({
               <circle cx={room.x + room.w - 8} cy={room.y + room.h - 8} r={4} fill={RED} />
             )}
 
-            {room.isEnding && (
+            {/* A win is not a death. The X means "stop, and badly"; an ending
+                the caller was trying to reach gets a ring instead, in the
+                torch's own gold — the same colour that means "done" on the
+                tallies above. */}
+            {room.isEnding && room.endingKind === 'win' && (
+              <circle
+                cx={room.x + room.w / 2}
+                cy={room.y + room.h / 2}
+                r={Math.min(room.w, room.h) / 2 - 5}
+                fill="none"
+                stroke="#B8862F"
+                strokeWidth={3}
+              />
+            )}
+
+            {room.isEnding && room.endingKind !== 'win' && (
               <g stroke="#8C2F22" strokeWidth={3}>
                 <line
                   x1={room.x + 6}

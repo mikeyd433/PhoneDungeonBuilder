@@ -13,7 +13,9 @@ import { addFight, idOf, makeGraph, setOutcome } from '@/test/factory'
 const digitsOf = (graph: ReturnType<typeof makeGraph>, slug: string) => {
   const derived = deriveGraph(graph)
   const view = buildRoomView(graph, derived, idOf(graph, slug))!
-  return view.exits.map((e) => e.digit)
+  // Only the real doors: the wall also carries one blank arch to chisel
+  // through, and its digit is whatever was still free.
+  return view.exits.filter((e) => e.choiceId).map((e) => e.digit)
 }
 
 /** Re-key a choice the way the editor's digit picker does. */
