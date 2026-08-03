@@ -5,7 +5,7 @@ import { slugify } from '@/lib/slug'
 import { nextFreeDigit } from './roomModel'
 import { isPlainRoom, roomKinds, type RoomKinds } from './roomKinds'
 import { describeCollapse, planCollapse } from './collapse'
-import { isPromptLine, promptsFor, withPrompts, type Joiner } from './prompts'
+import { isPromptLine, promptsFor, unlabelledDoors, withPrompts, type Joiner } from './prompts'
 import AudioPanel from '@/features/audio/AudioPanel'
 import ItemsSection from '@/features/state/ItemsSection'
 import CollabPanel from '@/features/collab/CollabPanel'
@@ -262,8 +262,12 @@ export default function EditorSheet({ nodeId, onClose }: { nodeId: string; onClo
 
   const [announcing, setAnnouncing] = useState(false)
   const prompts = useMemo(
-    () => (graph && derived && node ? promptsFor(graph, derived, node.id, 'for') : []),
+    () => (graph && derived && node ? promptsFor(derived, node.id, 'for') : []),
     [graph, derived, node],
+  )
+  const unlabelled = useMemo(
+    () => (derived && node ? unlabelledDoors(derived, node.id) : []),
+    [derived, node],
   )
   // A labelled door with nowhere to go still gets announced — the author asked
   // for it by writing a label, and dropping it silently would hide the work.
@@ -281,7 +285,7 @@ export default function EditorSheet({ nodeId, onClose }: { nodeId: string; onClo
    */
   const announce = async (joiner: Joiner) => {
     if (!graph || !derived || !node) return
-    const next = promptsFor(graph, derived, node.id, joiner)
+    const next = promptsFor(derived, node.id, joiner)
     setAnnouncing(true)
     const lines = [...graph.dialogue.values()]
       .filter((l) => l.node_id === node.id)
@@ -427,6 +431,18 @@ export default function EditorSheet({ nodeId, onClose }: { nodeId: string; onClo
                     : ''
                 }`}
           </p>
+          {/* Skipped, never silently. A door with no words used to borrow the
+              name of the room behind it, which made that room's title into this
+              room's script and left two doors to one place saying the same
+              thing. Only the author has the words. */}
+          {unlabelled.length > 0 && (
+            <p className="text-xs text-grave">
+              {unlabelled.length === 1 ? 'Door' : 'Doors'} {unlabelled.join(', ')}{' '}
+              {unlabelled.length === 1 ? 'has' : 'have'} no label, so {' '}
+              {unlabelled.length === 1 ? 'it is' : 'they are'} left out — the room behind a door is
+              not what the door says.
+            </p>
+          )}
           <div className="flex flex-wrap gap-2">
             {(['for', 'to'] as const).map((joiner) => (
               <button
@@ -437,10 +453,10 @@ export default function EditorSheet({ nodeId, onClose }: { nodeId: string; onClo
                 // The button *is* the preview: which preposition suits depends
                 // on whether the labels are nouns or verbs, and only the author
                 // knows that.
-                title={promptsFor(graph, derived, nodeId, joiner)[0]}
+                title={promptsFor(derived, nodeId, joiner)[0]}
                 className="rounded border border-mortar px-3 py-2 text-xs hover:border-torch disabled:opacity-40"
               >
-                {promptsFor(graph, derived, nodeId, joiner)[0] ?? `Press 1 ${joiner} …`}
+                {promptsFor(derived, nodeId, joiner)[0] ?? `Press 1 ${joiner} …`}
               </button>
             ))}
           </div>

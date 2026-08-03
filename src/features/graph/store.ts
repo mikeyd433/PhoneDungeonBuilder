@@ -13,6 +13,7 @@ import type {
   StoryNode,
 } from '@/types/domain'
 import { composeNarration, type LineOwner } from '@/features/cast/dialogue'
+import { slugFollowingTitle } from './naming'
 import { deriveGraph } from './derived'
 import * as api from '@/lib/api'
 import { uniqueSlug } from '@/lib/slug'
@@ -596,6 +597,12 @@ export const useDelve = create<DelveState>((set, get) => {
       ) {
         patch = { ...rawPatch, status: 'scripted' }
       }
+
+      // Naming a room for the first time moves its slug off the door label it
+      // was minted from, so the words on a door two rooms back stop being this
+      // room's identity in the bucket and in the exported flow.
+      const followed = slugFollowingTitle(graph, before, patch)
+      if (followed) patch = { ...patch, slug: followed }
 
       // Optimistic: the editor autosaves on blur (F2.2), and a round trip per
       // field would make the sheet feel laggy on a tablet.

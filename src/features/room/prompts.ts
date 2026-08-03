@@ -1,4 +1,4 @@
-import type { DerivedGraph, StoryGraph } from '@/types/domain'
+import type { DerivedGraph } from '@/types/domain'
 
 /**
  * Turning a room's doors into the words that offer them.
@@ -44,24 +44,32 @@ export function stripTrailingPrompts(text: string): string {
   return lines.join('\n')
 }
 
-/** What this room's doors should say, in keypad order. */
-export function promptsFor(
-  graph: StoryGraph,
-  derived: DerivedGraph,
-  nodeId: string,
-  joiner: Joiner,
-): string[] {
+/**
+ * What this room's doors should say, in keypad order.
+ *
+ * A door with no label is skipped, not filled in from the room behind it.
+ * Borrowing the room's name there made the room's title into what the previous
+ * room's door said — rename the room and the door two rooms back changed with
+ * it — and it made two doors to the same place impossible to tell apart, since
+ * both would announce that one name. A door is its own piece of writing.
+ *
+ * Skipping silently would be its own bug, so `unlabelledDoors` names them and
+ * the editor says so beside the button.
+ */
+export function promptsFor(derived: DerivedGraph, nodeId: string, joiner: Joiner): string[] {
   const out: string[] = []
   for (const choice of derived.children.get(nodeId) ?? []) {
-    // The label is what the caller is being offered. Falling back to the room's
-    // own name keeps an unlabelled-but-wired door from vanishing out of the
-    // script — silently dropping an option is the one outcome worth avoiding.
-    const target = choice.to_node_id ? graph.nodes.get(choice.to_node_id) : undefined
-    const text = choice.label.trim() || target?.title || target?.slug || ''
+    const text = choice.label.trim()
     if (!text) continue
     out.push(promptLine(choice.digit, text, joiner))
   }
   return out
+}
+
+/** The digits of this room's doors that have nothing to announce. Wired or not:
+ *  either way there are no words for that key, and only the author has them. */
+export function unlabelledDoors(derived: DerivedGraph, nodeId: string): string[] {
+  return (derived.children.get(nodeId) ?? []).filter((c) => !c.label.trim()).map((c) => c.digit)
 }
 
 /** The room's text with its prompts refreshed at the end. */
