@@ -174,6 +174,20 @@ function WhatHappensHere({
  * disabled control with no reason is worse than no control, and the reasons
  * here are all things the author can act on.
  */
+type EditorTab = 'write' | 'voices' | 'doors' | 'items' | 'fight' | 'sound' | 'room'
+
+/** `needs` is the box in "What happens here" that brings a tab into being — a
+ *  tab for a fight this room does not have is a door onto an empty room. */
+const TABS: Array<{ id: EditorTab; label: string; needs?: keyof RoomKinds }> = [
+  { id: 'write', label: 'Write' },
+  { id: 'voices', label: 'Voices', needs: 'dialogue' },
+  { id: 'doors', label: 'Doors' },
+  { id: 'items', label: 'Items', needs: 'items' },
+  { id: 'fight', label: 'Fight', needs: 'fight' },
+  { id: 'sound', label: 'Sound' },
+  { id: 'room', label: 'Room' },
+]
+
 function CollapseRoom({ nodeId, onCollapsed }: { nodeId: string; onCollapsed: () => void }) {
   const graph = useDelve((s) => s.graph)
   const derived = useDelve((s) => s.derived)
@@ -329,6 +343,18 @@ export default function EditorSheet({ nodeId, onClose }: { nodeId: string; onClo
     [graph, derived, node],
   )
   const [shown, setShown] = useState<RoomKinds>({ dialogue: false, items: false, fight: false })
+  /**
+   * Which part of the room you are working on.
+   *
+   * One scroll held the title, the script, the door prompts, the cast, the
+   * exits, the items, the fight, the design, the timeouts, the notes, the
+   * collapse and the slug — so reaching the thing you opened the sheet for
+   * meant hunting past nine things you did not want. Nothing moved; it is the
+   * same sheet with the sections behind their own doors.
+   */
+  const [tab, setTab] = useState<EditorTab>('write')
+  const landing: EditorTab = canWrite(role) ? 'write' : 'sound'
+  useEffect(() => setTab(landing), [nodeId, landing])
   useEffect(() => {
     if (kinds) setShown(kinds)
     // Re-read when you walk to another room, not on every graph tick — otherwise
@@ -359,14 +385,6 @@ export default function EditorSheet({ nodeId, onClose }: { nodeId: string; onClo
         </button>
       </div>
 
-      {/* Audio sits outside the disabled fieldset: the `voice` role can record
-          even though every story field below is read-only for them. */}
-      <AudioPanel nodeId={nodeId} />
-
-      {/* Also outside the fieldset: `voice` and `viewer` may leave notes, and a
-          voice actor claiming a room to record is exactly the point of F9.4. */}
-      <CollabPanel nodeId={nodeId} />
-
       {!editable && (
         <p className="mb-4 rounded border border-cold/60 bg-cold/10 p-3 text-xs">
           You have the <strong>{role ?? 'viewer'}</strong> role, so the story text is read-only.
@@ -374,7 +392,25 @@ export default function EditorSheet({ nodeId, onClose }: { nodeId: string; onClo
         </p>
       )}
 
+      {/* Outside the fieldset: a read-only role can still look around. */}
+      <nav className="mb-4 flex flex-wrap gap-1">
+        {TABS.filter((t) => !t.needs || shown[t.needs] || kinds?.[t.needs]).map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className={[
+              'rounded border px-3 py-1.5 text-xs',
+              tab === t.id ? 'border-torch text-torch' : 'border-mortar/50 text-mortar',
+            ].join(' ')}
+          >
+            {t.label}
+          </button>
+        ))}
+      </nav>
+
       <fieldset disabled={!editable} className="flex flex-col gap-4">
+        {tab === 'write' && (
+        <>
         <label className="flex flex-col gap-1">
           <span className="text-xs uppercase tracking-wider text-mortar">Title</span>
           <input
@@ -394,7 +430,16 @@ export default function EditorSheet({ nodeId, onClose }: { nodeId: string; onClo
         <WhatHappensHere
           kinds={kinds}
           shown={shown}
-          onChange={setShown}
+          // Ticking a box reveals a tab, so go there: leaving the author on
+          // this one, with a new word in the bar and nothing else changed,
+          // reads as though the tick did nothing.
+          onChange={(next) => {
+            setShown(next)
+            const turnedOn = (['dialogue', 'items', 'fight'] as const).find(
+              (k) => next[k] && !shown[k],
+            )
+            if (turnedOn) setTab(turnedOn === 'dialogue' ? 'voices' : turnedOn)
+          }}
           nodeId={nodeId}
           slug={node.slug}
         />
@@ -462,8 +507,24 @@ export default function EditorSheet({ nodeId, onClose }: { nodeId: string; onClo
           </div>
         </div>
 
-        {(shown.dialogue || kinds?.dialogue) && <DialogueSection owner={{ nodeId }} />}
+        </>
+        )}
 
+        {tab === 'voices' && <DialogueSection owner={{ nodeId }} />}
+
+        {/* Both of these sit outside the disabled fieldset in spirit — the
+            `voice` role may record and may leave a note, though every story
+            field is read-only for them — which is why the tab bar is outside
+            it and these two components disable nothing of their own. */}
+        {tab === 'sound' && (
+          <>
+            <AudioPanel nodeId={nodeId} />
+            <CollabPanel nodeId={nodeId} />
+          </>
+        )}
+
+        {tab === 'doors' && (
+        <>
         <div className="flex flex-col gap-2">
           <span className="text-xs uppercase tracking-wider text-mortar">Exits</span>
           <p className="text-xs text-cold">
@@ -570,10 +631,15 @@ export default function EditorSheet({ nodeId, onClose }: { nodeId: string; onClo
           </button>
         </div>
 
-        {(shown.fight || kinds?.fight) && <FightSection nodeId={nodeId} />}
+        </>
+        )}
 
-        {(shown.items || kinds?.items) && <ItemsSection nodeId={nodeId} />}
+        {tab === 'fight' && <FightSection nodeId={nodeId} />}
 
+        {tab === 'items' && <ItemsSection nodeId={nodeId} />}
+
+        {tab === 'room' && (
+        <>
         <div className="flex flex-col gap-2">
           <span className="text-xs uppercase tracking-wider text-mortar">Room design</span>
           <p className="text-xs text-cold">
@@ -689,6 +755,8 @@ export default function EditorSheet({ nodeId, onClose }: { nodeId: string; onClo
           />
           {slugTaken && <span className="text-xs text-grave">Another room already uses that slug.</span>}
         </label>
+        </>
+        )}
       </fieldset>
 
     </div>
