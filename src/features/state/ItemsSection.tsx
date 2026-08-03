@@ -3,8 +3,9 @@ import { useDelve } from '@/features/graph/store'
 import * as api from '@/lib/api'
 import { slugify } from '@/lib/slug'
 import GateBuilder from './GateBuilder'
+import EffectRows from './EffectRows'
 import { fromFlat, toFlat, type FlatGate } from './gateShape'
-import type { Choice, Effect, EffectOperation, StateVar } from '@/types/domain'
+import type { Choice, StateVar } from '@/types/domain'
 import TakeRecorder from '@/features/audio/TakeRecorder'
 import { errorText } from '@/lib/errorText'
 
@@ -41,84 +42,7 @@ export default function ItemsSection({ nodeId }: { nodeId: string }) {
     }
   }
 
-  const effectsFor = (predicate: (e: Effect) => boolean) =>
-    [...graph.effects.values()].filter(predicate).sort((a, b) => a.sort_order - b.sort_order)
-
   const field = 'rounded border border-mortar/60 bg-stone px-2 py-2 text-sm'
-
-  const EffectRows = ({ owner }: { owner: { node_id?: string; choice_id?: string } }) => {
-    const rows = effectsFor((e) =>
-      owner.node_id ? e.node_id === owner.node_id : e.choice_id === owner.choice_id,
-    )
-    return (
-      <div className="flex flex-col gap-2">
-        {rows.map((effect) => {
-          const v = graph.stateVars.get(effect.state_var_id)
-          const isCounter = v?.kind === 'counter'
-          return (
-            <div key={effect.id} className="flex flex-wrap items-center gap-2">
-              <select
-                value={effect.operation}
-                onChange={(e) =>
-                  void run(() =>
-                    api.deleteEffect(effect.id).then(() =>
-                      api.createEffect(story.id, {
-                        ...owner,
-                        state_var_id: effect.state_var_id,
-                        operation: e.target.value as EffectOperation,
-                        // grant/revoke must carry no amount; set/add must have one.
-                        amount: ['set', 'add'].includes(e.target.value) ? (effect.amount ?? 1) : null,
-                        sort_order: effect.sort_order,
-                      }),
-                    ),
-                  )
-                }
-                className={field}
-              >
-                <option value="grant">give</option>
-                <option value="revoke">take away</option>
-                {isCounter && <option value="add">add</option>}
-                {isCounter && <option value="set">set to</option>}
-              </select>
-              <span className="text-sm">{v?.slug ?? '?'}</span>
-              {effect.amount !== null && <span className="text-sm text-mortar">{effect.amount}</span>}
-              <button
-                onClick={() => void run(() => api.deleteEffect(effect.id))}
-                className="px-2 text-grave"
-                aria-label="Remove effect"
-              >
-                ✕
-              </button>
-            </div>
-          )
-        })}
-        {vars.length > 0 && (
-          <select
-            value=""
-            onChange={(e) =>
-              e.target.value &&
-              void run(() =>
-                api.createEffect(story.id, {
-                  ...owner,
-                  state_var_id: e.target.value,
-                  operation: 'grant',
-                  sort_order: rows.length,
-                }),
-              )
-            }
-            className={`${field} self-start`}
-          >
-            <option value="">+ add an effect…</option>
-            {vars.map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.slug}
-              </option>
-            ))}
-          </select>
-        )}
-      </div>
-    )
-  }
 
   const GateRow = ({ choice }: { choice: Choice }) => {
     const gate = [...graph.gates.values()].find((g) => g.choice_id === choice.id)

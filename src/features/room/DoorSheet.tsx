@@ -4,6 +4,8 @@ import { errorText } from '@/lib/errorText'
 import { DIGITS, type Digit } from '@/types/domain'
 import { doorsByDigit } from './keys'
 import { variantsOf } from './variants'
+import { effectsSummary, leadsSummary, offeredSummary } from './doorSummary'
+import EffectRows from '@/features/state/EffectRows'
 
 /**
  * Everything about one door, in one place.
@@ -53,9 +55,12 @@ export default function DoorSheet({
   if (!graph || !derived || !choice) return null
 
   const siblings = derived.children.get(choice.from_node_id) ?? []
-  const target = choice.to_node_id ? graph.nodes.get(choice.to_node_id) : null
   const roomHasStates = variantsOf(graph, choice.from_node_id).length > 0
   const byDigit = doorsByDigit(graph, choice.from_node_id)
+  const leads = leadsSummary(graph, choice.id)
+  const offered = offeredSummary(graph, choice.id)
+  const gives = effectsSummary(graph, choice.id)
+  const gate = [...graph.gates.values()].find((g) => g.choice_id === choice.id)
 
   const run = async (fn: () => Promise<unknown>) => {
     setBusy(true)
@@ -135,19 +140,46 @@ export default function DoorSheet({
             )}
           </label>
 
-          {/* Where it goes, when it is offered, and what is heard on the way —
-              the three questions a door answers, as three rows. */}
+          {/* Where it goes, what it hands over, when it is offered, and what is
+              heard on the way — the four questions a door answers, as four
+              rows, each ANSWERING it rather than naming it. §0: every visual
+              element encodes real data, and "Always, in some states, or on a
+              condition" was the same words on a door with rules and a door
+              without. */}
           <button type="button" className={row} onClick={() => hop(onFork)}>
             <span className="block text-xs text-mortar">Where it leads</span>
-            <span className="text-torch">{target?.title || target?.slug || '— nowhere yet —'}</span>
-            <span className="block text-xs text-cold">
-              Tap to change it, or to fork it on an item.
-            </span>
+            <span className="text-torch">{leads.text}</span>
+            <span className="block text-xs text-cold">{leads.hint}</span>
           </button>
+
+          {/* Edited here rather than linked to. The Items tab is the whole
+              room at once and stays the right place for that; what a door
+              hands over is a fact about this door, and sending you to another
+              surface for it was what made this sheet incomplete. */}
+          <div className="rounded border border-mortar/50 px-3 py-2">
+            <span className="block text-xs uppercase tracking-wider text-mortar">
+              What it gives or takes
+            </span>
+            {gives && <span className="mb-1 block text-sm text-torch">{gives}</span>}
+            <div className="mt-1">
+              <EffectRows owner={{ choice_id: choice.id }} />
+            </div>
+            {gate?.fail_behavior === 'divert' && gives && (
+              <span className="mt-1 block text-xs text-cold">
+                This door forks, so these apply on the first route only.
+              </span>
+            )}
+          </div>
 
           <button type="button" className={row} onClick={() => hop(onOffered)}>
             <span className="block text-xs text-mortar">When it is offered</span>
-            <span className="text-parchment">Always, in some states, or on a condition</span>
+            <span className={offered.never ? 'text-grave' : 'text-parchment'}>{offered.text}</span>
+            {offered.inertStateRule && (
+              <span className="block text-xs text-grave">
+                A state rule is set, but this room reads only one way — so every caller is offered
+                it. Give the room a reading, or clear the rule.
+              </span>
+            )}
           </button>
 
           <button type="button" className={row} onClick={() => hop(onReact)}>

@@ -4,11 +4,13 @@ Every routine job in this app, written out tap by tap, so the awkward ones are
 visible as counts rather than as a feeling.
 
 Counts are of taps the interface actually requires, measured at **430 px wide**
-(the phone, which is the second target device after tablet portrait). Where a
-step writes to the database it could not be completed against the demo story,
-which has no database; those steps are marked *(unmeasured)* and counted from
-the controls that exist.
+(the phone, which is the second target device after tablet portrait) by driving
+the real UI. Where a step writes to the database it could not be completed
+against the demo story, which has no database; those steps are counted from the
+controls that exist and marked *(write unmeasured)*.
 
+Every number below was **re-measured after the last round of fixes**, and two of
+them had drifted from what the fixes claimed — see the note under walkthrough 4.
 The point of the exercise is the **Findings** section at the end. The
 walkthroughs are the evidence.
 
@@ -48,8 +50,9 @@ the app: one tap, and you are standing in the thing you just made.
 | 2 | "↺ send it back to a room that exists" | room |
 | 3 | the room, from *The way you came* | picker |
 
-**3 taps, one surface.** Good. The picker leads with the rooms you actually
-want, so step 3 is a tap and not a search.
+**3 taps** in the middle of a story. **4 at the entrance**, where there is no
+way you came and the room has to be found by typing — which is correct, not a
+defect: the picker has nothing better to lead with there.
 
 ---
 
@@ -71,17 +74,26 @@ want, so step 3 is a tap and not a search.
 
 **~11 taps, three surfaces, dead end at step 3.**
 
-### Now
+### Now — measured, not estimated
 
 | # | Tap | Surface |
 |---|---|---|
 | 1 | Show where doors lead | room |
-| 2 | ⋯ on the door → Where it leads | room / door sheet |
-| 3 | ⑂ Make this door fork *(or "+ Create the first item", right there, if none exists)* | fork sheet |
-| 4 | the other route → **⛏ Cut a new room called "…"** | picker |
+| 2 | ⋯ on the door | room |
+| 3 | Where it leads | door sheet |
+| 4 | ⑂ Make this door fork on an item *(write unmeasured)* | fork sheet |
+| 5 | the other route → **⛏ Cut a new room called "…"** | picker |
 
-**3 taps with an item in the story, ~4 without. One dead end removed, and the
-second room no longer has to exist first.**
+**4 taps to a fork, 5 to a fork whose second room did not exist.** With no items
+in the story at all it is **6**: step 4 becomes "+ Create the first item", the
+name, and Add — which creates the item *and* writes the fork in one go.
+
+> **Correction.** The previous version of this file said "3 taps with an item in
+> the story, ~4 without". That was written from the plan, not the screen. The
+> door sheet — the right fix for finding 3 — added a layer between the panel and
+> the fork, so the true numbers are 4 and 6. Both are still less than half of
+> what they were, and the dead end is gone; but a count nobody re-measured after
+> the change is exactly the kind of claim this document exists to prevent.
 
 ---
 
@@ -107,11 +119,13 @@ on one door.
 | # | Tap | Surface |
 |---|---|---|
 | 1 | Show where doors lead | room |
-| 2 | ⋯ on the door → **When it is offered** | room / door sheet |
-| 3 | Always · Only in some states · Only when carrying something | offered sheet |
+| 2 | ⋯ on the door | room |
+| 3 | When it is offered | door sheet |
+| 4 | Always · Only in some states · Only when carrying something | offered sheet |
 
-**3 taps.** The mechanism follows from the answer instead of from which screen
-you found first. Both are shown when both are set, and it says so.
+**4 taps**, one question, and the mechanism follows from the answer instead of
+from which screen you found first. Both are shown when both are set, and it says
+so — and now the door sheet says so too, before you open anything.
 
 ---
 
@@ -119,16 +133,16 @@ you found first. Both are shown when both are set, and it says so.
 
 | # | Tap | Surface |
 |---|---|---|
-| 1 | state plate → the state the second door belongs to | room |
-| 2 | the blank arch on that key | room |
-| 3–4 | name the new room, label the door | room |
+| 1 | the state plate | room |
+| 2 | the state the second door belongs to | plate |
+| 3 | ⋯ on the door that holds the key | room |
+| 4 | **Make ⟨n⟩ a different door here** *(write unmeasured)* | door sheet |
+| 5 | name the new room | room |
 
-**~4 taps**, and the app quietly does the hard part: the new door is hidden in
-every other state, because those already have their answer for that key.
-
-The catch is that this only works if the key is *free in that state*, which
-means you must already have hidden the other door there. Nothing suggests the
-order.
+**5 taps**, and the order-of-operations trap is gone: one action hides the
+first door in this state and puts a new one on the key, in the order that leaves
+nothing broken half way. Doing it by hand — hide, then find the blank arch —
+was ~4 taps *if you already knew the order*, and impossible if you did not.
 
 ---
 
@@ -138,14 +152,16 @@ order.
 |---|---|---|
 | 1 | ✎ EDIT | room |
 | 2 | Sound | editor |
-| 3 | hold the record button | editor → Sound |
+| … | hold the record button | editor → Sound |
 
-**3 taps.** Or `Record` in the nav for the whole queue in story order, which is
-the right tool for a session and correctly separate.
+**2 taps and a hold.** Or `Record` in the nav for the whole queue in story
+order, which is the right tool for a session and correctly separate.
 
 ---
 
 ## 8. Give a door an item, and require it at another
+
+### Before
 
 | # | Tap | Surface |
 |---|---|---|
@@ -155,13 +171,52 @@ the right tool for a session and correctly separate.
 | … | walk to the other room | room |
 | 7–12 | the same six taps again, then + Require something | editor → Items |
 
-**~12 taps across two rooms.** The second half is unavoidable — it is two
-separate pieces of writing. Steps 2 and 3 are not: ticking a box to reveal a
-tab, twice, for a story that already has items.
+**~12 taps across two rooms.**
+
+### Now
+
+| # | Tap | Surface |
+|---|---|---|
+| 1 | Show where doors lead | room |
+| 2 | ⋯ on the door | room |
+| 3 | the item, from "+ add an effect…" *(write unmeasured)* | door sheet |
+
+**3 taps**, and none of them leave the door. **4 with no items in the story** —
+"+ New item" sits beside the same select, so the last dead end on the item path
+is closed too.
+
+Requiring it at the far door is still its own job (EDIT → Items → + Require
+something → the item, **4 taps**), because the Items tab is the whole room at
+once and a requirement usually wants to be read next to its neighbours. Across
+two rooms: **7 taps**, down from ~12.
 
 ---
 
-## 9. Get it into Twilio
+## 9. Reach the Items tab at all
+
+| # | Tap | Surface |
+|---|---|---|
+| 1 | ✎ EDIT | room |
+| 2 | Items | editor |
+
+**2 taps**, down from 3 — the tab used to require ticking a box on another tab
+first, which is finding 1 below.
+
+---
+
+## 10. Stand in one state and see the room a caller finds
+
+| # | Tap | Surface |
+|---|---|---|
+| 1 | the plate in the top-left corner | room |
+| 2 | the state | plate |
+
+**2 taps.** The room re-keys and slides in, because to the caller it belongs to
+this is a different room.
+
+---
+
+## 11. Get it into Twilio
 
 | # | Tap | Surface |
 |---|---|---|
@@ -180,94 +235,101 @@ Ordered by how much time they cost.
 
 ### 1. Item logic is behind a checkbox, and the checkbox is on another tab — **done**
 
-The Items tab does not exist until "🎒 An item changes hands" is ticked in
-Write. Every item flow therefore starts with two taps that do nothing except
+The Items tab did not exist until "🎒 An item changes hands" was ticked in
+Write. Every item flow therefore started with two taps that did nothing except
 reveal the place you were already trying to reach — and the fork sheet, which
-knows perfectly well that no items exist, dead-ends into it.
+knew perfectly well that no items existed, dead-ended into it.
 
-**Costs:** 2 taps on every item flow, and one dead end (walkthrough 4, step 3).
-
-**Fix:** show the Items tab whenever the *story* has any state vars, not when
-the room does. Add "+ Create an item" directly to the fork sheet and the gate
-builder, so neither ever dead-ends.
+**Fixed:** the Items tab shows whenever the *story* has any state vars, and
+"+ Create an item" sits in the fork sheet, the gate builder and the effects
+list, so none of them can dead-end. Walkthrough 9 is now 2 taps.
 
 ### 2. Two mechanisms for "this door isn't offered" — **done**
 
 `hide` gates and `hidden_doors` (walkthrough 5) look identical to an author and
-are stored differently. One is 4 taps and one is 8. The 4-tap one silently
-requires the room to have a reading. Nothing warns when both are set on one
-door.
+are stored differently. One was 4 taps and one was 8. The 4-tap one silently
+required the room to have a reading. Nothing warned when both were set.
 
-**Fix:** one control on the door — *Offered: always / only in these states /
+**Fixed:** one control on the door — *Offered: always / only in these states /
 only when ⟨condition⟩* — writing whichever mechanism fits the answer.
 
 ### 3. Neither door surface is complete — **done**
 
-| | room panel | editor → Doors |
-|---|---|---|
-| label | ✓ | ✓ *(the only duplicate)* |
-| name of the room behind | ✓ | — |
-| fork ⑂ | ✓ | — |
-| reaction 🔊 | ✓ | — |
-| which digit | — | ✓ |
-| where it leads | — | ✓ |
-| insert a room ⤵ | — | ✓ |
-| delete | — | ✓ |
+Half the controls in each of the room panel and the editor's Doors tab, so every
+door job began with a guess about which screen to open.
 
-Half the controls in each place, so every door job is a guess about which
-surface to open.
-
-**Fixed** by going further than that: one `⋯` per door opens a sheet holding
-the digit, the label, where it leads, when it is offered, what is heard on the
-way through, insert and remove. The row keeps only what is worth scanning. The
-editor's Doors tab stays as the all-doors-at-once view.
+**Fixed:** one `⋯` per door opens a sheet holding the digit, the label, where it
+leads, what it gives or takes, when it is offered, what is heard on the way
+through, insert and remove. The editor's Doors tab stays as the
+all-doors-at-once view.
 
 ### 4. Order-of-operations traps — **done**
 
-Three jobs only work if you do them in an undocumented order:
+Three jobs only worked in an undocumented order: a fork needed the door pointed
+somewhere first, a second door on a key needed the first hidden in that state
+first, a visibility rule needed the room to have a reading first.
 
-- a fork needs the door pointed somewhere *before* it can fork (the sheet says
-  so, but only after you open it);
-- a second door on a key needs the first one hidden in that state *first*;
-- a visibility rule needs the room to have a reading *first*.
-
-**Fixed**, each as an action rather than an explanation:
-
-- the fork sheet offers "Point this door at a room →" when the door leads
-  nowhere, and the picker behind it can cut the room;
-- the door sheet, standing in a state, offers "Make ⟨n⟩ a different door here",
-  which hides this one in that state and puts a new one on the key — in the
-  order that leaves nothing broken half way;
-- the offered sheet offers "+ Give this room a second reading" when there are no
-  states to choose between, rather than leaving it to an export warning.
+**Fixed**, each as an action rather than an explanation — "Point this door at a
+room →", "Make ⟨n⟩ a different door here", "+ Give this room a second reading".
 
 ### 5. The doors panel is dense at 430 px — **done**
 
-Was 14 visible buttons with the panel open at the entrance; now **11**. ⑂ and 🔊
-collapsed into one `⋯` per door, which carries the whole door sheet — and
-"always offered" no longer takes a slot, because §0's rule is that every visual
-element encodes real data and *always* is the absence of it. A door that is
-conditional still says `sometimes`; one that is never offered still says so.
+Was 14 visible buttons at the entrance; now 11.
 
 ### 6. Dead weight in the code — **done**
 
-- `hasSharedKeys` — written, never called. **Removed.**
-- `RoomView.readingText` — computed for every room, consumed by nothing since
-  the reading's words moved into `lines`. **Removed**, and its test rewritten to
-  assert on `lines`, which is where the behaviour actually is.
-- `gateConditionLiquid` — **this finding was wrong.** Nothing in `src/` calls
-  it, but it is the seam its tests reach the private `compile` through, and
-  those tests pin the substring trap, the negation pushdown and the empty
-  and/or identities. Kept, with a comment saying so.
-- `_shown` and `_pick` in the exporter are two splits on the same variable.
-  **Left alone deliberately.** `_pick` subsumes `_shown` in principle, but only
-  a door that shares its key needs `_pick`, and collapsing them would emit a
-  two-armed split for every conditional door in the story — more widgets against
-  a 1,000 ceiling, to save one branch in a file that is now 881 lines. The
-  comment in `compileDoor.ts` says which is which.
+`hasSharedKeys` and `RoomView.readingText` removed. `gateConditionLiquid` was
+wrongly listed here: nothing in `src/` calls it, but it is the seam its tests
+reach the private `compile` through, so it stays with a comment saying why.
+`_shown` and `_pick` stay two splits deliberately — collapsing them would emit a
+two-armed split for every conditional door against a 1,000-widget ceiling.
 
-### 7. `compile.ts` is 1,249 lines
+### 7. `compile.ts` was 1,249 lines — **done**
 
-The per-choice loop is ~250 of them and shares little with room emission.
-Splitting them would make the next export change safer — and there has been an
-export change in nearly every round of work.
+Split into `compile.ts` (881), `compileDoor.ts` and `compileFight.ts`, verified
+byte-identical output against the previous commit.
+
+---
+
+## Found on the re-walk
+
+Everything above was fixed, then walked again. Two things the fixes had missed:
+
+### 8. The door sheet said nothing about the door — **done**
+
+Measured on the demo's forking door: **"Where it leads — Ashore · Tap to change
+it, or to fork it on an item"** on a door that already forks, with the second
+room (Down) never named; and **"When it is offered — Always, in some states, or
+on a condition"**, which is the same sentence on every door in the app whatever
+its rules. The panel row that opens the sheet knew more than the sheet did — it
+draws `⑂`.
+
+That is §0's first rule broken on the surface built to be the one place a door
+is answered: every visual element encodes real data, and these two encoded a
+menu.
+
+**Fixed** in `src/features/room/doorSummary.ts`, pure and tested, so the same
+sentences can go on the ledger and the build sheet later:
+
+- `Ashore, or Down` · *Forks: Ashore when carrying a coil of rope.*
+- `Only in: Has rope` · `Only when carrying a coil of rope` · both when both are
+  set · `Never — hidden in every state` in the alarm colour.
+- and the case the export has always warned about *after* the fact: a state rule
+  on a room with no readings does nothing on the phone, so the row says
+  `Always` and explains why rather than claiming a rule that Studio ignores.
+
+### 9. The one job an item story does most could not be started from the door — **done**
+
+A door's effects lived only in the editor's Items tab, because `EffectRows` was
+a component declared inside `ItemsSection`'s body and therefore reachable from
+exactly one screen. So "give this door the rope" — the commonest job in an item
+story — was the one job the everything-about-one-door sheet could not begin.
+
+**Fixed:** `EffectRows` extracted to `src/features/state/EffectRows.tsx` and
+used by both, with `+ New item` beside its select. Walkthrough 8 went from 4
+taps and a surface change to **3 taps without leaving the door** — and from a
+blank space to a button when the story has no items yet.
+
+The Items tab keeps the whole-room view. Two surfaces showing one control is
+right where one of them is "this door" and the other is "every door here"; two
+surfaces each holding *half* the controls was the thing finding 3 was about.
