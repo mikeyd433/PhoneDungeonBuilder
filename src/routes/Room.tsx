@@ -190,6 +190,11 @@ export default function Room() {
           <Link to={`/story/${storyId}/cast`} className="text-mortar underline">
             Cast
           </Link>
+          {/* The long job, given a door of its own: 139 rooms is not something
+              you record by walking to each one. */}
+          <Link to={`/story/${storyId}/record`} className="text-torch underline">
+            Record
+          </Link>
           <Link to={`/story/${storyId}/playtest`} className="text-mortar underline">
             Dial in
           </Link>

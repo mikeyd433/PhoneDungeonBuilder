@@ -2,10 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useDelve } from '@/features/graph/store'
 import { audioTargets, matchFile, type AudioTarget } from '@/features/audio/targets'
-import { IVR_EXT, IVR_MIME, toIvrWav } from '@/features/audio/ivrWav'
-import { audioPath, removeAudio, uploadAudio } from '@/features/audio/storage'
-import { nextStatus } from '@/features/audio/status'
-import * as api from '@/lib/api'
+import { useTakeWriter } from '@/features/audio/useTakeWriter'
 import { formatDuration } from '@/lib/speech'
 import { canRecord } from '@/types/domain'
 
@@ -34,13 +31,7 @@ export default function AudioImport() {
   const graph = useDelve((s) => s.graph)
   const role = useDelve((s) => s.role)
   const loadStory = useDelve((s) => s.loadStory)
-  const updateNode = useDelve((s) => s.updateNode)
-  const setLineAudio = useDelve((s) => s.setLineAudio)
-  const editFightRound = useDelve((s) => s.editFightRound)
-  const setItemAudio = useDelve((s) => s.setItemAudio)
-  const updateChoice = useDelve((s) => s.updateChoice)
-  const updateStory = useDelve((s) => s.updateStory)
-  const refresh = useDelve((s) => s.refresh)
+  const { save } = useTakeWriter()
 
   const [rows, setRows] = useState<Row[]>([])
   const [running, setRunning] = useState(false)
@@ -65,72 +56,17 @@ export default function AudioImport() {
     )
   }
 
-  /** Where a matched take actually gets written. */
-  const assign = async (target: AudioTarget, path: string, durationMs: number) => {
-    const ref = target.ref
-    switch (ref.kind) {
-      case 'room': {
-        const node = graph.nodes.get(ref.nodeId)
-        await updateNode(ref.nodeId, {
-          audio_path: path,
-          audio_duration_ms: durationMs,
-          status: nextStatus(node?.status ?? 'stub', true, Boolean(node?.narration)),
-        })
-        return
-      }
-      case 'line':
-        await setLineAudio(ref.lineId, path, durationMs)
-        return
-      case 'fight round':
-        await editFightRound(ref.roundId, { audio_path: path, audio_duration_ms: durationMs })
-        return
-      case 'item':
-        await setItemAudio(ref.varId, path, durationMs)
-        return
-      case 'inventory':
-        await updateStory(
-          ref.slot === 'intro'
-            ? { inventory_intro_audio_path: path, inventory_intro_audio_duration_ms: durationMs }
-            : { inventory_empty_audio_path: path, inventory_empty_audio_duration_ms: durationMs },
-        )
-        return
-      case 'reaction':
-        await updateChoice(ref.choiceId, {
-          audio_path: path,
-          audio_duration_ms: durationMs,
-        })
-        return
-      case 'refusal':
-        // Gates have no store action of their own; the graph is re-read after
-        // the run rather than patched a row at a time.
-        await api.upsertGate(graph.story.id, ref.choiceId, {
-          fail_audio_path: path,
-          fail_audio_duration_ms: durationMs,
-        })
-        return
-    }
-  }
-
   const run = async () => {
     setRunning(true)
-    let touchedGate = false
     for (const [i, row] of rows.entries()) {
       if (!row.target) continue
       setRows((r) => r.map((x, j) => (i === j ? { ...x, state: 'working' } : x)))
       try {
-        const wav = await toIvrWav(row.file)
-        const previous = row.target.currentPath
-        const path = audioPath(graph.story.id, row.target.file, IVR_EXT)
-        await uploadAudio(path, wav.blob, IVR_MIME)
-        await assign(row.target, path, wav.durationMs)
-        if (row.target.ref.kind === 'refusal') touchedGate = true
-        // Only once the new take is in place, so a failure can never leave the
-        // slot pointing at a file that is gone.
-        if (previous) await removeAudio(previous)
+        // Convert, upload, write back, clear the old file — the same four steps
+        // the recording queue runs, from the same place.
+        const durationMs = await save(row.target, row.file)
         setRows((r) =>
-          r.map((x, j) =>
-            i === j ? { ...x, state: 'done', note: formatDuration(wav.durationMs) } : x,
-          ),
+          r.map((x, j) => (i === j ? { ...x, state: 'done', note: formatDuration(durationMs) } : x)),
         )
       } catch (e) {
         setRows((r) =>
@@ -142,7 +78,6 @@ export default function AudioImport() {
         )
       }
     }
-    if (touchedGate) await refresh()
     setRunning(false)
   }
 
