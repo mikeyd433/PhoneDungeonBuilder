@@ -27,6 +27,7 @@ import {
 } from './liquid'
 import { consumePlan } from '@/features/state/consume'
 import { hidesDoor, variantProblems, variantsOf } from '@/features/room/variants'
+import { doorForKey, doorsByDigit, keyConflicts } from '@/features/room/keys'
 
 /**
  * Compile a story into a Twilio Studio widget graph (§6.2, §6.5, §6.7).
@@ -661,7 +662,41 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
     // ---- gather
     /** One per digit, for the split that follows the gather. */
     const keyTransitions: Transition[] = []
+
+    /**
+     * Doors grouped by the key that reaches them.
+     *
+     * A room with readings may have TWO doors on one digit — a different door
+     * per state, which is the whole point of 0019 dropping the unique index.
+     * That means two things here: their widgets need names that do not collide
+     * (error 81022's second cause), and the digit needs one transition that
+     * picks between them rather than two that both claim to match.
+     */
+    const byDigit = doorsByDigit(graph, node.id)
+    /** `2`, then `2b`, `2c` — so `CELL_d2_gate` keeps the name it always had. */
+    const keyOf = (choice: (typeof outgoing)[number]) => {
+      const group = byDigit.get(choice.digit) ?? []
+      const i = group.findIndex((c) => c.id === choice.id)
+      return i <= 0
+        ? digitToken(choice.digit)
+        : `${digitToken(choice.digit)}${String.fromCharCode(96 + i + 1)}`
+    }
+    /** Where each door's chain begins, once it is built. */
+    const destOf = new Map<string, string | null>()
+
+    for (const conflict of keyConflicts(graph, node.id)) {
+      const where =
+        conflict.slot === null
+          ? 'the room as written'
+          : `reading ${variants.findIndex((v) => v.id === conflict.slot) + 1}`
+      warnings.push(
+        `${slug} offers ${conflict.choiceIds.length} doors on digit ${conflict.digit} in ${where}. Only the first is reachable — hide the others in that state.`,
+      )
+    }
+
     for (const choice of outgoing) {
+      const dkey = keyOf(choice)
+      const sharesKey = (byDigit.get(choice.digit)?.length ?? 0) > 1
       const gate = gateByChoice.get(choice.id)
       const fx = effectsFor((e) => e.choice_id === choice.id)
       const target = choice.to_node_id ? graph.nodes.get(choice.to_node_id) : null
@@ -689,7 +724,7 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
       const reactParts = reactionPlaybackFor(graph, choice.id)
       const reactRecorded = reactParts.filter((p) => p.audioPath)
       const reactName = (i: number) =>
-        `${slug}_d${digitToken(choice.digit)}_react${i === 0 ? '' : `_line${i + 1}`}`
+        `${slug}_d${dkey}_react${i === 0 ? '' : `_line${i + 1}`}`
 
       // Built back to front so each widget already knows where the next one is,
       // and the first of them becomes what the digit points at.
@@ -730,7 +765,7 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
           Boolean([...graph.stateVars.values()].find((v) => v.slug === s)?.is_consumable),
         )
         if (plan.slugs.length > 0) {
-          const spendName = `${slug}_d${digitToken(choice.digit)}_spend`
+          const spendName = `${slug}_d${dkey}_spend`
           widgets.push({
             name: spendName,
             type: 'set-variables',
@@ -762,7 +797,7 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
       // Choice effects: one widget, only if there is something to do (§6.2 —
       // "Don't pay widgets for nothing").
       if (fx.length > 0) {
-        const fxName = `${slug}_d${digitToken(choice.digit)}_fx`
+        const fxName = `${slug}_d${dkey}_fx`
         widgets.push({
           name: fxName,
           type: 'set-variables',
@@ -775,10 +810,10 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
       }
 
       if (gate && gate.fail_behavior !== 'hide') {
-        const splitName = `${slug}_d${digitToken(choice.digit)}_gate`
+        const splitName = `${slug}_d${dkey}_gate`
         // Named separately from `failNext`, which may be null when a divert
         // lands on an unrecorded ending — a widget's own name never can be.
-        const refuseName = `${slug}_d${digitToken(choice.digit)}_refuse`
+        const refuseName = `${slug}_d${dkey}_refuse`
         const failNext: string | null =
           gate.fail_behavior === 'divert'
             ? gate.fail_node_id
@@ -842,7 +877,10 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
        * door is also the one that announces it, so the caller is never left
        * guessing at a key that works but was never mentioned.
        */
-      const hiddenIn = hidesDoor(graph, choice.id)
+      // A door sharing its key is selected by the digit's own split below,
+      // which already knows which state gets which door — a second split per
+      // door would ask the same question twice and answer it identically.
+      const hiddenIn = sharesKey ? [] : hidesDoor(graph, choice.id)
       if (hiddenIn.length > 0 && variants.length > 0) {
         const shownIn = [null, ...variants.map((v) => v.id)]
           .map((id, i) => ({ id, number: i }))
@@ -856,7 +894,7 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
           )
         }
 
-        const showName = `${slug}_d${digitToken(choice.digit)}_shown`
+        const showName = `${slug}_d${dkey}_shown`
         widgets.push({
           name: showName,
           type: 'split-based-on',
@@ -887,11 +925,62 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
         )
       }
 
+      destOf.set(choice.id, dest)
+    }
+
+    // ---- one transition per KEY, not per door
+    for (const [digit, doors] of byDigit) {
+      if (doors.length === 1) {
+        keyTransitions.push({
+          event: 'match',
+          condition: `Digits equals ${digit}`,
+          match: { type: 'equal_to', value: digit },
+          next: destOf.get(doors[0].id) ?? wname(slug, 'gather'),
+        })
+        continue
+      }
+
+      /**
+       * One key, several doors — which one depends on the state the caller
+       * arrived in, and that number is already in a flow variable.
+       *
+       * Two `Digits equals 2` transitions off the gather's split would have
+       * Studio take the first and never reach the second, silently. This is the
+       * same shape as the per-door `_shown` split, asking a better question:
+       * not "is this door here" but "which door is this".
+       */
+      const pickName = `${slug}_d${digitToken(digit)}_pick`
+      const slots = [null, ...variants.map((v) => v.id)]
+      const arms = slots
+        .map((slot, number) => ({ slot, number, door: doorForKey(graph, node.id, digit, slot) }))
+        .filter((a) => a.door)
       keyTransitions.push({
         event: 'match',
-        condition: `Digits equals ${choice.digit}`,
-        match: { type: 'equal_to', value: choice.digit },
-        next: dest,
+        condition: `Digits equals ${digit}`,
+        match: { type: 'equal_to', value: digit },
+        next: arms.length > 0 ? pickName : wname(slug, 'gather'),
+      })
+      if (arms.length === 0) {
+        warnings.push(
+          `${slug} has ${doors.length} doors on digit ${digit} and no state offers any of them, so the key does nothing.`,
+        )
+        continue
+      }
+      widgets.push({
+        name: pickName,
+        type: 'split-based-on',
+        nodeId: node.id,
+        note: `Digit ${digit} is ${doors.length} different doors; which one depends on the reading (0 = the room as written).`,
+        splitOn: `{{flow.variables.${readingVarName(slug)}}}`,
+        transitions: [
+          ...arms.map((a) => ({
+            event: 'match',
+            condition: `Equal To ${a.number}`,
+            match: { type: 'equal_to' as const, value: String(a.number) },
+            next: destOf.get(a.door!.id) ?? wname(slug, 'gather'),
+          })),
+          { event: 'noMatch', next: wname(slug, 'gather') },
+        ],
       })
     }
 

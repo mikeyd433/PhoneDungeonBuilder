@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { useDelve } from '@/features/graph/store'
 import * as api from '@/lib/api'
 import { buildRoomView, type ExitView } from '@/features/room/roomModel'
+import { slotsToHideNewDoor } from '@/features/room/keys'
 import RoomStage from '@/features/room/RoomStage'
 import ReactionSheet from '@/features/room/ReactionSheet'
 import ReactionGate from '@/features/room/ReactionGate'
@@ -141,13 +142,14 @@ export default function Room() {
 
   /** Point a door at an existing room, making the door first if need be. */
   const openWiring = async (digit: string) => {
-    const existing = (derived.children.get(currentNodeId) ?? []).find((c) => c.digit === digit)
-    if (existing) return setWiring(existing.id)
-    await useDelve.getState().addChoice(currentNodeId, digit as ExitView['digit'])
-    const made = (useDelve.getState().derived?.children.get(currentNodeId) ?? []).find(
-      (c) => c.digit === digit,
-    )
-    if (made) setWiring(made.id)
+    // Only a door THIS state offers counts as already there: a key whose door
+    // is hidden here is free here, and wiring it makes a second one.
+    const existing = view.exits
+      .concat(view.overflowExits)
+      .find((e) => e.digit === digit && e.choiceId)
+    if (existing?.choiceId) return setWiring(existing.choiceId)
+    const made = await makeDoor(digit as ExitView['digit'])
+    if (made) setWiring(made)
   }
 
   const onChisel = async (exit: ExitView) => {
@@ -156,10 +158,40 @@ export default function Room() {
       return
     }
     // An empty wall slot: make the archway, then chisel through it.
-    await useDelve.getState().addChoice(currentNodeId, exit.digit)
+    const made = await makeDoor(exit.digit)
+    if (made) await createChildNode(made)
+  }
+
+  /**
+   * Put a door on a key, and make it belong to the state you are standing in.
+   *
+   * A key free in THIS state may already carry a door in another one — that is
+   * how "press 2 means something different with the crowbar" gets built. The
+   * new door is therefore hidden everywhere except here, because the other
+   * states already have their answer for that key and a second visible door
+   * would make only the first reachable.
+   *
+   * A key free everywhere gets no rows at all, which is the ordinary case and
+   * has to stay "offered in every state".
+   */
+  const makeDoor = async (digit: ExitView['digit']): Promise<string | null> => {
+    const before = new Set((derived.children.get(currentNodeId) ?? []).map((c) => c.id))
+    const hideIn = slotsToHideNewDoor(graph, currentNodeId, digit, viewingState)
+    await useDelve.getState().addChoice(currentNodeId, digit)
     const fresh = useDelve.getState().derived?.children.get(currentNodeId) ?? []
-    const created = fresh.find((c) => c.digit === exit.digit)
-    if (created) await createChildNode(created.id)
+    const created = fresh.find((c) => c.digit === digit && !before.has(c.id))
+    if (!created) return null
+    if (hideIn.length > 0) {
+      try {
+        for (const slot of hideIn) {
+          await api.setDoorHidden(graph.story.id, created.id, slot, true)
+        }
+        await useDelve.getState().refresh()
+      } catch (e) {
+        setDoorError(errorText(e))
+      }
+    }
+    return created.id
   }
 
   return (
@@ -440,7 +472,7 @@ export default function Room() {
         />
       )}
 
-      {editing && <EditorSheet nodeId={currentNodeId} onClose={() => setEditing(false)} />}
+      {editing && <EditorSheet nodeId={currentNodeId} viewing={viewingState} onClose={() => setEditing(false)} />}
     </main>
   )
 }

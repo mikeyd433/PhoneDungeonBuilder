@@ -13,6 +13,7 @@ import type {
 import { buildFightView, type FightView } from '@/features/fight/model'
 import { linesFor, reactionPlaybackFor } from '@/features/cast/dialogue'
 import { allReadings, alwaysHidden, doorShows, hidesDoor, variantsOf } from './variants'
+import { doorsByDigit, keyConflicts } from './keys'
 import { shortCondition } from '@/features/state/describe'
 import { MAX_WALL_ARCHES } from './vector/geometry'
 
@@ -65,6 +66,12 @@ export interface ExitView {
   hiddenIn: number
   /** Hidden under every reading there is: a key that does nothing, on any call. */
   neverShown: boolean
+  /** This key opens a different door in some other state — so the digit on the
+   *  lintel is not the whole story about what pressing it does. */
+  sharesKey: boolean
+  /** Two doors on this key are offered to the SAME caller, and only the first
+   *  is reachable. A story bug, drawn as one. */
+  keyClash: boolean
 }
 
 export interface RoomView {
@@ -246,6 +253,9 @@ export function buildRoomView(
     return { grants, revokes }
   }
 
+  const byDigit = doorsByDigit(graph, nodeId)
+  const clashing = new Set(keyConflicts(graph, nodeId).flatMap((c) => c.choiceIds))
+
   const gateByChoice = new Map<string, Gate>()
   for (const gate of graph.gates.values()) gateByChoice.set(gate.choice_id, gate)
 
@@ -273,6 +283,8 @@ export function buildRoomView(
       reaction: reactionState(graph, choice.id),
       hiddenIn: hidesDoor(graph, choice.id).length,
       neverShown: alwaysHidden(graph, nodeId, choice.id),
+      sharesKey: (byDigit.get(choice.digit)?.length ?? 0) > 1,
+      keyClash: clashing.has(choice.id),
     }
   }
 
@@ -299,10 +311,16 @@ export function buildRoomView(
   // A fight room gets none: its way onward is won, not chosen, so offering a
   // bricked arch there would invite the author to build a door the caller never
   // sees. Nor does an ending.
-  // Read off EVERY door, not the ones this state shows. A door hidden in the
-  // state being viewed still owns its digit, and offering that digit for a new
-  // one would build two doors on the same key.
-  const usedDigits = new Set(all.map((c) => c.digit))
+  /**
+   * Which keys are spoken for.
+   *
+   * In the authoring view that is every door, because a new door there belongs
+   * to no state and would collide with whatever is already on the key. Standing
+   * in ONE state it is only the doors that state offers — a key whose door is
+   * hidden here is free here, and chiselling through it is exactly how a second
+   * door on one digit gets made.
+   */
+  const usedDigits = new Set((at === 'all' ? all : outgoing).map((c) => c.digit))
   const isEnding = node.node_type === 'ending'
   if (!isEnding && !fight) {
     let nextDigit = 1
@@ -324,6 +342,8 @@ export function buildRoomView(
         reaction: 'none',
         hiddenIn: 0,
         neverShown: false,
+        sharesKey: false,
+        keyClash: false,
       })
       }
     }
@@ -411,17 +431,37 @@ export function buildRoomView(
     endingWithExits: isEnding && outgoing.length > 0,
     fight,
     fightWithExits: Boolean(fight) && outgoing.length > 0,
-    lines: linesFor(graph, nodeId).map((l) => {
-      const character = l.character_id ? graph.characters.get(l.character_id) : null
-      return {
-        id: l.id,
-        speaker: character?.name ?? null,
-        // Unattributed lines take the parchment default, so the colour always
-        // means "this particular person", never "this is dialogue".
-        color: character?.color ?? 'parchment',
-        text: l.text,
-      }
-    }),
+    /**
+     * What is written on the floor of the room being stood in.
+     *
+     * Standing in a state that has its own reading, that reading IS the room's
+     * script — it replaces the narration rather than adding to it, so showing
+     * the room's own lines underneath would be showing words this caller never
+     * hears. One unattributed line, because a reading is one take and cannot be
+     * split between speakers.
+     */
+    lines: shownReading
+      ? shownReading.narration.trim()
+        ? [
+            {
+              id: shownReading.id,
+              speaker: null,
+              color: 'parchment',
+              text: shownReading.narration,
+            },
+          ]
+        : []
+      : linesFor(graph, nodeId).map((l) => {
+          const character = l.character_id ? graph.characters.get(l.character_id) : null
+          return {
+            id: l.id,
+            speaker: character?.name ?? null,
+            // Unattributed lines take the parchment default, so the colour
+            // always means "this particular person", never "this is dialogue".
+            color: character?.color ?? 'parchment',
+            text: l.text,
+          }
+        }),
   }
 }
 

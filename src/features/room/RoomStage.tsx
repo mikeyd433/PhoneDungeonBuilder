@@ -59,6 +59,8 @@ export default function RoomStage({
 }: RoomStageProps) {
   const { node } = view
   const [peek, setPeek] = useState(false)
+  /** Whether the state plate's menu is open. */
+  const [pickingState, setPickingState] = useState(false)
 
   // §3: lighting the torch is the reward for recording a node, and that
   // transition gets a half-second flare. Fires only on the dark -> lit edge, not
@@ -116,48 +118,63 @@ export default function RoomStage({
 
   return (
     <div
-      key={node.id}
+      key={`${node.id}:${String(view.viewing)}`}
       className="delve-enter flex min-h-0 flex-1 flex-col"
       onTouchStart={onTouchStart}
       /* F1.4 — swipe right retreats. */
       onTouchEnd={swipeHandler(undefined, onRetreat)}
     >
       {/* Stand in the room as one kind of caller.
-          A room that reads two ways has two sets of doors, and looking at both
-          at once is how you author it but not how anyone experiences it. Pick a
-          state and the wall becomes that state's wall — which is also what
-          makes the doors editable one state at a time. */}
-      {view.states.length > 0 && onViewState && (
-        <div className="flex flex-wrap items-center gap-1 px-4 pt-2">
-          <span className="mr-1 text-xs uppercase tracking-wider text-mortar">Standing here</span>
-          {view.states.map((s) => (
+
+          A plate on the wall rather than a row of tabs above it, and switching
+          re-keys the whole room so it slides in the way walking into one does —
+          the point is that this IS a different room to the caller it belongs
+          to, not the same room with a note stuck on top. */}
+      <div className="relative">
+        {view.states.length > 0 && onViewState && (
+          <>
             <button
-              key={String(s.id)}
               type="button"
-              title={s.hint}
-              aria-pressed={view.viewing === s.id}
-              onClick={() => onViewState(s.id)}
-              className={[
-                'rounded border px-2 py-1 text-xs',
-                view.viewing === s.id ? 'border-torch text-torch' : 'border-mortar/50 text-mortar',
-              ].join(' ')}
+              onClick={() => setPickingState((v) => !v)}
+              aria-expanded={pickingState}
+              aria-label="Which caller you are standing here as"
+              title="Which caller you are standing here as"
+              className="absolute left-3 top-3 z-20 rounded border border-torch/70 bg-depth/90 px-2 py-1 font-carved text-xs text-torch shadow-lg"
             >
-              {s.label}
+              {view.states.find((s) => s.id === view.viewing)?.label ?? 'Every state'} ▾
             </button>
-          ))}
-        </div>
-      )}
-
-      {/* What this caller actually hears, when it is not the room's own words.
-          Shown because everything else on screen has changed to match it, and a
-          wall with different doors and no explanation reads as a bug. */}
-      {view.readingText !== null && (
-        <p className="mx-4 mt-2 rounded border border-torch/40 bg-torch/5 px-3 py-2 text-xs text-parchment">
-          {view.readingText.trim() || <span className="text-cold">(this reading has no words — the caller hears nothing here)</span>}
-        </p>
-      )}
-
-      <DungeonRoom view={view} flare={flare} onExit={handleExit} peek={peek} />
+            {pickingState && (
+              <>
+                {/* Tapping the room closes it, the way any menu should. */}
+                <div className="fixed inset-0 z-20" onClick={() => setPickingState(false)} />
+                <ul className="absolute left-3 top-12 z-30 flex w-60 flex-col overflow-hidden rounded border border-mortar bg-depth shadow-2xl">
+                  {view.states.map((s) => (
+                    <li key={String(s.id)}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onViewState(s.id)
+                          setPickingState(false)
+                        }}
+                        className={[
+                          'w-full border-b border-mortar/20 px-3 py-2 text-left text-xs',
+                          view.viewing === s.id
+                            ? 'bg-torch/10 text-torch'
+                            : 'text-mortar hover:bg-stone',
+                        ].join(' ')}
+                      >
+                        <span className="block">{s.label}</span>
+                        <span className="block text-cold">{s.hint}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </>
+        )}
+        <DungeonRoom view={view} flare={flare} onExit={handleExit} peek={peek} />
+      </div>
 
       {/* Where the doors go. The narration sometimes says so and sometimes
           doesn't, and the arch itself only ever carried the digit — so without
@@ -231,15 +248,25 @@ export default function RoomStage({
                     flagged outright when no reading offers it at all. */}
                 <span
                   title={
-                    exit.neverShown
-                      ? 'Hidden under every reading — no caller is ever offered this'
-                      : exit.hiddenIn > 0
-                        ? `Not offered under ${exit.hiddenIn} of this room's readings`
-                        : undefined
+                    exit.keyClash
+                      ? 'Two doors on this key are offered to the same caller — only the first is reachable'
+                      : exit.neverShown
+                        ? 'Hidden under every reading — no caller is ever offered this'
+                        : exit.sharesKey
+                          ? 'This key opens a different door in another state'
+                          : exit.hiddenIn > 0
+                            ? `Not offered under ${exit.hiddenIn} of this room's readings`
+                            : undefined
                   }
                   className={[
                     'w-6 shrink-0 text-center font-carved',
-                    exit.neverShown ? 'text-grave line-through' : exit.hiddenIn > 0 ? 'text-mortar' : 'text-torch',
+                    exit.keyClash
+                      ? 'text-grave'
+                      : exit.neverShown
+                        ? 'text-grave line-through'
+                        : exit.hiddenIn > 0
+                          ? 'text-mortar'
+                          : 'text-torch',
                   ].join(' ')}
                 >
                   {exit.digit}

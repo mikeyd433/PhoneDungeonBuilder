@@ -81,14 +81,22 @@ describe('standing in one state', () => {
   })
 
   /**
-   * A hidden door still owns its digit. Offering it for a new door would build
-   * two on the same key — which the digit picker forbids and this would slip
-   * straight past.
+   * A key whose door is hidden HERE is free here.
+   *
+   * This asserted the opposite until two doors on one key became a feature:
+   * chiselling through a blank arch in a state where that key has no door is
+   * exactly how the second door gets made. In the authoring view, where a new
+   * door belongs to no state, the key stays taken.
    */
-  it('never offers a blank arch on a digit a hidden door already uses', () => {
-    const { g } = cell()
-    const blank = view(g, null).exits.find((e) => !e.choiceId)
-    expect(blank?.digit).not.toBe('2')
+  it('offers a key free in this state, and not in the authoring view', () => {
+    const g = makeGraph(['CELL', 'HALL', 'GRATE'], ['CELL>HALL', 'CELL>GRATE'])
+    addVar(g, 'LAMP', { name: 'the lamp' })
+    const lit = addReading(g, 'CELL', { op: 'has', var: 'LAMP' })
+    hideDoor(g, choiceOf(g, 'CELL', 'GRATE'), lit.id)
+    const blank = (at: string | null | 'all') =>
+      buildRoomView(g, deriveGraph(g), idOf(g, 'CELL'), at)!.exits.find((e) => !e.choiceId)?.digit
+    expect(blank(lit.id)).toBe('2')
+    expect(blank('all')).toBe('3')
   })
 
   it('falls back to every state when the reading it was showing is deleted', () => {
