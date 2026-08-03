@@ -1,19 +1,33 @@
+import { lazy, Suspense } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { useSession } from '@/features/auth/useSession'
 import Login from '@/routes/Login'
 import Stories from '@/routes/Stories'
 import Room from '@/routes/Room'
-import Ledger from '@/routes/Ledger'
-import Import from '@/routes/Import'
-import Preview from '@/routes/Preview'
-import MapScreen from '@/routes/Map'
-import Playtest from '@/routes/Playtest'
-import Export from '@/routes/Export'
-import Cast from '@/routes/Cast'
-import AudioImport from '@/routes/AudioImport'
-import Record from '@/routes/Record'
-import Tidy from '@/routes/Tidy'
 import VersionBadge from '@/features/app/VersionBadge'
+
+/**
+ * Everything but the two screens you arrive on is fetched when you go there.
+ *
+ * Eagerly, this was one 2 MB bundle: the export compiler, the state solver, the
+ * CSV importer and the whole recording queue downloaded before the first room
+ * could render. On the target device order — tablet, then phone — that is the
+ * difference between the app opening and the app appearing to hang, and it also
+ * put the bundle over the service worker's precache ceiling, which failed the
+ * build outright.
+ *
+ * Room and Stories stay eager because they are where you land.
+ */
+const Ledger = lazy(() => import('@/routes/Ledger'))
+const Import = lazy(() => import('@/routes/Import'))
+const Preview = lazy(() => import('@/routes/Preview'))
+const MapScreen = lazy(() => import('@/routes/Map'))
+const Playtest = lazy(() => import('@/routes/Playtest'))
+const Export = lazy(() => import('@/routes/Export'))
+const Cast = lazy(() => import('@/routes/Cast'))
+const AudioImport = lazy(() => import('@/routes/AudioImport'))
+const Record = lazy(() => import('@/routes/Record'))
+const Tidy = lazy(() => import('@/routes/Tidy'))
 
 export default function App() {
   const { session, ready } = useSession()
@@ -46,9 +60,12 @@ export default function App() {
 
   return (
     <>
-      {screen()}
-      {/* Outside the routes: the sign-in screen is exactly where you most need
-          to know whether a deploy has landed. */}
+      {/* One boundary around everything, rather than one per route: a chunk
+          arriving is a fraction of a second on any connection that loaded the
+          shell, and a spinner per screen would flash more than it informed. */}
+      <Suspense fallback={<p className="p-6 text-mortar">…</p>}>{screen()}</Suspense>
+      {/* Outside the routes and outside the boundary: the sign-in screen is
+          exactly where you most need to know whether a deploy has landed. */}
       <VersionBadge />
     </>
   )

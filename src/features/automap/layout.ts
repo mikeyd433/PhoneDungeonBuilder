@@ -1,4 +1,4 @@
-import ELK, { type ElkNode, type ElkExtendedEdge } from 'elkjs/lib/elk.bundled.js'
+import type { ElkNode, ElkExtendedEdge } from 'elkjs/lib/elk.bundled.js'
 import type { DerivedGraph, StoryGraph } from '@/types/domain'
 import { graphEdges } from '@/features/graph/edges'
 import { isFullyRecorded, linesOf } from '@/features/cast/dialogue'
@@ -73,7 +73,24 @@ export interface MapLayout {
   height: number
 }
 
-const elk = new ELK()
+/**
+ * elkjs is fetched the first time a map is laid out, not on page load.
+ *
+ * It is by far the largest thing this app depends on — bundled eagerly it took
+ * the whole app past 2 MB, which is both a slow first room on a phone and, more
+ * bluntly, over the service worker's precache ceiling, so the build refused to
+ * finish. Nothing needs a layout until something draws a map.
+ *
+ * The promise is kept, not the instance: two rooms mounting at once must not
+ * start two downloads of the same megabyte.
+ */
+let elkPromise: Promise<{ layout: (g: ElkNode) => Promise<ElkNode> }> | null = null
+const getElk = () => {
+  if (!elkPromise) {
+    elkPromise = import('elkjs/lib/elk.bundled.js').then((m) => new m.default())
+  }
+  return elkPromise
+}
 
 export async function layoutAutomap(
   graph: StoryGraph,
@@ -99,6 +116,7 @@ export async function layoutAutomap(
       targets: [e.to_node_id!],
     }))
 
+  const elk = await getElk()
   const result = await elk.layout({
     id: 'root',
     layoutOptions: {
