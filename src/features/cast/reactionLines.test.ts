@@ -5,7 +5,7 @@ import { deriveGraph } from '@/features/graph/derived'
 import { compileStory } from '@/features/export/compile'
 import { audioTargets, matchFile } from '@/features/audio/targets'
 import { PlaytestEngine } from '@/features/playtest/engine'
-import { addCharacter, addReactionLines, choiceOf, idOf, makeGraph } from '@/test/factory'
+import { addCharacter, addReactionLines, choiceOf, idOf, makeGraph, words } from '@/test/factory'
 import type { StoryGraph } from '@/types/domain'
 
 const BASE = 'https://audio.example/'
@@ -144,9 +144,9 @@ describe('a split reaction elsewhere in the app', () => {
     const { g } = doorway({ recorded: true })
     const engine = new PlaytestEngine(g)
     const start = engine.start()
-    const { spoken } = engine.press(start, '1')
-    expect(spoken).toContain('Carter: don’t touch it.')
-    expect(spoken).toContain('Mike: too late.')
+    const { heard } = engine.press(start, '1')
+    expect(words(heard)).toContain('Carter: don’t touch it.')
+    expect(words(heard)).toContain('Mike: too late.')
   })
 
   it('flags the unrecorded half rather than reading it as though it ships', () => {
@@ -154,10 +154,14 @@ describe('a split reaction elsewhere in the app', () => {
     const lines = linesOf(g, { choiceId: id })
     g.dialogue.set(lines[0].id, { ...lines[0], audio_path: 'audio/carter.mp3' })
     const engine = new PlaytestEngine(g)
-    const { spoken } = engine.press(engine.start(), '1')
-    // Carter has been read; Mike has not, and on the phone that half is silence.
-    expect(spoken).toContain('Carter: don’t touch it.\n')
-    expect(spoken).toContain('Mike: too late. (no recording')
+    const { heard } = engine.press(engine.start(), '1')
+    // Carter has been read; Mike has not, and on the phone that half is
+    // silence. Asserted as the missing TAKE rather than as the sentence the
+    // screen prints about it — the engine's job is which parts are heard and
+    // whether each has a recording, and the wording moved out with it.
+    expect(words(heard)).toContain('Carter: don’t touch it.')
+    const mike = heard.find((p) => p.say.includes('too late'))
+    expect(mike?.audioPath).toBeNull()
   })
 
   /** The door's icon is red until every part of it has been read. */

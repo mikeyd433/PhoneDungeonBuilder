@@ -5,7 +5,7 @@ import { PlaytestEngine } from '@/features/playtest/engine'
 import { deriveGraph } from '@/features/graph/derived'
 import { solve } from '@/features/state/solver'
 import { toSolverInput } from '@/features/state/toSolverInput'
-import { addVar, choiceOf, idOf, makeGraph } from '@/test/factory'
+import { addVar, choiceOf, idOf, makeGraph, wordsOf } from '@/test/factory'
 import { describeExpression } from '@/features/state/describe'
 import { buildVarIndex, emptyState, type CallerState } from '@/features/state/expression'
 import type { Gate, StoryGraph } from '@/types/domain'
@@ -93,9 +93,9 @@ describe('the caller', () => {
     g.choices.get(door)!.audio_path = 'react.wav'
     const engine = new PlaytestEngine(g)
     const start = engine.start()
-    expect(engine.press(start, '1').spoken).toContain('Mike holds it out.')
+    expect(wordsOf(engine.press(start, '1'))).toContain('Mike holds it out.')
     const armed = { ...start, caller: holding(g, 'HELMET') }
-    expect(engine.press(armed, '1').spoken).toContain('Mike holds it out.')
+    expect(wordsOf(engine.press(armed, '1'))).toContain('Mike holds it out.')
   })
 })
 

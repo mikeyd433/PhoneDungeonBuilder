@@ -349,3 +349,18 @@ export function choiceOf(graph: StoryGraph, from: string, to: string): string {
   }
   throw new Error(`no choice ${from}>${to}`)
 }
+
+/**
+ * What a list of playback parts says, as one string.
+ *
+ * The playtest engine returns what the caller HEARS — parts, with a take or
+ * without — and the screen turns that into transcript lines. These two say the
+ * same thing for a test, so an assertion can be about the words without
+ * caring which shape they arrived in.
+ */
+export const words = (parts: Array<{ say: string; speaker: string | null }>) =>
+  parts.map((p) => (p.speaker ? `${p.speaker}: ${p.say}` : p.say)).join('\n')
+
+/** The same, for a whole turn. */
+export const wordsOf = (turn: { heard: Array<{ say: string; speaker: string | null }> }) =>
+  words(turn.heard)

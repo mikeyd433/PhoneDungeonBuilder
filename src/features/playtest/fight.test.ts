@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addFight, idOf, makeGraph, setOutcome } from '@/test/factory'
+import { addFight, idOf, makeGraph, setOutcome, words, wordsOf } from '@/test/factory'
 import { PlaytestEngine } from './engine'
 
 /** ENTRANCE → SHARKS (a three-round fight) → SHORE or DROWNED. */
@@ -81,7 +81,7 @@ describe('playtesting a fight', () => {
 
     const first = engine.timeout(state)
     expect(first.next.nodeId).toBe(idOf(g, 'SHARKS'))
-    expect(first.spoken).toContain('Kick')
+    expect(wordsOf(first)).toContain('Kick')
     state = first.next
 
     state = engine.timeout(state).next
@@ -135,8 +135,8 @@ describe('playtesting a fight', () => {
     const g = makeGraph(['A', 'B'], ['A>B'])
     addFight(g, 'B', { moves: ['PUNCH beats Kick'], rounds: ['Kick'] })
     const engine = new PlaytestEngine(g)
-    const { next, spoken } = engine.press(atTheFight(engine), '1')
-    expect(spoken).toContain('unwritten')
+    const { next, heard } = engine.press(atTheFight(engine), '1')
+    expect(words(heard)).toContain('unwritten')
     expect(next.nodeId).toBe(idOf(g, 'B'))
   })
 })
@@ -169,9 +169,9 @@ describe('the reserved inventory key', () => {
     rope(g, true)
     const engine = new PlaytestEngine(g)
     const start = engine.start()
-    const { next, spoken } = engine.press(start, '*')
+    const { next, heard } = engine.press(start, '*')
     expect(next.nodeId).toBe(start.nodeId)
-    expect(spoken).toMatch(/carrying nothing/i)
+    expect(words(heard)).toMatch(/carrying nothing/i)
   })
 
   it('warns that an unrecorded item is silence on the phone', () => {
@@ -181,9 +181,9 @@ describe('the reserved inventory key', () => {
     const state = engine.start()
     // Force the item into the satchel rather than walking a route to it.
     const carrying = { ...state, caller: { ...state.caller, mask: 1 } }
-    const { spoken } = engine.press(carrying, '*')
-    expect(spoken).toMatch(/a coil of rope/)
-    expect(spoken).toMatch(/no recording/i)
+    const { heard } = engine.press(carrying, '*')
+    expect(words(heard)).toMatch(/a coil of rope/)
+    expect(words(heard)).toMatch(/no recording/i)
   })
 
   it('leaves the key alone when a room uses it for a door', () => {

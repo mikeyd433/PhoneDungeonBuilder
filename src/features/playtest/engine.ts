@@ -56,6 +56,33 @@ export interface PlaytestState {
   fightSilences: number
 }
 
+/**
+ * Everything the caller hears in one turn, in the order they hear it.
+ *
+ * ONE list, and this is the point of it. The reaction to a keypress, the room
+ * behind the door and the round that follows a fight used to reach the screen
+ * by two different routes: the engine returned a string for the transcript,
+ * and the playtest screen separately watched the current room and played THAT.
+ * They disagreed, and the thing that fell down the crack was the door
+ * reaction — printed in the log and never once played aloud, because the only
+ * branch that spoke it was the branch where the caller had not moved, and
+ * walking through a door always moves you.
+ *
+ * So the engine says what is heard, and the screen plays exactly that. Same
+ * reason `resolveMove` is shared with the exporter: two answers to one
+ * question is a bug waiting for a phone call.
+ */
+export interface Turn {
+  next: PlaytestState
+  heard: PlaybackPart[]
+}
+
+/** Something the caller hears that no take exists for — a note, a refusal
+ *  nobody recorded, the app talking rather than the story. */
+function said(id: string, text: string, speaker: string | null = null): PlaybackPart {
+  return { id, audioPath: null, say: text, speaker }
+}
+
 /** One move the caller can answer a round with, as the keypad hint shows it. */
 export interface FightOption {
   digit: string
@@ -200,7 +227,7 @@ export class PlaytestEngine {
    * Press a digit. Returns the next state plus anything the caller hears on the
    * way — a refusal has narration of its own before they land back here.
    */
-  press(state: PlaytestState, digit: string): { next: PlaytestState; spoken: string | null } {
+  press(state: PlaytestState, digit: string): Turn {
     // The reserved key, before anything else — except mid-fight, where the
     // exported flow doesn't offer it either. A round's keypad belongs to the
     // round, and there is no way back into the middle of one.
@@ -210,7 +237,13 @@ export class PlaytestEngine {
       digit === this.graph.story.inventory_key &&
       !this.offered(state).some((o) => o.choice.digit === digit)
     ) {
-      return { next: state, spoken: this.readback(state) }
+      // The phone puts them back into the room's REPLAY afterwards, so the
+      // rehearsal does too — otherwise checking your pockets leaves you
+      // looking at a keypad with nothing having been said.
+      return {
+        next: state,
+        heard: [said(`${state.nodeId}:readback`, this.readback(state)), ...this.arrival(state)],
+      }
     }
 
     if (state.fightRound !== null) return this.pressInFight(state, digit)
@@ -222,9 +255,15 @@ export class PlaytestEngine {
       const node = this.graph.nodes.get(state.nodeId)
       const target = node?.invalid_target_id
       if (target && this.graph.nodes.has(target)) return this.enter(state, target)
+      // Repeated, not merely refused: the exported gather replays the room on
+      // a wrong key, and a rehearsal that only tutted would hide how long the
+      // caller actually waits.
       return {
         next: { ...state, failedAttempts: state.failedAttempts + 1 },
-        spoken: "That isn't one of the options.",
+        heard: [
+          said(`${state.nodeId}:wrong`, "That isn't one of the options."),
+          ...this.arrival(state),
+        ],
       }
     }
 
@@ -236,10 +275,21 @@ export class PlaytestEngine {
         // disagree about what is heard.
         return this.withReaction(offer.choice.id, this.enter(state, offer.gate.failNodeId))
       }
-      // `refuse` — say why, and stay put.
+      // `refuse` — say why, and stay put. The refusal has a take of its own,
+      // and it is played here: reading it in a robot voice while a recording
+      // existed would rehearse a scene nobody is going to hear.
+      const gate = [...this.graph.gates.values()].find((g) => g.choice_id === offer.choice.id)
+      const why = offer.gate.failNarration?.trim()
       return {
         next: { ...state, failedAttempts: state.failedAttempts + 1 },
-        spoken: offer.gate.failNarration ?? "You can't do that yet.",
+        heard: [
+          {
+            id: `${offer.choice.id}:refuse`,
+            audioPath: gate?.fail_audio_path ?? null,
+            say: why || "You can't do that yet.",
+            speaker: null,
+          },
+        ],
       }
     }
 
@@ -262,7 +312,7 @@ export class PlaytestEngine {
     if (!offer.choice.to_node_id) {
       return {
         next: { ...state, caller, failedAttempts: 0 },
-        spoken: '(This branch is unwritten — nothing happens.)',
+        heard: [said(`${offer.choice.id}:unwritten`, '(This branch is unwritten — nothing happens.)')],
       }
     }
     return this.withReaction(
@@ -279,21 +329,12 @@ export class PlaytestEngine {
    * Written but unrecorded is flagged rather than read out as though it will
    * ship: on the phone that part is silence.
    */
-  private withReaction(
-    choiceId: string,
-    arrival: { next: PlaytestState; spoken: string | null },
-  ): { next: PlaytestState; spoken: string | null } {
-    const reaction = reactionPlaybackFor(this.graph, choiceId)
-      .map((part) => {
-        const said = part.say.trim()
-        if (!said) return ''
-        const who = part.speaker ? `${part.speaker}: ` : ''
-        return `${who}${said}${part.audioPath ? '' : ' (no recording — silence on the phone)'}`
-      })
-      .filter(Boolean)
-      .join('\n')
-    if (!reaction) return arrival
-    return { ...arrival, spoken: [reaction, arrival.spoken].filter(Boolean).join('\n\n') }
+  private withReaction(choiceId: string, arrival: Turn): Turn {
+    const reaction = reactionPlaybackFor(this.graph, choiceId).filter(
+      (part) => part.say.trim() || part.audioPath,
+    )
+    if (reaction.length === 0) return arrival
+    return { ...arrival, heard: [...reaction, ...arrival.heard] }
   }
 
   /**
@@ -305,12 +346,9 @@ export class PlaytestEngine {
    * takes the miss route rather than being rejected: pressing 9 in a fight is an
    * answer, and a fight you can retry until you guess right is not a fight.
    */
-  private pressInFight(
-    state: PlaytestState,
-    digit: string,
-  ): { next: PlaytestState; spoken: string | null } {
+  private pressInFight(state: PlaytestState, digit: string): Turn {
     const view = this.fightAt(state)
-    if (!view || state.fightRound === null) return { next: state, spoken: null }
+    if (!view || state.fightRound === null) return { next: state, heard: [] }
     if (!view.rounds[state.fightRound]) return this.leaveFight(state, view, resolveMiss(view))
 
     const index = Number(digit) - 1
@@ -322,7 +360,14 @@ export class PlaytestEngine {
       const upcoming = view.rounds[outcome.nextRound]
       return {
         next: { ...state, fightRound: outcome.nextRound, failedAttempts: 0, fightSilences: 0 },
-        spoken: upcoming.narration || `${view.fight.opponent_name}: ${upcoming.opponent_move}`,
+        heard: [
+          {
+            id: upcoming.id,
+            audioPath: upcoming.audio_path,
+            say: upcoming.narration || `${view.fight.opponent_name}: ${upcoming.opponent_move}`,
+            speaker: null,
+          },
+        ],
       }
     }
     // `advance` is handled above, so anything reaching here leaves the fight.
@@ -340,12 +385,13 @@ export class PlaytestEngine {
     view: FightView,
     target: string | null,
     via: 'named' | 'win' | 'lose' | 'miss' = 'lose',
-  ): { next: PlaytestState; spoken: string | null } {
+  ): Turn {
     const opponent = view.fight.opponent_name
     // Only the two fallback routes get a line of their own — a named
     // destination is an ordinary room and speaks for itself.
-    const spoken =
+    const call =
       via === 'win' ? `${opponent} goes down.` : via === 'named' ? null : `${opponent} puts you down.`
+    const lead = call ? [said(`${view.fight.id}:${via}`, call)] : []
 
     if (!target || !this.graph.nodes.has(target)) {
       return {
@@ -355,14 +401,20 @@ export class PlaytestEngine {
           fightSilences: 0,
           failedAttempts: state.failedAttempts + 1,
         },
-        spoken: `${spoken ?? 'That answer'} (Nowhere is set for this answer — the branch is unwritten.)`,
+        heard: [
+          said(
+            `${view.fight.id}:${via}:unwritten`,
+            `${call ?? 'That answer.'} (Nowhere is set for this answer — the branch is unwritten.)`,
+          ),
+        ],
       }
     }
-    return { next: this.enter(state, target).next, spoken }
+    const arrival = this.enter(state, target)
+    return { ...arrival, heard: [...lead, ...arrival.heard] }
   }
 
   /** F5.4 — the caller said nothing in time. */
-  timeout(state: PlaytestState): { next: PlaytestState; spoken: string | null } {
+  timeout(state: PlaytestState): Turn {
     // Silence in a fight repeats the round a few times before the fight is
     // called. Callers hesitate and mishear, and a round that killed you on the
     // first pause would be unplayable — but a round that repeated forever could
@@ -373,9 +425,10 @@ export class PlaytestEngine {
       if (view) {
         const silences = state.fightSilences + 1
         if (silences < view.fight.silence_patience) {
+          const again = this.roundPrompt(state)
           return {
             next: { ...state, fightSilences: silences, failedAttempts: state.failedAttempts + 1 },
-            spoken: this.roundPrompt(state),
+            heard: again ? [said(`${state.nodeId}:again`, again)] : [],
           }
         }
         return this.leaveFight(state, view, resolveMiss(view), 'miss')
@@ -385,27 +438,55 @@ export class PlaytestEngine {
     const node = this.graph.nodes.get(state.nodeId)
     const target = node?.timeout_target_id
     if (target && this.graph.nodes.has(target)) return this.enter(state, target)
-    // Null means "repeat this node" (§4.2's default).
-    return { next: { ...state, failedAttempts: state.failedAttempts + 1 }, spoken: null }
+    // Null means "repeat this node" (§4.2's default) — and repeat means read
+    // it out again, which is what the gather does on the phone. It used to
+    // return nothing, so a timeout in rehearsal was a silence you could not
+    // tell from the app having stopped working.
+    return {
+      next: { ...state, failedAttempts: state.failedAttempts + 1 },
+      heard: this.arrival(state),
+    }
   }
 
-  /** Walking into a room: its arrival effects fire, then it reads itself out. */
-  private enter(state: PlaytestState, nodeId: string): { next: PlaytestState; spoken: string | null } {
+  /**
+   * Walking into a room: its arrival effects fire, then it reads itself out.
+   *
+   * The reading is RETURNED rather than left for the screen to notice, which
+   * is what makes a door back into the room you are already standing in behave
+   * — the screen used to watch which room was current and replay on a change,
+   * so a self-loop played nothing at all while the phone read the room again.
+   */
+  private enter(state: PlaytestState, nodeId: string): Turn {
     const here = this.graph.nodes.get(nodeId)
-    if (!here) return { next: state, spoken: null }
+    if (!here) return { next: state, heard: [] }
 
-    return {
-      next: {
-        nodeId,
-        caller: applyEffects(state.caller, this.nodeEffects(nodeId), this.index),
-        path: [...state.path, here.slug],
-        failedAttempts: 0,
-        finished: here.node_type === 'ending',
-        fightRound: this.openingRound(nodeId),
-        fightSilences: 0,
-      },
-      spoken: null,
+    const next: PlaytestState = {
+      nodeId,
+      caller: applyEffects(state.caller, this.nodeEffects(nodeId), this.index),
+      path: [...state.path, here.slug],
+      failedAttempts: 0,
+      finished: here.node_type === 'ending',
+      fightRound: this.openingRound(nodeId),
+      fightSilences: 0,
     }
+    return { next, heard: this.arrival(next) }
+  }
+
+  /**
+   * What a room says on being walked into: its script, then — if it is a
+   * fight — the first round. Also what `start()` hands the screen, so the
+   * first room and every room after it are read out by the same code.
+   */
+  arrival(state: PlaytestState): PlaybackPart[] {
+    const here = this.graph.nodes.get(state.nodeId)
+    const parts = here ? this.playback(state, state.nodeId) : []
+    const written = parts.filter((p) => p.say.trim() || p.audioPath)
+    const out =
+      written.length > 0
+        ? written
+        : [said(`${state.nodeId}:empty`, `(${here?.slug ?? 'this room'} has no script yet)`)]
+    const round = this.roundPrompt(state)
+    return round ? [...out, said(`${state.nodeId}:round`, round)] : out
   }
 
   /** Slugs the caller is currently holding, for the live inventory row (F5.3). */

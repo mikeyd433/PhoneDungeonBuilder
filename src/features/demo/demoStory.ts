@@ -166,6 +166,10 @@ export function buildDemoStory(): StoryGraph {
   const swim = exit(hold, '1', 'swim for it', sharks)
   exit(shore, '1', 'walk inland', fin)
   const force = exit(shore, '2', 'force the locker', locker)
+  // A door that says something on the way through, so the walkthrough shows
+  // what is heard BETWEEN two rooms — the thing dial-in used to skip.
+  const below = [...choices.values()].find((c) => c.digit === '2' && c.from_node_id === entrance)
+  if (below) below.reaction_narration = 'The stairs are wet. Something moves below.'
   exit(locker, '1', 'climb out', fin)
 
   // An item, granted by a choice, and a gate that wants it.

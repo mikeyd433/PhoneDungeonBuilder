@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useDelve } from '@/features/graph/store'
-import { PlaytestEngine, type PlaytestState } from '@/features/playtest/engine'
+import { PlaytestEngine, type PlaytestState, type Turn } from '@/features/playtest/engine'
 import { publicAudioUrl } from '@/features/audio/storage'
 import { DIGITS } from '@/types/domain'
-import { playbackFor } from '@/features/cast/dialogue'
+import type { PlaybackPart } from '@/features/cast/dialogue'
 
 interface Line {
   who: 'story' | 'caller'
@@ -23,7 +23,21 @@ export default function Playtest() {
   const [ttsOn, setTtsOn] = useState(true)
   const [showOverride, setShowOverride] = useState(false)
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null)
-  /** True while the room is still reading itself out. */
+  /**
+   * What is being read out right now, in order, and a token that changes on
+   * every turn so the same room read twice still replays.
+   *
+   * The screen used to watch which ROOM was current and play that. Two things
+   * fell through: a door's reaction, which is heard between two rooms and
+   * belongs to neither, and any turn that does not change the room — a
+   * self-loop, a timeout, a wrong key — all of which the phone answers by
+   * reading the room again and the rehearsal answered with silence.
+   */
+  const [heard, setHeard] = useState<{ parts: PlaybackPart[]; turn: number }>({
+    parts: [],
+    turn: 0,
+  })
+  /** True while something is still being read out. */
   const [playing, setPlaying] = useState(false)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const logRef = useRef<HTMLDivElement | null>(null)
@@ -66,66 +80,55 @@ export default function Playtest() {
     [ttsOn],
   )
 
-  const speak = useCallback((text: string) => speakThen(text, () => {}), [speakThen])
-
   /**
-   * What a room reads out, as transcript lines.
+   * The transcript is the SAME list that gets played, turned into text.
    *
-   * A room recorded as one file is one line, as it always was. A room whose
-   * lines carry their own takes reads them one after another, with the speaker
-   * named — the conversation plays out, and only then are the exits offered.
+   * Derived rather than assembled separately — the log and the audio
+   * disagreeing about what was heard is the bug this whole shape exists to
+   * prevent. An unrecorded part is marked, because on the phone that part is
+   * silence and the rehearsal must not let it pass as finished.
    */
-  const roomLines = useCallback(
-    (at: PlaytestState, nodeId: string, slug: string): Line[] => {
-      if (!graph || !engine) return []
-      // Asked of the engine, not of the node, so the transcript is what the
-      // caller would actually hear rather than a second reading of the graph.
-      const parts = engine.playback(at, nodeId)
-      const written = parts.filter((p) => p.say.trim())
-      if (written.length === 0) {
-        return [{ who: 'story', text: `(${slug} has no script yet)` }]
-      }
-      return written.map((p) => ({
-        who: 'story',
-        text: p.speaker ? `${p.speaker}: ${p.say}` : p.say,
-      }))
-    },
-    [graph, engine],
+  const toLines = useCallback(
+    (parts: PlaybackPart[]): Line[] =>
+      parts
+        .filter((p) => p.say.trim() || p.audioPath)
+        .map((p) => ({
+          who: 'story' as const,
+          text:
+            (p.speaker ? `${p.speaker}: ` : '') +
+            p.say.trim() +
+            (p.audioPath ? '' : ' (no recording — silence on the phone)'),
+        })),
+    [],
   )
 
   const begin = useCallback(() => {
-    if (!engine || !graph) return
+    if (!engine) return
     speechSynthesis?.cancel?.()
     const start = engine.start()
+    const opening = engine.arrival(start)
     setState(start)
-    const first = graph.nodes.get(start.nodeId)
-    const opening: Line[] = first ? roomLines(start, first.id, first.slug) : []
-    // A fight room reads its lead-in, then the first round.
-    const round = engine.roundPrompt(start)
-    if (round) opening.push({ who: 'story', text: round })
-    setLines(opening)
-  }, [engine, graph, roomLines])
+    setLines(toLines(opening))
+    setHeard((h) => ({ parts: opening, turn: h.turn + 1 }))
+  }, [engine, toLines])
 
   useEffect(() => {
     if (engine && !state) begin()
   }, [engine, state, begin])
 
-  // Play the room: real audio where it exists, TTS where it doesn't. A room
-  // recorded line by line plays its takes back to back, so a conversation
-  // between two separately-booked actors sounds on the playtest the way it will
-  // sound on the phone rather than as one voice reading both parts.
-  //
-  // Strictly one part at a time. Recorded parts chain on the audio element's
-  // `ended`; spoken ones chain on the utterance's `onend`. Advancing without
-  // waiting — which is what this used to do for spoken parts — meant the next
-  // part cancelled the previous one mid-sentence, so in a mixed scene only a
-  // trailing unrecorded line was ever heard.
+  /**
+   * Read out whatever the last turn produced, one part at a time.
+   *
+   * Real audio where a take exists, TTS where it doesn't. Strictly sequential:
+   * recorded parts chain on the audio element's `ended` and spoken ones on the
+   * utterance's `onend`, because advancing without waiting made every part
+   * cancel the one before it and only the last was ever heard.
+   *
+   * Keyed on the TURN, not on the room. A turn that leaves you where you were
+   * still has something to say.
+   */
   useEffect(() => {
-    if (!node || !graph) return
-    // The same question the transcript asked: which reading is this caller
-    // getting? Reading the node's own parts here would have played the base
-    // narration over an alternate transcript.
-    const parts = engine && state ? engine.playback(state, node.id) : playbackFor(graph, node.id)
+    const parts = heard.parts
     let cancelled = false
     let index = 0
     setPlaying(parts.length > 0)
@@ -157,12 +160,11 @@ export default function Playtest() {
       if (el) el.onended = null
       speechSynthesis?.cancel?.()
     }
-    // Deliberately keyed on the ROOM, not on the state. `node` is derived from
-    // `state.nodeId`, so walking somewhere re-runs this with the state that
-    // arrival produced — which is the state the alternate reading is chosen
-    // against. Adding `state` would replay the room on every refused keypress.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [node, graph, speakThen])
+    // No suppression needed: keyed on the turn, and the turn is the only thing
+    // that decides what is read out. The version that watched the current ROOM
+    // had to silence the linter about the state it was deliberately ignoring —
+    // which was the shape of the bug, written down.
+  }, [heard, speakThen])
 
   // F5.4 — the timeout branch fires if the caller says nothing in time.
   //
@@ -175,8 +177,7 @@ export default function Playtest() {
     setSecondsLeft(node.timeout_seconds)
     const tick = window.setInterval(() => setSecondsLeft((s) => (s === null ? null : s - 1)), 1000)
     const fire = window.setTimeout(() => {
-      const { next, spoken } = engine.timeout(state)
-      pushTurn('(said nothing)', next, spoken, 'timed out')
+      pushTurn('(said nothing)', engine.timeout(state))
     }, node.timeout_seconds * 1000)
     return () => {
       window.clearInterval(tick)
@@ -189,25 +190,19 @@ export default function Playtest() {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: 'smooth' })
   }, [lines])
 
-  function pushTurn(
-    callerText: string,
-    next: PlaytestState,
-    spoken: string | null,
-    _why?: string,
-  ) {
-    if (!graph) return
-    const added: Line[] = [{ who: 'caller', text: callerText }]
-    if (spoken) added.push({ who: 'story', text: spoken })
-    const movedTo = next.nodeId !== state?.nodeId ? graph.nodes.get(next.nodeId) : null
-    if (movedTo) {
-      added.push(...roomLines(next, movedTo.id, movedTo.slug))
-      // Walking into a fight: its first round follows the room's lead-in.
-      const opening = engine?.roundPrompt(next)
-      if (opening) added.push({ who: 'story', text: opening })
-    }
-    if (spoken && !movedTo) speak(spoken)
-    setLines((l) => [...l, ...added])
-    setState(next)
+  /**
+   * One turn: what the caller did, then everything they hear for it.
+   *
+   * There is no branching left here. The engine has already decided what is
+   * heard — the reaction, the room behind the door, the round that follows —
+   * and this prints that list and queues that list. When those were two
+   * decisions made in two places, the door reaction was in the log and never
+   * once in the earpiece.
+   */
+  function pushTurn(callerText: string, turn: Turn) {
+    setLines((l) => [...l, { who: 'caller', text: callerText }, ...toLines(turn.heard)])
+    setHeard((h) => ({ parts: turn.heard, turn: h.turn + 1 }))
+    setState(turn.next)
   }
 
   if (!graph || !engine || !state) return <p className="p-6 text-mortar">Dialling…</p>
@@ -348,8 +343,7 @@ export default function Playtest() {
             key={d}
             disabled={state.finished}
             onClick={() => {
-              const { next, spoken } = engine.press(state, d)
-              pushTurn(`pressed ${d}`, next, spoken)
+              pushTurn(`pressed ${d}`, engine.press(state, d))
             }}
             title={
               graph.story.inventory_key === d

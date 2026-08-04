@@ -187,6 +187,11 @@ export const HELP: HelpSection[] = [
         what: 'Rooms nothing leads to, rooms nothing reaches, endings with exits, items nothing grants, doors with no words.',
       },
       {
+        title: 'Rename a story',
+        where: 'Stories → ✎ Rename beside it.',
+        what: 'The story’s title, which is the name on every call sheet and on the flow Studio imports — not a room’s name, which is the one in the header while you are inside.',
+      },
+      {
         title: 'Walk it as a caller',
         where: 'Dial in.',
         what: 'Press digits and see where you land, carrying what you would really be carrying. Unrecorded lines are spoken aloud as a rehearsal aid — the exported flow never speaks anything.',

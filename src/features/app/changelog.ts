@@ -24,6 +24,18 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: '0.7.3',
+    date: '2026-08-04',
+    title: 'What the caller hears',
+    changes: [
+      'Dial in plays a door’s reaction. It was written into the transcript and never once played aloud — the only branch that spoke it was the branch where the caller had not moved, and walking through a door always moves you.',
+      'A turn that leaves you where you were now reads the room again, the way the phone does: a wrong key, a timeout with nowhere to go, and a door that loops back into the room you are standing in were all silence before.',
+      'A recorded refusal is played rather than read in the rehearsal voice.',
+      'The reserved inventory key puts you back in the room afterwards, so checking your pockets no longer leaves you looking at a keypad with nothing said.',
+      'Stories can be renamed, from the list. The title is on every call sheet and on the flow Studio imports, so “Untitled” used to follow an actor around.',
+    ],
+  },
+  {
     version: '0.7.2',
     date: '2026-08-04',
     title: 'Doors open',

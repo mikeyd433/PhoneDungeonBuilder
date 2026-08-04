@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { makeGraph, idOf } from '@/test/factory'
+import { makeGraph, idOf, words } from '@/test/factory'
 import type { Gate, StateVar, StoryGraph } from '@/types/domain'
 import { PlaytestEngine } from './engine'
 
@@ -98,8 +98,8 @@ describe('playtest engine', () => {
     const e = new PlaytestEngine(g)
     const start = e.start()
     expect(e.offered(start)).toHaveLength(1)
-    const { next, spoken } = e.press(start, '1')
-    expect(spoken).toBe("The gate won't budge.")
+    const { next, heard } = e.press(start, '1')
+    expect(words(heard)).toBe("The gate won't budge.")
     expect(next.nodeId).toBe(start.nodeId)
     expect(next.failedAttempts).toBe(1)
   })
@@ -164,8 +164,8 @@ describe('playtest engine', () => {
   it('says so rather than moving when a branch is unwritten', () => {
     const g = makeGraph(['A'], ['A>'])
     const e = new PlaytestEngine(g)
-    const { next, spoken } = e.press(e.start(), '1')
+    const { next, heard } = e.press(e.start(), '1')
     expect(next.nodeId).toBe(idOf(g, 'A'))
-    expect(spoken).toContain('unwritten')
+    expect(words(heard)).toContain('unwritten')
   })
 })
