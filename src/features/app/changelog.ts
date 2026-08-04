@@ -24,6 +24,17 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: '0.7.1',
+    date: '2026-08-04',
+    title: 'Out of the doorway',
+    changes: [
+      'Figures stand in the wings either side of the archways instead of across the middle of the floor. One figure used to be centred on the middle door, with its name plate over the opening and its body across the destination — the two things on the wall that have to stay readable.',
+      'The name goes at the figure’s feet now, under everything the wall hangs, so a long name has room to be a long name.',
+      'A silhouette that is longer one way than the other turns to face into the room, so what the edge of the picture crops is its tail rather than its head.',
+      'Two are drawn — one per wing — and anybody else is named along the front. A third would have to stand in a doorway.',
+    ],
+  },
+  {
     version: '0.7.0',
     date: '2026-08-04',
     title: 'Finding things',

@@ -183,16 +183,41 @@ const FIGURE_PIECES: Piece[] = [
 
 const CROWD: Piece = {
   id: 'figure-several',
-  name: 'Two in the room',
-  note: 'Spread across the floor, each in their own speaker colour. Four is the most it draws.',
-  peek: false,
+  name: 'A wing each, with the doors shown',
+  note: 'Two is what the wings hold. Doors and their plates own the middle band; a name goes at the feet, under everything the wall hangs.',
+  peek: true,
+  build: () => {
+    const g = makeGraph(['HERE', 'B', 'C'], ['HERE>B', 'HERE>C'], { recorded: ['HERE'] })
+    addCharacter(g, 'innkeeper', { name: 'Innkeeper', figure: 'beast', color: 'ember' })
+    addCharacter(g, 'thing', { name: 'Jacked Vlassic Stork', figure: 'looming', color: 'grave' })
+    addLines(g, 'HERE', ['innkeeper|We are closed.', 'thing|Not to me.'])
+    const node = [...g.nodes.values()].find((n) => n.slug === 'HERE')!
+    g.nodes.set(node.id, { ...node, title: 'HERE', narration: 'Two of them, and one is wrong.' })
+    return buildRoomView(g, deriveGraph(g), node.id)
+  },
+}
+
+/** More people than wings. The two widest silhouettes, plus the overflow line
+ *  that names whoever there was no room to draw. */
+const OVERFLOW: Piece = {
+  id: 'figure-overflow',
+  name: 'More than the wings hold',
+  note: 'Two are drawn and the rest are named along the front, because a third would have to stand in front of a door.',
+  peek: true,
   build: () => {
     const g = makeGraph(['HERE', 'B', 'C'], ['HERE>B', 'HERE>C'], { recorded: ['HERE'] })
     addCharacter(g, 'innkeeper', { name: 'Innkeeper', figure: 'standing', color: 'ember' })
     addCharacter(g, 'thing', { name: 'The thing', figure: 'looming', color: 'grave' })
-    addLines(g, 'HERE', ['innkeeper|We are closed.', 'thing|Not to me.'])
+    addCharacter(g, 'dryad', { name: 'Dryad', figure: 'small', color: 'torch' })
+    addCharacter(g, 'hound', { name: 'The hound', figure: 'beast', color: 'cold' })
+    addLines(g, 'HERE', [
+      'innkeeper|We are closed.',
+      'thing|Not to me.',
+      'dryad|Gnar.',
+      'hound|(low growl)',
+    ])
     const node = [...g.nodes.values()].find((n) => n.slug === 'HERE')!
-    g.nodes.set(node.id, { ...node, title: 'HERE', narration: 'Two of them, and one is wrong.' })
+    g.nodes.set(node.id, { ...node, title: 'HERE', narration: 'Four of them, two wings.' })
     return buildRoomView(g, deriveGraph(g), node.id)
   },
 }
@@ -224,7 +249,7 @@ const DESIGNS: Piece[] = ROOM_DESIGNS.map((design) => ({
 const SECTIONS = [
   { id: 'states', label: 'Room states', pieces: STATES },
   { id: 'walls', label: 'Door layouts', pieces: WALLS },
-  { id: 'figures', label: 'Figures', pieces: [...FIGURE_PIECES, CROWD] },
+  { id: 'figures', label: 'Figures', pieces: [...FIGURE_PIECES, CROWD, OVERFLOW] },
   { id: 'designs', label: 'Designs', pieces: DESIGNS },
 ] as const
 

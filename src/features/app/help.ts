@@ -93,7 +93,7 @@ export const HELP: HelpSection[] = [
       {
         title: 'Draw somebody standing in the room',
         where: 'Cast → the character → “Draw them in the room” → pick a silhouette.',
-        what: 'Stands that figure in every room the character SPEAKS in. Four at most, below the arches, never covering a door.',
+        what: 'Stands that figure in every room the character SPEAKS in — in the wings either side of the archways, with their name at their feet. Two are drawn, one per side; anybody else is named along the front of the room.',
         needs: 'The room’s script must be split by speaker and a line attributed to them. A figure on a character with no attributed lines draws nothing — the Cast page says so where it happens.',
       },
       {

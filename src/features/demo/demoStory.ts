@@ -225,7 +225,14 @@ export function buildDemoStory(): StoryGraph {
 
   // Cast.
   const characters = new Map<string, Character>()
-  const cast = (slug: string, name: string, actor: string | null, color: string, playable: boolean) => {
+  const cast = (
+    slug: string,
+    name: string,
+    actor: string | null,
+    color: string,
+    playable: boolean,
+    figure: Character['figure'] = null,
+  ) => {
     const c: Character = {
       id: nextId('ch'),
       story_id: story.id,
@@ -234,7 +241,7 @@ export function buildDemoStory(): StoryGraph {
       is_playable: playable,
       voice_actor: actor,
       color,
-      figure: null,
+      figure,
       notes: null,
       created_at: STAMP,
       updated_at: STAMP,
@@ -242,8 +249,8 @@ export function buildDemoStory(): StoryGraph {
     characters.set(c.id, c)
     return c.id
   }
-  const mike = cast('MIKE', 'Mike', 'Mike D', 'torch', true)
-  const carter = cast('CARTER', 'Carter', 'Carter B', 'ember', true)
+  const mike = cast('MIKE', 'Mike', 'Mike D', 'torch', true, 'standing')
+  const carter = cast('CARTER', 'Carter', 'Carter B', 'ember', true, 'standing')
   cast('SHARK', 'The shark', 'Mike D', 'grave', false)
   // Two rows, one person — what the import does when the script spelled a name
   // twice. The walkthrough carries it so the merge panel has something to
@@ -276,6 +283,11 @@ export function buildDemoStory(): StoryGraph {
     }
     dialogue.set(l.id, l)
   }
+  // The entrance speaks, so the walkthrough shows figures without walking
+  // anywhere — the feature was otherwise three rooms in and behind a fight.
+  line(entrance, mike, 'Someone actually picked up.', 0, null, null)
+  line(entrance, carter, 'Of course they did. Look at the water.', 1, null, null)
+
   line(shore, carter, 'You are bleeding.', 0, 'demo/shore-1.mp3', 1900)
   line(shore, mike, 'I know what I am.', 1, null, null)
   line(shore, carter, 'We are not doing that again.', 2, 'demo/shore-3.mp3', 2400)

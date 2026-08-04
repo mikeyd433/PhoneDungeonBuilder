@@ -1,6 +1,14 @@
 import type { FigureKind } from '@/types/domain'
 import { speakerHex } from '@/features/cast/colors'
 import { CARVED, VIEW } from './geometry'
+import {
+  FEET,
+  MAX_DRAWN,
+  MAX_NAME,
+  placements,
+  TAG_BASELINE,
+  tagBox,
+} from './figureLayout'
 
 /**
  * Somebody standing in the room.
@@ -16,12 +24,13 @@ import { CARVED, VIEW } from './geometry'
  * shoulders, and every one of them came out a blob. Separate parts cannot lose
  * the head, which is the whole thing that says "a person" at this size.
  *
- * They stand in the FOREGROUND, below the arches. A figure that covered a door
- * would hide the one thing on the wall that has to stay readable.
+ * They stand in the WINGS — the floor either side of the archways — with their
+ * name at their feet rather than over their head. Where they stand and how wide
+ * the name may be is `figureLayout.ts`, which is pure so that the one rule that
+ * matters can be tested: a figure never overlaps a door or the plate under it.
+ * It used to, badly. A single figure was centred on the middle arch with its
+ * tag across the opening.
  */
-
-/** Feet on the floor, near the viewer. */
-const FEET = VIEW.h - 6
 
 interface Build {
   /** Head radius, and how far the top of the head is above the feet. */
@@ -108,31 +117,36 @@ export default function Figures({
 }) {
   if (figures.length === 0) return null
 
-  // Spread across the floor, never more than four — past that they stop being
-  // people in a room and start being a crowd the art cannot carry.
-  const shown = figures.slice(0, 4)
-  const span = VIEW.w * (shown.length > 2 ? 0.72 : 0.48)
-  const step = shown.length > 1 ? span / (shown.length - 1) : 0
-  const start = shown.length > 1 ? VIEW.w / 2 - span / 2 : VIEW.w * 0.5
+  const shown = figures.slice(0, MAX_DRAWN)
+  const spots = placements(shown.map((f) => f.kind))
+  const rest = figures.slice(MAX_DRAWN)
 
   return (
     <g>
       {shown.map((figure, i) => {
-        const x = start + i * step
+        const spot = spots[i]
         const ink = speakerHex(figure.color)
         const name =
-          figure.name.length > 14 ? `${figure.name.slice(0, 13)}…` : figure.name
-        const tagY = FEET - BUILDS[figure.kind].height - 9
+          figure.name.length > MAX_NAME ? `${figure.name.slice(0, MAX_NAME - 1)}…` : figure.name
+        const box = tagBox(spot, name.length)
         return (
           <g key={figure.id}>
-            <Body kind={figure.kind} x={x} ink={ink} dim={lit ? 1 : 0.55} />
-            {/* The name tag, on its own plate above the head. Outlined in the
-                speaker's colour — the same colour their lines are shown in, so
-                the figure and the words are obviously the same person. */}
+            <title>{figure.name} is in this room</title>
+            <g
+              transform={
+                spot.flip ? `translate(${spot.x * 2} 0) scale(-1 1)` : undefined
+              }
+            >
+              <Body kind={figure.kind} x={spot.x} ink={ink} dim={lit ? 1 : 0.55} />
+            </g>
+            {/* The name plate, on the floor at their feet. Above the head it sat
+                at the wall base, which is where the archways are. Outlined in
+                the speaker's colour — the same colour their lines are shown in,
+                so the figure and the words are obviously the same person. */}
             <rect
-              x={x - name.length * 3.4 - 5}
-              y={tagY - 9}
-              width={name.length * 6.8 + 10}
+              x={box.x}
+              y={TAG_BASELINE - 9}
+              width={box.w}
               height={13}
               rx={2}
               fill="#141010"
@@ -142,8 +156,8 @@ export default function Figures({
               opacity={lit ? 0.95 : 0.5}
             />
             <text
-              x={x}
-              y={tagY}
+              x={box.x + box.w / 2}
+              y={TAG_BASELINE}
               textAnchor="middle"
               fontSize={9}
               fontFamily={CARVED}
@@ -156,9 +170,21 @@ export default function Figures({
           </g>
         )
       })}
-      {figures.length > shown.length && (
-        <text x={VIEW.w - 10} y={VIEW.h - 6} textAnchor="end" fontSize={10} fill="#6B5A47">
-          +{figures.length - shown.length} more
+
+      {/* Anybody there was no wing for. Named rather than counted — "+2 more"
+          says a room is crowded; the names say who is in it, which is the
+          question a figure answers in the first place. */}
+      {rest.length > 0 && (
+        <text
+          x={VIEW.w / 2}
+          y={TAG_BASELINE}
+          textAnchor="middle"
+          fontSize={9}
+          fontFamily={CARVED}
+          fill="#8FB0C2"
+          opacity={lit ? 0.85 : 0.5}
+        >
+          {rest.map((f) => f.name).join(' · ')}
         </text>
       )}
     </g>
