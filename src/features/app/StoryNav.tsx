@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import HelpSheet from './HelpSheet'
 
 /**
  * The room's top menu.
@@ -34,6 +36,8 @@ export default function StoryNav({
   canUndo: boolean
   onSatchel: () => void
 }) {
+  const [helping, setHelping] = useState(false)
+
   // `min-h-[44px]` explicitly: index.css already floors every BUTTON at the
   // 44px tap target, and these sit beside links, which it does not — so
   // without it the row was 44px buttons next to 26px links.
@@ -76,6 +80,13 @@ export default function StoryNav({
           Satchel
         </button>
 
+        {/* Beside the destinations, because "where is the thing that does X"
+            is asked in the same breath as "which screen was it on". */}
+        <button onClick={() => setHelping(true)} title="What everything does, and where it is" className={quiet}>
+          <span aria-hidden>?</span>
+          Help
+        </button>
+
         {places.map((place) => (
           <Link
             key={place.to}
@@ -90,6 +101,8 @@ export default function StoryNav({
         ))}
 
       </nav>
+
+      {helping && <HelpSheet onClose={() => setHelping(false)} />}
     </>
   )
 }

@@ -32,11 +32,18 @@ function Sheet({ sheet, storyTitle }: { sheet: CallSheet; storyTitle: string }) 
   return (
     <div className="mt-2 border-t border-mortar/25 pt-2">
       <div className="flex flex-wrap items-center gap-2 text-xs">
-        <button onClick={() => setOpen((v) => !v)} className="text-mortar underline">
-          {open ? 'Hide' : 'Call sheet'} ({sheet.outstanding} to record, ~
-          {Math.ceil(sheet.outstandingSeconds / 60)} min)
+        {/* A real button: this was an underlined half-sentence three sections
+            down a long page, and "I can't find the call sheet" is what that
+            gets you. */}
+        <button
+          onClick={() => setOpen((v) => !v)}
+          className="rounded border border-torch/60 px-2.5 py-1 text-torch hover:border-torch"
+        >
+          {open ? '▾ Hide call sheet' : '▸ Call sheet'} · {sheet.lines.length} line(s)
+          {sheet.outstanding > 0 &&
+            ` · ${sheet.outstanding} to record, ~${Math.ceil(sheet.outstandingSeconds / 60)} min`}
         </button>
-        {sheet.outstanding > 0 && (
+        {sheet.lines.length > 0 && (
           <>
             <button
               onClick={async () => {

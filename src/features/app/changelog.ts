@@ -24,6 +24,18 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: '0.7.0',
+    date: '2026-08-04',
+    title: 'Finding things',
+    changes: [
+      'A Help button in the top menu: every feature, what it does, and the taps that get you there — searchable, because the question is nearly always “where is the thing that does X”. Each entry also says what has to be true FIRST, since most of what looks broken is a prerequisite nobody mentioned.',
+      'Two cast entries that are one person can be merged. The import spells a name however the script did, so Froggem and Froggum come back as two characters with a line each; near-misses are now offered on the Cast page. Merging moves the lines, rewrites the script to match, and keeps every take — and Undo puts it back.',
+      'The call sheet is findable. It was an underlined half-sentence three sections down the Cast page; it is now a button under its own heading, and copy and download stay available after everything is recorded.',
+      'The control that stands a figure in a room is labelled “Draw them in the room” instead of being an unlabelled dropdown, and says so when a character has a figure but no lines to be drawn beside.',
+      'The top menu is buttons rather than underlined words, and the version number is one of them.',
+    ],
+  },
+  {
     version: '0.6.0',
     date: '2026-08-04',
     title: 'One key, two rooms',

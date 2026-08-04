@@ -245,6 +245,10 @@ export function buildDemoStory(): StoryGraph {
   const mike = cast('MIKE', 'Mike', 'Mike D', 'torch', true)
   const carter = cast('CARTER', 'Carter', 'Carter B', 'ember', true)
   cast('SHARK', 'The shark', 'Mike D', 'grave', false)
+  // Two rows, one person — what the import does when the script spelled a name
+  // twice. The walkthrough carries it so the merge panel has something to
+  // suggest, which is the only way that control is ever seen.
+  cast('CARTR', 'Cartr', 'Carter B', 'ember', false)
 
   // A conversation recorded line by line, with one take still missing — so the
   // room reads as unfinished everywhere it should.

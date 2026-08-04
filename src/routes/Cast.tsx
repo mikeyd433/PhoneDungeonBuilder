@@ -13,6 +13,7 @@ const FIGURE_LABELS: Record<FigureKind, string> = {
   beast: 'Beast — on four legs',
 }
 import CallSheet from '@/features/cast/CallSheetPanel'
+import MergePanel from '@/features/cast/MergePanel'
 import { useCallSheets } from '@/features/cast/useCallSheets'
 import { SPEAKER_COLORS, speakerHex } from '@/features/cast/colors'
 import { slugify, uniqueSlug } from '@/lib/slug'
@@ -47,6 +48,8 @@ export default function Cast() {
   const suggestions = suggestCast(graph)
   const queues = workloads(graph)
   const takenSlugs = () => cast.map((c) => c.slug)
+  const spoken = (id: string) =>
+    [...graph.dialogue.values()].filter((l) => l.character_id === id).length
 
   const create = async (displayName: string) => {
     const trimmed = displayName.trim()
@@ -114,17 +117,26 @@ export default function Cast() {
                 </button>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2 text-sm">
-                <input
-                  disabled={!editable}
-                  defaultValue={c.voice_actor ?? ''}
-                  placeholder="Voice actor"
-                  onBlur={(e) =>
-                    e.target.value !== (c.voice_actor ?? '') &&
-                    void editCharacter(c.id, { voice_actor: e.target.value || null })
-                  }
-                  className={field}
-                />
+              {/* Labelled, all three. They were an unlabelled input and two
+                  unlabelled selects whose only explanation was a `title`
+                  tooltip — which does not exist on a touch screen, and the
+                  figure one is the control nobody could find. */}
+              <div className="flex flex-wrap items-end gap-2 text-sm">
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs uppercase tracking-wider text-mortar">Voice actor</span>
+                  <input
+                    disabled={!editable}
+                    defaultValue={c.voice_actor ?? ''}
+                    placeholder="who reads them"
+                    onBlur={(e) =>
+                      e.target.value !== (c.voice_actor ?? '') &&
+                      void editCharacter(c.id, { voice_actor: e.target.value || null })
+                    }
+                    className={field}
+                  />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs uppercase tracking-wider text-mortar">Colour</span>
                 <select
                   disabled={!editable}
                   value={c.color}
@@ -138,31 +150,48 @@ export default function Cast() {
                     </option>
                   ))}
                 </select>
+                </label>
                 {/* Who is PRESENT, which is not the same question as who
                     speaks. The party is the caller and the narrator is nobody,
                     so this stays off unless somebody turns it on. */}
-                <select
-                  disabled={!editable}
-                  value={c.figure ?? ''}
-                  onChange={(e) =>
-                    void editCharacter(c.id, {
-                      figure: (e.target.value || null) as FigureKind | null,
-                    })
-                  }
-                  title="Stand a figure in every room this character speaks in"
-                  className={field}
-                >
-                  <option value="">— not in the room —</option>
-                  {FIGURES.map((f) => (
-                    <option key={f} value={f}>
-                      {FIGURE_LABELS[f]}
-                    </option>
-                  ))}
-                </select>
-                <span className="text-xs text-mortar">
-                  {[...graph.dialogue.values()].filter((l) => l.character_id === c.id).length} line(s)
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs uppercase tracking-wider text-mortar">
+                    Draw them in the room
+                  </span>
+                  <select
+                    disabled={!editable}
+                    value={c.figure ?? ''}
+                    onChange={(e) =>
+                      void editCharacter(c.id, {
+                        figure: (e.target.value || null) as FigureKind | null,
+                      })
+                    }
+                    className={field}
+                  >
+                    <option value="">— nobody to draw —</option>
+                    {FIGURES.map((f) => (
+                      <option key={f} value={f}>
+                        {FIGURE_LABELS[f]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <span className="pb-2 text-xs text-mortar">
+                  {spoken(c.id)} line(s)
                 </span>
               </div>
+
+              {/* The prerequisite nothing said out loud. A figure is drawn from
+                  the room's LINES, so a room whose script has not been split by
+                  speaker has nobody to draw however many figures are set. */}
+              {c.figure && spoken(c.id) === 0 && (
+                <p className="mt-2 text-xs text-grave">
+                  {c.name} has a figure but speaks no attributed lines, so nothing is drawn. A
+                  figure stands in the rooms a character SPEAKS in — split a room&apos;s script by
+                  speaker in the editor (✎ EDIT → 🗣 Someone speaks → Voices) and give them a line
+                  there.
+                </p>
+              )}
             </li>
           ))}
         </ul>
@@ -190,6 +219,11 @@ export default function Cast() {
           </button>
         </form>
       </section>
+
+      {/* One person cast twice, which the import does whenever the script
+          spelled them two ways. Above the suggestions, because casting a new
+          name while a duplicate of it is sitting there makes a third. */}
+      <MergePanel />
 
       {/* Names the script already uses that nobody has cast. */}
       {suggestions.length > 0 && (
@@ -224,14 +258,19 @@ export default function Cast() {
           `workloads` is where that rule lives. */}
       {queues.length > 0 && (
         <section>
-          <h2 className="mb-1 font-carved uppercase tracking-[0.12em] text-torch">
-            Recording queue
+          <h2 id="call-sheets" className="mb-1 font-carved uppercase tracking-[0.12em] text-torch">
+            Call sheets &amp; recording queue
           </h2>
           <p className="mb-3 text-xs text-cold">
-            A room recorded as one file is booked for everyone in it, so it stays outstanding until
-            that single take exists. A room recorded line by line is outstanding only for whoever
-            is still missing their own lines. The call sheet is the page you hand them: their
-            lines, in story order, named the way the importer expects them back.
+            <strong className="text-mortar">A call sheet is the page you hand a voice actor</strong>
+            : every line they read, in story order, with the exact filename each take has to come
+            back as — the same string the bulk importer matches on. Open one below and copy or
+            download it.
+          </p>
+          <p className="mb-3 text-xs text-cold">
+            The queue beside it is how much each of them still owes. A room recorded as one file is
+            booked for everyone in it, so it stays outstanding until that single take exists; a room
+            recorded line by line is outstanding only for whoever is missing their own lines.
           </p>
           <ul className="flex flex-col gap-3">
             {queues.map((q) => (

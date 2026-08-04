@@ -12,7 +12,7 @@ import type {
   StoryGraph,
   StoryNode,
 } from '@/types/domain'
-import { composeNarration, type LineOwner } from '@/features/cast/dialogue'
+import { composeNarration, linesOf, ownerKey, type LineOwner } from '@/features/cast/dialogue'
 import { slugFollowingTitle } from './naming'
 import { deriveGraph } from './derived'
 import * as api from '@/lib/api'
@@ -85,6 +85,8 @@ interface DelveState {
   addCharacter: (patch: { slug: string; name: string } & Partial<Character>) => Promise<void>
   editCharacter: (id: string, patch: Partial<Character>) => Promise<void>
   removeCharacter: (id: string) => Promise<void>
+  /** Fold one cast entry into another: their lines move, their name goes. */
+  mergeCharacters: (keepId: string, dropId: string) => Promise<void>
 
   /** Replace an owner's lines AND rewrite its narration from them, in that
    *  order, so the recorded text and the script can never disagree. The owner
@@ -804,6 +806,84 @@ export const useDelve = create<DelveState>((set, get) => {
             for (const line of spoken) {
               await api.updateDialogueLine(line.id, { character_id: made.id })
             }
+          },
+        })
+      } catch (e) {
+        fail(e)
+      }
+    },
+
+    /**
+     * Two cast entries that were one person.
+     *
+     * The import reads a name out of the script, so `Froggem` and `Froggum`
+     * become two rows with a line each. Repointing the lines is only half of
+     * it: the ROOM's narration carries the speaker's name as text (principle
+     * 8 — the narration and the lines are one thing seen twice), so a merge
+     * that only moved `character_id` would leave the script still saying
+     * "Froggum:" while the cast list said Froggem, and the next line edit
+     * would rewrite it back.
+     *
+     * So every owner that lost a line gets its narration recomposed from what
+     * its lines now say. Lines are UPDATED rather than replaced, so their
+     * takes and their ids survive — an actor's recording must not be the price
+     * of fixing a typo.
+     */
+    async mergeCharacters(keepId, dropId) {
+      if (readOnly()) return
+      const { graph } = get()
+      const keep = graph?.characters.get(keepId)
+      const drop = graph?.characters.get(dropId)
+      if (!graph || !keep || !drop || keepId === dropId) return
+
+      const moving = [...graph.dialogue.values()].filter((l) => l.character_id === dropId)
+      // The owners whose script now spells the speaker differently.
+      const owners = new Map<string, LineOwner>()
+      for (const line of moving) {
+        const owner: LineOwner = line.node_id ? { nodeId: line.node_id } : { choiceId: line.choice_id! }
+        owners.set(ownerKey(owner), owner)
+      }
+
+      /** Rewrite each affected owner's text from its lines, with `nameFor`
+       *  deciding what the moved ones are now called. */
+      const recompose = async (nameFor: (characterId: string | null) => string | null) => {
+        const now = get().graph
+        if (!now) return
+        for (const owner of owners.values()) {
+          const lines = linesOf(now, owner)
+          if (lines.length === 0) continue
+          const narration = composeNarration(
+            lines.map((l) => ({ speaker: nameFor(l.character_id), text: l.text })),
+          )
+          if ('nodeId' in owner) await get().updateNode(owner.nodeId, { narration })
+          else await get().updateChoice(owner.choiceId, { reaction_narration: narration })
+        }
+      }
+
+      try {
+        for (const line of moving) {
+          await api.updateDialogueLine(line.id, { character_id: keepId })
+        }
+        await api.deleteCharacter(dropId)
+        await get().refresh()
+        await recompose((id) => (id ? (get().graph?.characters.get(id)?.name ?? null) : null))
+
+        pushUndo({
+          label: `merge ${drop.name} into ${keep.name}`,
+          invert: async () => {
+            const made = await api.createCharacter(drop.story_id, {
+              slug: drop.slug,
+              name: drop.name,
+              is_playable: drop.is_playable,
+              voice_actor: drop.voice_actor,
+              color: drop.color,
+              notes: drop.notes,
+            })
+            for (const line of moving) {
+              await api.updateDialogueLine(line.id, { character_id: made.id })
+            }
+            await get().refresh()
+            await recompose((id) => (id ? (get().graph?.characters.get(id)?.name ?? null) : null))
           },
         })
       } catch (e) {
