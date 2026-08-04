@@ -9,6 +9,8 @@ import OfferedSheet from '@/features/room/OfferedSheet'
 import DoorSheet from '@/features/room/DoorSheet'
 import ReactionGate from '@/features/room/ReactionGate'
 import ForkGate from '@/features/room/ForkGate'
+import StoryNav from '@/features/app/StoryNav'
+import BuildButton from '@/features/app/BuildButton'
 import LoopBackSheet from '@/features/room/LoopBackSheet'
 import EditorSheet from '@/features/room/EditorSheet'
 import Automap from '@/features/automap/Automap'
@@ -171,8 +173,12 @@ export default function Room() {
       <header className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-mortar/40 px-4 py-3 text-sm">
         {/* Named, now that the footer also has a back button: this one leaves
             the story, that one walks back a room. */}
-        <Link to="/" className="shrink-0 text-mortar underline">
-          Stories
+        <Link
+          to="/"
+          title="Every story you can open"
+          className="flex min-h-[44px] shrink-0 items-center rounded-lg border border-mortar/45 px-3 text-xs leading-none text-mortar hover:border-torch/70 hover:text-torch"
+        >
+          ← Stories
         </Link>
         {/* Tap to rename. The title is what the door plates show, so needing to
             open the editor and scroll to reach it made the one field you most
@@ -216,47 +222,15 @@ export default function Room() {
             {view.node.title || `${view.node.slug} — name it`}
           </button>
         )}
-        <nav className="flex w-full shrink-0 gap-3 overflow-x-auto sm:ml-auto sm:w-auto sm:pr-16">
-          <button
-            onClick={() => void undo()}
-            disabled={undoStack.length === 0}
-            title={undoStack[undoStack.length - 1]?.label}
-            className="text-mortar underline disabled:opacity-40"
-          >
-            Undo
-          </button>
-          <button
-            onClick={() => setSatchelOpen(true)}
-            title="What the caller could be carrying here"
-            aria-label="Open the satchel"
-            className="text-mortar"
-          >
-            🎒
-          </button>
-          <Link to={`/story/${storyId}/map`} className="text-mortar underline">
-            Map
-          </Link>
-          <Link to={`/story/${storyId}/cast`} className="text-mortar underline">
-            Cast
-          </Link>
-          {/* The long job, given a door of its own: 139 rooms is not something
-              you record by walking to each one. */}
-          <Link to={`/story/${storyId}/record`} className="text-torch underline">
-            Record
-          </Link>
-          <Link to={`/story/${storyId}/playtest`} className="text-mortar underline">
-            Dial in
-          </Link>
-          <Link to={`/story/${storyId}/tidy`} className="text-mortar underline">
-            Tidy
-          </Link>
-          <Link to={`/story/${storyId}/ledger`} className="text-mortar underline">
-            Ledger
-          </Link>
-          <Link to={`/story/${storyId}/export`} className="text-mortar underline">
-            Export
-          </Link>
-        </nav>
+        {/* First line, which never scrolls sideways — unlike the row below. */}
+        <BuildButton />
+        <StoryNav
+          storyId={storyId!}
+          onUndo={() => void undo()}
+          undoLabel={undoStack[undoStack.length - 1]?.label}
+          canUndo={undoStack.length > 0}
+          onSatchel={() => setSatchelOpen(true)}
+        />
       </header>
 
       {useDelve.getState().demo && (

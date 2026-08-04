@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { createStory, listStories } from '@/lib/api'
+import BuildButton from '@/features/app/BuildButton'
 import { supabase } from '@/lib/supabase'
 import type { Story } from '@/types/domain'
 import { errorText } from '@/lib/errorText'
@@ -34,8 +35,11 @@ export default function Stories() {
 
   return (
     <main className="mx-auto max-w-2xl p-6">
-      <header className="mb-6 flex items-center justify-between">
+      <header className="mb-6 flex flex-wrap items-center gap-3">
         <h1 className="text-xl text-torch">Jackie Dungeon</h1>
+        {/* Here as well as in a story: this is the screen you land on, so it is
+            where "has my deploy landed" gets asked with nothing open yet. */}
+        <BuildButton />
         <button
           onClick={() => supabase.auth.signOut()}
           className="text-sm text-mortar underline"

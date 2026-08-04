@@ -4,7 +4,6 @@ import { useSession } from '@/features/auth/useSession'
 import Login from '@/routes/Login'
 import Stories from '@/routes/Stories'
 import Room from '@/routes/Room'
-import VersionBadge from '@/features/app/VersionBadge'
 
 /**
  * Everything but the two screens you arrive on is fetched when you go there.
@@ -64,9 +63,6 @@ export default function App() {
           arriving is a fraction of a second on any connection that loaded the
           shell, and a spinner per screen would flash more than it informed. */}
       <Suspense fallback={<p className="p-6 text-mortar">…</p>}>{screen()}</Suspense>
-      {/* Outside the routes and outside the boundary: the sign-in screen is
-          exactly where you most need to know whether a deploy has landed. */}
-      <VersionBadge />
     </>
   )
 }
