@@ -14,6 +14,11 @@ them had drifted from what the fixes claimed — see the note under walkthrough 
 The point of the exercise is the **Findings** section at the end. The
 walkthroughs are the evidence.
 
+> Since finding 12, the doors panel **starts open**, so every job that begins at
+> a door is one tap shorter than the tables below say. The counts are kept as
+> measured and the saving is noted per flow, because a number that quietly
+> improved is still a number nobody re-measured.
+
 ---
 
 ## 1. Walk somewhere and read it
@@ -46,11 +51,12 @@ the app: one tap, and you are standing in the thing you just made.
 
 | # | Tap | Surface |
 |---|---|---|
-| 1 | Show where doors lead | room |
+| 1 | ~~Show where doors lead~~ — already open | room |
 | 2 | "↺ send it back to a room that exists" | room |
 | 3 | the room, from *The way you came* | picker |
 
-**3 taps** in the middle of a story. **4 at the entrance**, where there is no
+**2 taps** in the middle of a story (3 before the panel opened by default).
+**3 at the entrance**, where there is no
 way you came and the room has to be found by typing — which is correct, not a
 defect: the picker has nothing better to lead with there.
 
@@ -78,13 +84,14 @@ defect: the picker has nothing better to lead with there.
 
 | # | Tap | Surface |
 |---|---|---|
-| 1 | Show where doors lead | room |
+| 1 | ~~Show where doors lead~~ — already open | room |
 | 2 | ⋯ on the door | room |
 | 3 | Where it leads | door sheet |
 | 4 | ⑂ Make this door fork on an item *(write unmeasured)* | fork sheet |
 | 5 | the other route → **⛏ Cut a new room called "…"** | picker |
 
-**4 taps to a fork, 5 to a fork whose second room did not exist.** With no items
+**3 taps to a fork, 4 to a fork whose second room did not exist** — one less
+than the 4 and 5 measured before the panel opened by default. With no items
 in the story at all it is **6**: step 4 becomes "+ Create the first item", the
 name, and Add — which creates the item *and* writes the fork in one go.
 
@@ -119,12 +126,12 @@ on one door.
 
 | # | Tap | Surface |
 |---|---|---|
-| 1 | Show where doors lead | room |
+| 1 | ~~Show where doors lead~~ — already open | room |
 | 2 | ⋯ on the door | room |
 | 3 | When it is offered | door sheet |
 | 4 | Always · Only when carrying something | offered sheet |
 
-**4 taps**, one question, one mechanism — the `hidden_doors` half went with the
+**3 taps**, one question, one mechanism — the `hidden_doors` half went with the
 readings (finding 11). What a hide gate cannot do is *announce* the door, and
 the sheet says so, naming the thing that can: a fork on the door in.
 
@@ -178,11 +185,11 @@ order, which is the right tool for a session and correctly separate.
 
 | # | Tap | Surface |
 |---|---|---|
-| 1 | Show where doors lead | room |
+| 1 | ~~Show where doors lead~~ — already open | room |
 | 2 | ⋯ on the door | room |
 | 3 | the item, from "+ add an effect…" *(write unmeasured)* | door sheet |
 
-**3 taps**, and none of them leave the door. **4 with no items in the story** —
+**2 taps**, and neither leaves the door. **3 with no items in the story** —
 "+ New item" sits beside the same select, so the last dead end on the item path
 is closed too.
 
@@ -373,3 +380,17 @@ words to its room's `notes` before dropping the table — script is the one thin
 that cannot be reconstructed — and says in the note when a take was orphaned.
 
 One rule left: **a room says one thing; a door can go to two rooms.**
+
+### 12. The first tap in every room was the same tap — **done**
+
+"Show where doors lead" was off by default, and the measured walk of nearly
+every job started by turning it on. What a door says and where it goes is the
+thing you open a room to check; this is a workshop, not a reader.
+
+**Fixed:** the panel starts open, and the toggle now *remembers being turned
+off* (`lib/preference.ts`, `localStorage`, guarded — a private window can throw
+on read and on write, and a switch is never worth a blank screen). So somebody
+reading the story rather than building it still gets the wall and nothing else,
+and gets it every time.
+
+Walkthroughs 3, 4, 5 and 8 are each one tap shorter for it.

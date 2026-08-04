@@ -33,6 +33,11 @@ export const HELP: HelpSection[] = [
     blurb: 'You stand in a room. The archways are the keys the caller presses.',
     topics: [
       {
+        title: 'What every door says and where it goes',
+        where: 'Already open, under the room. “👁 Hide where doors lead” puts it away.',
+        what: 'The label, the room behind, and one ⋯ per door. It starts open because this is a workshop — and it remembers being closed, for when you want the wall and nothing else.',
+      },
+      {
         title: 'Walk through a door',
         where: 'Tap an archway.',
         what: 'Takes you into the room behind it, the way a caller goes. ◄ BACK walks you out again, and swiping right does the same.',
@@ -44,17 +49,17 @@ export const HELP: HelpSection[] = [
       },
       {
         title: 'Point a door at a room that already exists',
-        where: 'Show where doors lead → “↺ send it back to a room that exists”.',
+        where: 'The doors panel, under the room → “↺ send it back to a room that exists”.',
         what: 'Offers the way you came first, then everywhere you have been, then a search. Pointing a door backwards is how a loop or a hub gets made.',
       },
       {
         title: 'Everything about one door',
-        where: 'Show where doors lead → ⋯ beside the door.',
+        where: 'The doors panel, under the room → ⋯ beside the door.',
         what: 'The key, what the caller hears, where it leads, what it gives or takes, when it is offered, what is heard on the way through, insert a room, remove it.',
       },
       {
         title: 'Put a room between two that are joined',
-        where: 'Show where doors lead → ⋯ → ⤵ Insert a room.',
+        where: 'The doors panel, under the room → ⋯ → ⤵ Insert a room.',
         what: 'A → B becomes A → new → B, and walks you into the new one. The reverse is Collapse, in the editor’s Room tab.',
       },
       {
@@ -98,7 +103,7 @@ export const HELP: HelpSection[] = [
       },
       {
         title: 'What is heard between two rooms',
-        where: 'Show where doors lead → ⋯ → Heard on the way through.',
+        where: 'The doors panel, under the room → ⋯ → Heard on the way through.',
         what: 'A door’s own script and take, played after the keypress and before the next room. Walking through a door that has one stops to play it.',
       },
     ],
@@ -109,12 +114,12 @@ export const HELP: HelpSection[] = [
     topics: [
       {
         title: 'Give or take an item at a door',
-        where: 'Show where doors lead → ⋯ → “What it gives or takes” → pick the item.',
+        where: 'The doors panel, under the room → ⋯ → “What it gives or takes” → pick the item.',
         what: '“+ New item” is beside the same control, so you never have to go and make one first. Choose “take away” to remove something from the caller’s satchel.',
       },
       {
         title: 'One key, two rooms',
-        where: 'Show where doors lead → ⋯ → Where it leads → “⑂ Make this door fork on an item”.',
+        where: 'The doors panel, under the room → ⋯ → Where it leads → “⑂ Make this door fork on an item”.',
         what: 'Press 1 goes one place carrying the helmet and another without it. Two ordinary rooms, each with its own name, script, cast and exits.',
         needs: 'The door must already lead somewhere. The sheet offers to point it if not.',
       },
@@ -125,7 +130,7 @@ export const HELP: HelpSection[] = [
       },
       {
         title: 'Only offer a door to some callers',
-        where: 'Show where doors lead → ⋯ → “When it is offered”.',
+        where: 'The doors panel, under the room → ⋯ → “When it is offered”.',
         what: 'Always, or only when they are carrying something. The key is still accepted — a keypad takes what it takes — but it goes back to the choices.',
         needs: 'Nothing announces a door hidden this way. If the caller needs telling it is there, fork the door INTO the room instead and let that room’s script say so.',
       },

@@ -24,6 +24,16 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: '0.7.2',
+    date: '2026-08-04',
+    title: 'Doors open',
+    changes: [
+      'The doors panel starts open. It was the first tap in every room — what a door says and where it goes is the thing you came to check, and this is a workshop rather than a reader.',
+      '“👁 Hide where doors lead” still puts it away, and now it stays away: the choice is remembered between visits, so somebody reading the story rather than building it gets the wall and nothing else.',
+      'Every job that starts at a door is one tap shorter for it — forking, giving an item, sending a door back to a room that exists.',
+    ],
+  },
+  {
     version: '0.7.1',
     date: '2026-08-04',
     title: 'Out of the doorway',

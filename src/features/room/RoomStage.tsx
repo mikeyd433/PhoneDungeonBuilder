@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type TouchEvent } from 'react'
 import type { ExitView, RoomView } from './roomModel'
 import DungeonRoom from './vector/DungeonRoom'
 import { speakerHex } from '@/features/cast/colors'
+import { useToggle } from '@/lib/preference'
 
 /**
  * The room renderer seam.
@@ -63,7 +64,16 @@ export default function RoomStage({
   onWire,
 }: RoomStageProps) {
   const { node } = view
-  const [peek, setPeek] = useState(false)
+  /**
+   * The doors panel, open by default.
+   *
+   * This app is a workshop, not a reader: what a room's doors say and where
+   * they go is the thing you came to check, and the first tap in every room
+   * was the one that turned it on. So it starts on and REMEMBERS being turned
+   * off, because somebody reading the story rather than building it wants the
+   * wall and nothing else.
+   */
+  const [peek, setPeek] = useToggle('doors-panel', true)
 
   // §3: lighting the torch is the reward for recording a node, and that
   // transition gets a half-second flare. Fires only on the dark -> lit edge, not
@@ -137,7 +147,7 @@ export default function RoomStage({
       {hasDoors && (
         <div className="px-4 pt-2">
           <button
-            onClick={() => setPeek((v) => !v)}
+            onClick={() => setPeek(!peek)}
             aria-pressed={peek}
             className={[
               'rounded border px-3 py-1.5 text-xs',
