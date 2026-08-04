@@ -24,6 +24,18 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: '0.8.0',
+    date: '2026-08-04',
+    title: 'What an item says',
+    changes: [
+      'An item can carry two extra clips: one heard when it is picked up, one when it is used up. Written on the ITEM, so it is heard at every door and room that hands it over — a rope picked up in three places used to need the sentence written and recorded three times.',
+      'A door’s reaction is still the place for what is true of that particular threshold (“Mike hands over the helmet”); this is for what is true of the thing itself.',
+      'Both are in the recording queue and on the call sheets, named item__SLUG__gained and item__SLUG__spent, so a folder of takes lands without renaming anything.',
+      'They play in the same place in the exported flow and in Dial in — after the effect that moves the item, before the room it leads into.',
+      'Written but unrecorded is silence on the phone, and the export says so rather than dropping it quietly.',
+    ],
+  },
+  {
     version: '0.7.3',
     date: '2026-08-04',
     title: 'What the caller hears',

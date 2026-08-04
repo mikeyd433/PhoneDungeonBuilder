@@ -16,6 +16,7 @@ import {
   type VarIndex,
 } from '@/features/state/expression'
 import { consumedBy } from '@/features/state/consume'
+import { clipsFor, spendClips } from '@/features/state/itemClips'
 import { playbackFor, reactionPlaybackFor, type PlaybackPart } from '@/features/cast/dialogue'
 
 /**
@@ -294,6 +295,7 @@ export class PlaytestEngine {
     }
 
     let caller = state.caller
+    let spent: PlaybackPart[] = []
 
     // F8.9 — spend the consumable that opened the gate. `consumedBy` walks the
     // expression rather than flattening it, so a door the crowbar OR the key
@@ -305,20 +307,32 @@ export class PlaytestEngine {
         Boolean([...this.graph.stateVars.values()].find((x) => x.slug === slug)?.is_consumable),
       ).map<EffectLike>((slug) => ({ varSlug: slug, operation: 'revoke', amount: null }))
       caller = applyEffects(caller, consumed, this.index)
+      spent = spendClips(this.graph, consumed.map((c) => c.varSlug))
     }
 
-    caller = applyEffects(caller, this.choiceEffects(offer.choice.id), this.index)
+    // What the items themselves say as they change hands — heard after the
+    // effect that moves them, and before the room they move you into. Same
+    // order the exporter emits, which is the only reason the two can be
+    // trusted to agree.
+    const fx = this.choiceEffects(offer.choice.id)
+    const gained = clipsFor(this.graph, fx)
+    caller = applyEffects(caller, fx, this.index)
 
     if (!offer.choice.to_node_id) {
       return {
         next: { ...state, caller, failedAttempts: 0 },
-        heard: [said(`${offer.choice.id}:unwritten`, '(This branch is unwritten — nothing happens.)')],
+        heard: [
+          ...spent,
+          ...gained,
+          said(`${offer.choice.id}:unwritten`, '(This branch is unwritten — nothing happens.)'),
+        ],
       }
     }
-    return this.withReaction(
-      offer.choice.id,
-      this.enter({ ...state, caller }, offer.choice.to_node_id),
-    )
+    const arrival = this.enter({ ...state, caller }, offer.choice.to_node_id)
+    return this.withReaction(offer.choice.id, {
+      ...arrival,
+      heard: [...spent, ...gained, ...arrival.heard],
+    })
   }
 
   /**
@@ -460,16 +474,20 @@ export class PlaytestEngine {
     const here = this.graph.nodes.get(nodeId)
     if (!here) return { next: state, heard: [] }
 
+    const onArrival = this.nodeEffects(nodeId)
     const next: PlaytestState = {
       nodeId,
-      caller: applyEffects(state.caller, this.nodeEffects(nodeId), this.index),
+      caller: applyEffects(state.caller, onArrival, this.index),
       path: [...state.path, here.slug],
       failedAttempts: 0,
       finished: here.node_type === 'ending',
       fightRound: this.openingRound(nodeId),
       fightSilences: 0,
     }
-    return { next, heard: this.arrival(next) }
+    // The item speaks before the room does, the way the exporter chains it:
+    // picking something up on the way in is part of arriving, not a footnote
+    // to the scene.
+    return { next, heard: [...clipsFor(this.graph, onArrival), ...this.arrival(next)] }
   }
 
   /**

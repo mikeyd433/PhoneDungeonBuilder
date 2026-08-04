@@ -1,6 +1,7 @@
 import type { Choice, Effect, StoryGraph, StoryNode } from '@/types/domain'
 import { reactionPlaybackFor } from '@/features/cast/dialogue'
 import { consumePlan } from '@/features/state/consume'
+import { clipsFor, spendClips } from '@/features/state/itemClips'
 import {
   consumeAllLiquid,
   consumeLiquid,
@@ -117,6 +118,44 @@ export function emitDoor(ctx: DoorEmitContext): string | null {
     return at
   }
 
+  /**
+   * What an item says when it changes hands, chained in front of `next`.
+   *
+   * Emitted AFTER the widget that moves it, which is why it is wrapped around
+   * the destination the effect widget will point at: "you have the rope" said
+   * before the caller has it is a promise, not a description.
+   *
+   * Unrecorded is silence and is reported, like everything else here — the
+   * exported flow never speaks.
+   */
+  const wrapClips = (
+    clips: ReturnType<typeof clipsFor>,
+    kind: string,
+    next: string | null,
+  ): string | null => {
+    let at = next
+    for (let i = clips.length - 1; i >= 0; i--) {
+      const clip = clips[i]
+      if (!clip.audioPath) {
+        warnings.push(
+          `${slug} digit ${choice.digit}: "${clip.say.slice(0, 40)}" is written for an item changing hands but has no recording, so the caller hears nothing at that moment.`,
+        )
+        continue
+      }
+      const name = `${slug}_d${dkey}_${kind}${i === 0 ? '' : i + 1}`
+      widgets.push({
+        name,
+        type: 'say-play',
+        nodeId: node.id,
+        note: `Heard as an item changes hands on digit ${choice.digit}.`,
+        playUrl: `${audioBaseUrl}${clip.audioPath}`,
+        transitions: [{ event: 'audioComplete', next: at }],
+      })
+      at = name
+    }
+    return at
+  }
+
   if (!forks) dest = wrapReaction(dest)
 
   const reactMissing = reactParts.length - reactRecorded.length
@@ -143,6 +182,8 @@ export function emitDoor(ctx: DoorEmitContext): string | null {
       Boolean([...graph.stateVars.values()].find((v) => v.slug === s)?.is_consumable),
     )
     if (plan.slugs.length > 0) {
+      // The clip goes AFTER the spend, so it is heard once the item is gone.
+      dest = wrapClips(spendClips(graph, plan.slugs), 'spent', dest)
       const spendName = `${slug}_d${dkey}_spend`
       widgets.push({
         name: spendName,
@@ -175,6 +216,7 @@ export function emitDoor(ctx: DoorEmitContext): string | null {
   // Choice effects: one widget, only if there is something to do (§6.2 —
   // "Don't pay widgets for nothing").
   if (fx.length > 0) {
+    dest = wrapClips(clipsFor(graph, fx), 'item', dest)
     const fxName = `${slug}_d${dkey}_fx`
     widgets.push({
       name: fxName,

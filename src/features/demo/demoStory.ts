@@ -182,6 +182,14 @@ export function buildDemoStory(): StoryGraph {
     kind: 'item',
     description: 'Floats past in the hold.',
     is_consumable: false,
+    // What the ITEM says wherever it changes hands, as against what a door
+    // says at one particular threshold.
+    gain_narration: 'The rope is heavier than it looked. Salt, and something older.',
+    gain_audio_path: null,
+    gain_audio_duration_ms: null,
+    spend_narration: 'The last of it goes over the side.',
+    spend_audio_path: null,
+    spend_audio_duration_ms: null,
     audio_path: null,
     audio_duration_ms: null,
     created_at: STAMP,

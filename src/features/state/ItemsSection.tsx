@@ -44,6 +44,72 @@ export default function ItemsSection({ nodeId }: { nodeId: string }) {
 
   const field = 'rounded border border-mortar/60 bg-stone px-2 py-2 text-sm'
 
+  /**
+   * Two lines an item carries: one for arriving in the satchel, one for
+   * leaving it.
+   *
+   * Folded away, because most items never need either — a key that opens a
+   * door says nothing on being picked up, and a row of empty boxes on every
+   * item would bury the two that matter. Open once written, so nothing you
+   * typed can hide.
+   */
+  const ItemMoments = ({ item }: { item: StateVar }) => {
+    const written = Boolean(item.gain_narration?.trim() || item.spend_narration?.trim())
+    const rows: Array<{ move: 'gain' | 'spend'; label: string; hint: string; text: string }> = [
+      {
+        move: 'gain',
+        label: 'When it is picked up',
+        hint: 'Heard right after it is granted, at every door and room that gives it.',
+        text: item.gain_narration ?? '',
+      },
+      {
+        move: 'spend',
+        label: 'When it is used up',
+        hint: 'Heard after it is spent or taken away.',
+        text: item.spend_narration ?? '',
+      },
+    ]
+    return (
+      <details open={written}>
+        <summary className="cursor-pointer text-xs text-mortar">
+          What it says as it changes hands
+          {written && <span className="ml-2 text-torch">·written</span>}
+        </summary>
+        <div className="mt-2 flex flex-col gap-2">
+          {rows.map((row) => (
+            <label key={row.move} className="flex flex-col gap-1">
+              <span className="text-xs uppercase tracking-wider text-mortar">{row.label}</span>
+              <input
+                key={`${item.id}:${row.move}:${row.text}`}
+                defaultValue={row.text}
+                placeholder={row.move === 'gain' ? 'The rope is heavier than it looked.' : 'The last of it.'}
+                disabled={busy}
+                onBlur={(e) => {
+                  const next = e.target.value.trim()
+                  if (next === row.text.trim()) return
+                  void run(() =>
+                    api.updateStateVar(item.id, {
+                      [`${row.move}_narration`]: next || null,
+                    }),
+                  )
+                }}
+                className={`${field} w-full text-sm`}
+              />
+              <span className="text-xs text-cold">{row.hint}</span>
+            </label>
+          ))}
+          {written && (
+            <p className="text-xs text-cold">
+              Record them with the rest of the story — they are in the queue as{' '}
+              <span className="font-carved">{item.slug} — picked up</span> and{' '}
+              <span className="font-carved">used up</span>. Unrecorded is silence on the phone.
+            </p>
+          )}
+        </div>
+      </details>
+    )
+  }
+
   const GateRow = ({ choice }: { choice: Choice }) => {
     const gate = [...graph.gates.values()].find((g) => g.choice_id === choice.id)
     const flat = toFlat(gate?.expression)
@@ -198,7 +264,8 @@ export default function ItemsSection({ nodeId }: { nodeId: string }) {
         {vars.length > 0 && (
           <ul className="flex flex-col gap-1">
             {vars.map((v: StateVar) => (
-              <li key={v.id} className="flex flex-wrap items-center gap-2">
+              <li key={v.id} className="flex flex-col gap-1 rounded border border-mortar/25 p-2">
+                <div className="flex flex-wrap items-center gap-2">
                 <input
                   // Remounts when the value changes underneath, never while
                   // typing — the graph only moves on blur.
@@ -221,6 +288,14 @@ export default function ItemsSection({ nodeId }: { nodeId: string }) {
                   {v.slug}
                   {v.is_consumable && ' ·used up'}
                 </span>
+                </div>
+
+                {/* What the ITEM says as it changes hands, wherever that is.
+                    A door's reaction is still the place for what is true of
+                    that particular threshold; this is for what is true of the
+                    thing itself, so it is written once and heard everywhere it
+                    is picked up or spent. */}
+                <ItemMoments item={v} />
               </li>
             ))}
           </ul>

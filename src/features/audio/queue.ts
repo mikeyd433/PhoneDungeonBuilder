@@ -53,7 +53,11 @@ const WITHIN_ROOM: Record<AudioTarget['ref']['kind'], number> = {
   'fight round': 1,
   refusal: 2,
   reaction: 3,
+  // Both live outside any one room, so they sort to the end together —
+  // an actor records the story, then the handful of things it says about
+  // objects wherever they turn up.
   item: 9,
+  'item moment': 9,
   inventory: 9,
 }
 

@@ -118,6 +118,12 @@ export const HELP: HelpSection[] = [
         what: '“+ New item” is beside the same control, so you never have to go and make one first. Choose “take away” to remove something from the caller’s satchel.',
       },
       {
+        title: 'Say something when an item changes hands',
+        where: '✎ EDIT → Items → the item → “What it says as it changes hands”.',
+        what: 'Two lines: one heard when it is picked up, one when it is used up — at every door and room that moves it, so the sentence is written once. A door’s “Heard on the way through” is still the place for what only that threshold says.',
+        needs: 'A take, like everything else. Unrecorded is silence on the phone, and the export lists it.',
+      },
+      {
         title: 'One key, two rooms',
         where: 'The doors panel, under the room → ⋯ → Where it leads → “⑂ Make this door fork on an item”.',
         what: 'Press 1 goes one place carrying the helmet and another without it. Two ordinary rooms, each with its own name, script, cast and exits.',

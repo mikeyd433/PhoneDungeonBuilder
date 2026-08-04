@@ -14,6 +14,12 @@ function withItem(graph: StoryGraph, slug: string, consumable = false): StateVar
     is_consumable: consumable,
     audio_path: null,
     audio_duration_ms: null,
+    gain_narration: null,
+    gain_audio_path: null,
+    gain_audio_duration_ms: null,
+    spend_narration: null,
+    spend_audio_path: null,
+    spend_audio_duration_ms: null,
     created_at: '',
     updated_at: '',
   }

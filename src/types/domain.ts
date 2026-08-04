@@ -105,6 +105,21 @@ export interface StateVar {
   /** A take of the item's name, for the readback. Unrecorded is silence. */
   audio_path: string | null
   audio_duration_ms: number | null
+  /**
+   * What is heard when this item changes hands, wherever that happens.
+   *
+   * On the ITEM rather than on the effect, because a door already has a
+   * reaction for what is heard at that particular threshold. What belongs
+   * here is what is true every time: "the rope is heavier than it looked".
+   * Script and take, so unrecorded is silence and the export says so.
+   */
+  gain_narration: string | null
+  gain_audio_path: string | null
+  gain_audio_duration_ms: number | null
+  /** The same, for being used up or taken away. */
+  spend_narration: string | null
+  spend_audio_path: string | null
+  spend_audio_duration_ms: number | null
   created_at: string
   updated_at: string
 }

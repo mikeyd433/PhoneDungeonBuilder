@@ -56,6 +56,19 @@ export function useTakeWriter() {
         case 'item':
           await setItemAudio(ref.varId, path, durationMs)
           return
+        case 'item moment':
+          // Same reason as a refusal: these columns have no store action of
+          // their own, so the graph is re-read rather than patched a row at a
+          // time. Four steps in the same order as every other kind — convert,
+          // upload, point the row at it, and only then drop what it replaced.
+          await api.updateStateVar(
+            ref.varId,
+            ref.move === 'gain'
+              ? { gain_audio_path: path, gain_audio_duration_ms: durationMs }
+              : { spend_audio_path: path, spend_audio_duration_ms: durationMs },
+          )
+          await refresh()
+          return
         case 'inventory':
           await updateStory(
             ref.slot === 'intro'

@@ -21,6 +21,7 @@ export type TargetKind =
   | 'reaction'
   | 'refusal'
   | 'item'
+  | 'item moment'
   | 'inventory'
 
 export interface AudioTarget {
@@ -43,6 +44,7 @@ export interface AudioTarget {
     | { kind: 'reaction'; choiceId: string }
     | { kind: 'refusal'; gateId: string; choiceId: string }
     | { kind: 'item'; varId: string }
+    | { kind: 'item moment'; varId: string; move: 'gain' | 'spend' }
     | { kind: 'inventory'; slot: 'intro' | 'empty' }
 }
 
@@ -190,6 +192,31 @@ export function audioTargets(graph: StoryGraph): AudioTarget[] {
         currentPath: v.audio_path,
         currentDurationMs: v.audio_duration_ms,
         ref: { kind: 'item', varId: v.id },
+      })
+    }
+  }
+
+  /**
+   * What an item says as it changes hands.
+   *
+   * OUTSIDE the readback block on purpose: the take of an item's NAME only
+   * exists to be recited when the caller checks their pockets, so it needs the
+   * reserved key to be worth recording. These two are heard at the moment the
+   * item moves, which happens whether or not the story has a readback at all.
+   */
+  for (const v of [...graph.stateVars.values()].sort((a, b) => a.slug.localeCompare(b.slug))) {
+    for (const move of ['gain', 'spend'] as const) {
+      const text = (move === 'gain' ? v.gain_narration : v.spend_narration)?.trim()
+      if (!text) continue
+      out.push({
+        key: `item#${v.slug}#${move}`,
+        kind: 'item moment',
+        file: `item__${v.slug}__${move === 'gain' ? 'gained' : 'spent'}`,
+        label: `${v.name || v.slug} — ${move === 'gain' ? 'picked up' : 'used up'}`,
+        text,
+        currentPath: move === 'gain' ? v.gain_audio_path : v.spend_audio_path,
+        currentDurationMs: move === 'gain' ? v.gain_audio_duration_ms : v.spend_audio_duration_ms,
+        ref: { kind: 'item moment', varId: v.id, move },
       })
     }
   }

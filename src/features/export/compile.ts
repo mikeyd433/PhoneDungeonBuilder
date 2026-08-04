@@ -13,6 +13,7 @@ import {
   revokeLiquid,
 } from './liquid'
 import { doorsByDigit, keyConflicts } from '@/features/room/keys'
+import { clipsFor } from '@/features/state/itemClips'
 import { emitFight } from './compileFight'
 import { emitDoor } from './compileDoor'
 
@@ -302,6 +303,39 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
       })
     }
 
+    /**
+     * What an item says when it changes hands on arrival.
+     *
+     * Chained AFTER the effects widget — the caller has the thing by then, so
+     * the sentence is a description rather than a promise — and before the
+     * room reads itself out, because "you have picked up the rope" belongs
+     * with the picking up and not after the scene it happened in.
+     */
+    const wrapArrivalClips = (next: string | null): string | null => {
+      let at = next
+      const clips = clipsFor(graph, arrival)
+      for (let i = clips.length - 1; i >= 0; i--) {
+        const clip = clips[i]
+        if (!clip.audioPath) {
+          warnings.push(
+            `${slug}: "${clip.say.slice(0, 40)}" is written for an item changing hands on arrival but has no recording, so the caller hears nothing at that moment.`,
+          )
+          continue
+        }
+        const name = `${slug}_item${i === 0 ? '' : i + 1}`
+        widgets.push({
+          name,
+          type: 'say-play',
+          nodeId: node.id,
+          note: 'Heard as an item changes hands on arrival.',
+          playUrl: `${audioBaseUrl}${clip.audioPath}`,
+          transitions: [{ event: 'audioComplete', next: at }],
+        })
+        at = name
+      }
+      return at
+    }
+
     // ---- batched gate evaluation, before play (see the header note)
     let gateWidget: string | null = null
     if (gated.length > 0) {
@@ -319,12 +353,12 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
       })
       if (arrival.length > 0) {
         widgets.find((w) => w.name === wname(slug, 'fx'))!.transitions = [
-          { event: 'next', next: gateWidget },
+          { event: 'next', next: wrapArrivalClips(gateWidget) },
         ]
       }
     } else if (arrival.length > 0) {
       widgets.find((w) => w.name === wname(slug, 'fx'))!.transitions = [
-        { event: 'next', next: replayName(node) },
+        { event: 'next', next: wrapArrivalClips(replayName(node)) },
       ]
     }
 
