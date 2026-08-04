@@ -12,9 +12,8 @@ import type {
 
 import { buildFightView, type FightView } from '@/features/fight/model'
 import { linesFor, reactionPlaybackFor } from '@/features/cast/dialogue'
-import { allReadings, alwaysHidden, doorShows, hidesDoor, variantsOf } from './variants'
+import { allReadings, alwaysHidden, hidesDoor, variantsOf } from './variants'
 import { doorsByDigit, keyConflicts } from './keys'
-import { shortCondition } from '@/features/state/describe'
 import { MAX_WALL_ARCHES } from './vector/geometry'
 
 /**
@@ -84,14 +83,6 @@ export interface RoomView {
   exits: ExitView[]
   /** F1.13 — digits 4–9 render as a stacked list rather than walls. */
   overflowExits: ExitView[]
-  /**
-   * The doors this state does NOT offer — empty in the "every state" view.
-   *
-   * Listed rather than simply absent, because a door you have hidden is one you
-   * need to be able to un-hide, and a wall it is missing from gives you nowhere
-   * to do that. They are not drawn on the wall: this caller cannot see them.
-   */
-  withheldExits: ExitView[]
   /** F1.4 / F1.12 — every way in, fight outcomes included. More than one means a
    *  retreat chooser. */
   retreats: Array<{ edgeId: string; fromId: string; fromTitle: string }>
@@ -127,17 +118,6 @@ export interface RoomView {
    *  room that reads three ways is not a room you can judge by looking at one
    *  of them. */
   readings: number
-  /**
-   * The states this room can be stood in, for the switcher above the wall.
-   *
-   * Empty when the room has no readings, which is almost every room — the
-   * switcher only exists where there is something to switch between. `null` is
-   * every state at once, the authoring view: all the doors, marked.
-   */
-  states: Array<{ id: string | null | 'all'; label: string; hint: string }>
-  /** Which of those is being shown. `'all'` is the default and the only one
-   *  that ever draws a door the caller might not be offered. */
-  viewing: string | null | 'all'
   /** F1.14 — the narration, split by who says it. Empty when nobody has split
    *  this room's text into lines yet. */
   lines: Array<{ id: string; speaker: string | null; color: string; text: string }>
@@ -215,30 +195,14 @@ export function buildRoomView(
   graph: StoryGraph,
   derived: DerivedGraph,
   nodeId: string,
-  /**
-   * Stand in the room as a caller in one particular state.
-   *
-   * `'all'` — the authoring view, and the default: every door, with the ones
-   * only some callers see marked. Anything else is a reading id, or null for
-   * the room as written, and the wall then shows exactly what THAT caller is
-   * offered. This is what makes the doors editable per state: you switch to the
-   * state and the wall is that state's wall.
-   */
-  viewing: string | null | 'all' = 'all',
 ): RoomView | null {
   const node = graph.nodes.get(nodeId)
   if (!node) return null
 
-  const readings = variantsOf(graph, nodeId)
-  // A state that has been deleted underneath the switcher falls back to the
-  // authoring view rather than rendering an empty room.
-  const stateExists =
-    viewing === 'all' || viewing === null || readings.some((v) => v.id === viewing)
-  const at: string | null | 'all' = stateExists ? viewing : 'all'
-  const shownReading = at !== 'all' && at !== null ? readings.find((v) => v.id === at) : undefined
-
-  const all = derived.children.get(nodeId) ?? []
-  const outgoing = at === 'all' ? all : all.filter((c) => doorShows(graph, c.id, at))
+  // Every door the room has, marked. A door only some callers are offered is
+  // drawn dimmed and flagged rather than removed: the wall is the author's
+  // view of the room, and there is one of it.
+  const outgoing = derived.children.get(nodeId) ?? []
 
   const effectsFor = (predicate: (e: Effect) => boolean) => {
     const grants: string[] = []
@@ -300,11 +264,6 @@ export function buildRoomView(
     .slice(MAX_WALL_ARCHES)
     .map((c, i) => toExit(c, MAX_WALL_ARCHES + i))
 
-  const withheldExits: ExitView[] =
-    at === 'all'
-      ? []
-      : all.filter((c) => !doorShows(graph, c.id, at)).map((c, i) => toExit(c, -1 - i))
-
   const fight = buildFightView(graph, nodeId)
 
   // ONE bricked archway, not a wall padded out to three.
@@ -318,16 +277,9 @@ export function buildRoomView(
   // A fight room gets none: its way onward is won, not chosen, so offering a
   // bricked arch there would invite the author to build a door the caller never
   // sees. Nor does an ending.
-  /**
-   * Which keys are spoken for.
-   *
-   * In the authoring view that is every door, because a new door there belongs
-   * to no state and would collide with whatever is already on the key. Standing
-   * in ONE state it is only the doors that state offers — a key whose door is
-   * hidden here is free here, and chiselling through it is exactly how a second
-   * door on one digit gets made.
-   */
-  const usedDigits = new Set((at === 'all' ? all : outgoing).map((c) => c.digit))
+  /** Which keys are spoken for. Every door the room has: a new one would
+   *  collide with whatever is already on that key. */
+  const usedDigits = new Set(outgoing.map((c) => c.digit))
   const isEnding = node.node_type === 'ending'
   if (!isEnding && !fight) {
     let nextDigit = 1
@@ -386,37 +338,12 @@ export function buildRoomView(
     node,
     exits,
     overflowExits,
-    withheldExits,
     retreats,
     siblings,
     // F1.5 — the torch means "there is audio for this room", and for a room
     // assembled line by line that is only true once every line has a take. One
     // recorded line out of four is a scene with three silences in it, and
     // lighting it would be exactly the atmosphere-over-data §0 forbids.
-    states:
-      readings.length === 0
-        ? []
-        : [
-            {
-              id: 'all' as const,
-              label: 'Every state',
-              hint: 'Every door this room has, with the conditional ones marked.',
-            },
-            {
-              id: null,
-              label: 'As written',
-              hint: 'What a caller who matches none of the readings gets.',
-            },
-            ...readings.map((v) => ({
-              id: v.id,
-              label: shortCondition(
-                [...graph.stateVars.values()].map((s) => ({ slug: s.slug, name: s.name })),
-                v.expression,
-              ),
-              hint: 'The room as this caller finds it.',
-            })),
-          ],
-    viewing: at,
     torchLit: (() => {
       // F1.5 — "there is audio for this room", which now has to mean every way
       // the room can read. A finished base and an unrecorded alternate is a
@@ -447,18 +374,7 @@ export function buildRoomView(
      * hears. One unattributed line, because a reading is one take and cannot be
      * split between speakers.
      */
-    lines: shownReading
-      ? shownReading.narration.trim()
-        ? [
-            {
-              id: shownReading.id,
-              speaker: null,
-              color: 'parchment',
-              text: shownReading.narration,
-            },
-          ]
-        : []
-      : linesFor(graph, nodeId).map((l) => {
+    lines: linesFor(graph, nodeId).map((l) => {
           const character = l.character_id ? graph.characters.get(l.character_id) : null
           return {
             id: l.id,

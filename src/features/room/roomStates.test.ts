@@ -6,12 +6,20 @@ import { addReading, addVar, choiceOf, hideDoor, idOf, makeGraph } from '@/test/
 import type { StoryGraph } from '@/types/domain'
 
 /**
- * Standing in the room as one kind of caller.
+ * One room, one wall.
  *
- * A room that reads two ways has two sets of doors, and looking at both at once
- * is how you author it but not how anybody experiences it. Picking a state
- * makes the wall that state's wall — which is also what makes the doors
- * editable one state at a time, rather than through a grid of checkboxes.
+ * There used to be a plate in the corner that stood you in the room as one kind
+ * of caller: the wall became that caller's wall, doors they were not offered
+ * moved to a "not offered here" list, and the narration became that reading's.
+ * It went, because the thing it was for — press 1 goes somewhere else if you
+ * have the helmet — is a **fork on the door**, and the fork needs no per-state
+ * view at all: it is two ordinary rooms with a check between them.
+ *
+ * What is left is the author's view and only the author's view. Every door the
+ * room has is on the wall, and a door only some callers are offered is MARKED
+ * rather than hidden — §0's first rule, and the thing the switcher was
+ * genuinely worse at, because a door you could not see was a door you had to
+ * remember existed.
  */
 
 /** A cell whose grate only exists by lamplight. */
@@ -25,93 +33,46 @@ const cell = () => {
   return { g, lit }
 }
 
-const view = (g: StoryGraph, at?: string | null | 'all') =>
-  buildRoomView(g, deriveGraph(g), idOf(g, 'CELL'), at)!
+const view = (g: StoryGraph) => buildRoomView(g, deriveGraph(g), idOf(g, 'CELL'))!
 
-describe('the switcher', () => {
-  /** Almost every room. The switcher only exists where there is something to
-   *  switch between, and adding this feature must not put a control on 129
-   *  rooms that have no readings. */
-  it('is not there for a room that reads one way', () => {
-    const g = makeGraph(['CELL', 'CORRIDOR'], ['CELL>CORRIDOR'])
-    expect(buildRoomView(g, deriveGraph(g), idOf(g, 'CELL'))!.states).toEqual([])
-  })
-
-  it('offers every state, the room as written, and all of them at once', () => {
+describe('the wall', () => {
+  it('shows every door the room has, whatever the readings say', () => {
     const { g } = cell()
-    expect(view(g).states.map((s) => s.label)).toEqual([
-      'Every state',
-      'As written',
-      'Has lamp',
-    ])
-  })
-
-  /** The default has to be the authoring view, or opening a room you have been
-   *  editing for weeks would suddenly be missing doors. */
-  it('starts on every state at once', () => {
-    const { g } = cell()
-    expect(view(g).viewing).toBe('all')
     expect(view(g).exits.filter((e) => e.choiceId).map((e) => e.digit)).toEqual(['1', '2'])
   })
-})
 
-describe('standing in one state', () => {
-  it('shows only the doors that state offers', () => {
-    const { g, lit } = cell()
-    expect(view(g, null).exits.filter((e) => e.choiceId).map((e) => e.digit)).toEqual(['1'])
-    expect(view(g, lit.id).exits.filter((e) => e.choiceId).map((e) => e.digit)).toEqual(['1', '2'])
-  })
-
-  /** A door you have withheld is one you have to be able to give back, and a
-   *  wall it is missing from gives you nowhere to do that. */
-  it('lists the withheld ones separately, so they can be given back', () => {
+  /** Marked, not removed — the whole reason the switcher could go. */
+  it('marks the door only some callers are offered', () => {
     const { g } = cell()
-    expect(view(g, null).withheldExits.map((e) => e.digit)).toEqual(['2'])
+    const grate = view(g).exits.find((e) => e.digit === '2')!
+    expect(grate.hiddenIn).toBe(1)
+    expect(grate.neverShown).toBe(false)
   })
 
-  it('withholds nothing in the every-state view', () => {
-    const { g } = cell()
-    expect(view(g).withheldExits).toEqual([])
-  })
-
-  /** The reading REPLACES the room's script rather than annotating it, so the
-   *  words on the floor are the reading's and the room's own lines are gone. */
-  it('reads out the words this caller actually hears, as the room’s script', () => {
+  it('flags a door no reading offers at all', () => {
     const { g, lit } = cell()
-    expect(view(g, lit.id).lines.map((l) => l.text)).toEqual([
-      'The lamp finds a grate in the far wall.',
-    ])
-    expect(view(g, null).lines.map((l) => l.text)).not.toContain(
+    hideDoor(g, choiceOf(g, 'CELL', 'GRATE'), lit.id)
+    expect(view(g).exits.find((e) => e.digit === '2')?.neverShown).toBe(true)
+  })
+
+  /** The room's own script, always. A reading's words are edited in the
+   *  editor's Readings tab, which is where they are written. */
+  it('reads out the room’s own narration, not a reading’s', () => {
+    const { g } = cell()
+    expect(view(g).lines.map((l) => l.text)).not.toContain(
       'The lamp finds a grate in the far wall.',
     )
   })
 
-  /**
-   * A key whose door is hidden HERE is free here.
-   *
-   * This asserted the opposite until two doors on one key became a feature:
-   * chiselling through a blank arch in a state where that key has no door is
-   * exactly how the second door gets made. In the authoring view, where a new
-   * door belongs to no state, the key stays taken.
-   */
-  it('offers a key free in this state, and not in the authoring view', () => {
-    const g = makeGraph(['CELL', 'HALL', 'GRATE'], ['CELL>HALL', 'CELL>GRATE'])
-    addVar(g, 'LAMP', { name: 'the lamp' })
-    const lit = addReading(g, 'CELL', { op: 'has', var: 'LAMP' })
-    hideDoor(g, choiceOf(g, 'CELL', 'GRATE'), lit.id)
-    const blank = (at: string | null | 'all') =>
-      buildRoomView(g, deriveGraph(g), idOf(g, 'CELL'), at)!.exits.find((e) => !e.choiceId)?.digit
-    expect(blank(lit.id)).toBe('2')
-    expect(blank('all')).toBe('3')
-  })
-
-  it('falls back to every state when the reading it was showing is deleted', () => {
+  /** A key carrying a door in any state is spoken for: a new door belongs to no
+   *  state and would collide with whatever is already there. */
+  it('puts the blank arch on the first key no door uses', () => {
     const { g } = cell()
-    expect(view(g, 'a-reading-that-is-gone').viewing).toBe('all')
+    expect(view(g).exits.find((e) => !e.choiceId)?.digit).toBe('3')
   })
 })
 
-describe('naming a state short enough for a tab', () => {
+describe('naming a condition short enough for a chip', () => {
   const vars = [{ slug: 'LAMP', name: 'the lamp' }]
 
   it('says Has and No, the way an author says it — without the article', () => {

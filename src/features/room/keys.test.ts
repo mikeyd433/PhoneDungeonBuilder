@@ -123,44 +123,38 @@ describe('making the second door', () => {
 })
 
 describe('the room view', () => {
-  const view = (g: StoryGraph, at?: string | null | 'all') =>
-    buildRoomView(g, deriveGraph(g), idOf(g, 'CELL'), at)!
+  const view = (g: StoryGraph) => buildRoomView(g, deriveGraph(g), idOf(g, 'CELL'))!
 
-  it('shows the door that state offers, and only that one', () => {
-    const { g, armed } = cell()
-    expect(view(g, null).exits.filter((e) => e.choiceId).map((e) => e.label)).toEqual(['try the lid'])
-    expect(view(g, armed.id).exits.filter((e) => e.choiceId).map((e) => e.label)).toEqual([
-      'force the hatch',
-    ])
-  })
-
-  it('marks the key as shared rather than as an ordinary door', () => {
+  /**
+   * One wall, showing every door.
+   *
+   * The wall used to be rendered per state, so "press 2" drew as whichever door
+   * that caller got. That switcher is gone: the room view is the AUTHOR's view
+   * and there is one of it, with the conditional doors marked rather than
+   * removed. Both doors on the shared key are therefore on the wall together.
+   */
+  it('shows both doors on the shared key, marked as sharing it', () => {
     const { g } = cell()
-    expect(view(g, null).exits.find((e) => e.choiceId)?.sharesKey).toBe(true)
+    const doors = view(g).exits.filter((e) => e.choiceId)
+    expect(doors.map((e) => e.label)).toEqual(['try the lid', 'force the hatch'])
+    expect(doors.every((e) => e.sharesKey)).toBe(true)
   })
 
   it('draws a clash as a clash', () => {
     const { g, armed, lid } = cell()
     g.hiddenDoors.delete(`hd-${lid.id}-${armed.id}`)
-    expect(view(g, armed.id).exits.some((e) => e.keyClash)).toBe(true)
+    expect(view(g).exits.some((e) => e.keyClash)).toBe(true)
   })
 
-  /** A key whose door is hidden HERE is free here — chiselling it is how the
-   *  second door gets made. In the authoring view it is not free. */
-  it('offers the shared key as a blank arch only where it is free', () => {
-    // Doors on 1 and 2; the one on 2 is not offered to an armed caller, so 2 is
-    // free THERE and taken everywhere else.
+  /** A key carrying a door in any state is spoken for on the author's wall: a
+   *  new door there belongs to no state and would collide with it. */
+  it('puts the blank arch on the first key no door uses at all', () => {
     const g = makeGraph(['CELL', 'HALL', 'LOCKER'], ['CELL>HALL', 'CELL>LOCKER'])
     addVar(g, 'CROWBAR')
     const armed = addReading(g, 'CELL', { op: 'has', var: 'CROWBAR' })
     const lid = [...g.choices.values()].find((c) => c.digit === '2')!
     hideDoor(g, lid.id, armed.id)
-
-    const blankIn = (at: string | null | 'all') =>
-      buildRoomView(g, deriveGraph(g), idOf(g, 'CELL'), at)!.exits.find((e) => !e.choiceId)?.digit
-    expect(blankIn(armed.id)).toBe('2')
-    expect(blankIn('all')).toBe('3')
-    expect(blankIn(null)).toBe('3')
+    expect(view(g).exits.find((e) => !e.choiceId)?.digit).toBe('3')
   })
 })
 

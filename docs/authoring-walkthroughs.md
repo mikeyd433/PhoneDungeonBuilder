@@ -105,7 +105,8 @@ they are stored differently.
 ### Before — two paths, 4 taps and 8, different storage
 
 **A, through the state plate** (needs the room to have a reading): plate → the
-state → Show where doors lead → untick **here**. Four taps.
+state → Show where doors lead → untick **here**. Four taps. *(That plate has
+since been removed — finding 10.)*
 
 **B, through a `hide` gate** (works anywhere): EDIT → tick "an item changes
 hands" → Items → find the door → + Require something → choose the item →
@@ -129,20 +130,20 @@ so — and now the door sheet says so too, before you open anything.
 
 ---
 
-## 6. Two doors on one key, one per state
+## 6. Walk both halves of a fork
 
 | # | Tap | Surface |
 |---|---|---|
-| 1 | the state plate | room |
-| 2 | the state the second door belongs to | plate |
-| 3 | ⋯ on the door that holds the key | room |
-| 4 | **Make ⟨n⟩ a different door here** *(write unmeasured)* | door sheet |
-| 5 | name the new room | room |
+| 1 | the archway of the forking door | room |
+| 2 | **Walk into ⟨room⟩**, under the condition it belongs to | fork modal |
 
-**5 taps**, and the order-of-operations trap is gone: one action hides the
-first door in this state and puts a new one on the key, in the order that leaves
-nothing broken half way. Doing it by hand — hide, then find the blank arch —
-was ~4 taps *if you already knew the order*, and impossible if you did not.
+**2 taps to either room** — the same as walking through an ordinary door, which
+is what it should cost. Before this the fail route could not be walked into at
+all: the archway always took the pass route, so the second room was reachable
+only by going out to the map and teleporting in.
+
+The modal wires a route that leads nowhere yet, through the same picker the
+fork sheet uses, so a half-built fork is finished where you found it.
 
 ---
 
@@ -204,19 +205,7 @@ first, which is finding 1 below.
 
 ---
 
-## 10. Stand in one state and see the room a caller finds
-
-| # | Tap | Surface |
-|---|---|---|
-| 1 | the plate in the top-left corner | room |
-| 2 | the state | plate |
-
-**2 taps.** The room re-keys and slides in, because to the caller it belongs to
-this is a different room.
-
----
-
-## 11. Get it into Twilio
+## 10. Get it into Twilio
 
 | # | Tap | Surface |
 |---|---|---|
@@ -270,7 +259,9 @@ somewhere first, a second door on a key needed the first hidden in that state
 first, a visibility rule needed the room to have a reading first.
 
 **Fixed**, each as an action rather than an explanation — "Point this door at a
-room →", "Make ⟨n⟩ a different door here", "+ Give this room a second reading".
+room →" and "+ Give this room a second reading". The second-door-on-a-key
+action went with the state switcher (finding 10), which is the plainer answer
+to what it was for.
 
 ### 5. The doors panel is dense at 430 px — **done**
 
@@ -333,3 +324,26 @@ blank space to a button when the story has no items yet.
 The Items tab keeps the whole-room view. Two surfaces showing one control is
 right where one of them is "this door" and the other is "every door here"; two
 surfaces each holding *half* the controls was the thing finding 3 was about.
+
+### 10. The state switcher was the wrong shape for what it was used for — **removed**
+
+A plate in the room's top-left corner stood you in the room as one kind of
+caller: that reading's words as the script, only the doors that reading offers,
+a "not offered here" list to give the rest back, a `here` checkbox on every
+door row, and a two-step action for putting a second door on one key.
+
+Every one of those exists to answer *press 1 goes somewhere else if you have the
+helmet* — which is a **fork on the door**: two ordinary rooms with a check
+between them, no states involved. The switcher was the more expensive way to
+say it and it broke §0's first rule doing so, because a door it had taken off
+the wall was a door you had to remember existed.
+
+**Removed**, along with `RoomView.states`, `RoomView.viewing`,
+`RoomView.withheldExits` and `buildRoomView`'s state parameter. The wall is the
+author's wall: every door the room has, with the conditional ones marked. Alternate
+readings are unchanged — they are still written, recorded, exported and
+door-ticked in the editor's Readings tab, which is where their words are.
+
+In its place, walking through a forking door stops at `ForkGate` and asks which
+of its two rooms to stand in (walkthrough 6). That is the thing the switcher
+was standing in for, at 2 taps instead of a mode.

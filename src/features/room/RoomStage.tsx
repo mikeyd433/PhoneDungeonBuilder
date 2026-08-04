@@ -42,11 +42,6 @@ export interface RoomStageProps {
   /** Everything about this door, in one sheet. The row keeps only the things
    *  worth scanning; the rest is one tap away rather than six icons wide. */
   onOpenDoor?: (choiceId: string) => void
-  /** Stand in the room as a caller in one particular state. */
-  onViewState?: (id: string | null | 'all') => void
-  /** Offer or withhold one door in the state currently being viewed. Absent in
-   *  the "every state" view, where there is no one state to change. */
-  onSetDoorShown?: (choiceId: string, shown: boolean) => void
 }
 
 /** Distance in px before a touch counts as a swipe rather than a tap. */
@@ -66,13 +61,9 @@ export default function RoomStage({
   onOffered,
   onOpenDoor,
   onWire,
-  onViewState,
-  onSetDoorShown,
 }: RoomStageProps) {
   const { node } = view
   const [peek, setPeek] = useState(false)
-  /** Whether the state plate's menu is open. */
-  const [pickingState, setPickingState] = useState(false)
 
   // §3: lighting the torch is the reward for recording a node, and that
   // transition gets a half-second flare. Fires only on the dark -> lit edge, not
@@ -130,63 +121,14 @@ export default function RoomStage({
 
   return (
     <div
-      key={`${node.id}:${String(view.viewing)}`}
+      key={node.id}
       className="delve-enter flex min-h-0 flex-1 flex-col"
       onTouchStart={onTouchStart}
       /* F1.4 — swipe right retreats. */
       onTouchEnd={swipeHandler(undefined, onRetreat)}
     >
-      {/* Stand in the room as one kind of caller.
+      <DungeonRoom view={view} flare={flare} onExit={handleExit} peek={peek} />
 
-          A plate on the wall rather than a row of tabs above it, and switching
-          re-keys the whole room so it slides in the way walking into one does —
-          the point is that this IS a different room to the caller it belongs
-          to, not the same room with a note stuck on top. */}
-      <div className="relative">
-        {view.states.length > 0 && onViewState && (
-          <>
-            <button
-              type="button"
-              onClick={() => setPickingState((v) => !v)}
-              aria-expanded={pickingState}
-              aria-label="Which caller you are standing here as"
-              title="Which caller you are standing here as"
-              className="absolute left-3 top-3 z-20 rounded border border-torch/70 bg-depth/90 px-2 py-1 font-carved text-xs text-torch shadow-lg"
-            >
-              {view.states.find((s) => s.id === view.viewing)?.label ?? 'Every state'} ▾
-            </button>
-            {pickingState && (
-              <>
-                {/* Tapping the room closes it, the way any menu should. */}
-                <div className="fixed inset-0 z-20" onClick={() => setPickingState(false)} />
-                <ul className="absolute left-3 top-12 z-30 flex w-60 flex-col overflow-hidden rounded border border-mortar bg-depth shadow-2xl">
-                  {view.states.map((s) => (
-                    <li key={String(s.id)}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          onViewState(s.id)
-                          setPickingState(false)
-                        }}
-                        className={[
-                          'w-full border-b border-mortar/20 px-3 py-2 text-left text-xs',
-                          view.viewing === s.id
-                            ? 'bg-torch/10 text-torch'
-                            : 'text-mortar hover:bg-stone',
-                        ].join(' ')}
-                      >
-                        <span className="block">{s.label}</span>
-                        <span className="block text-cold">{s.hint}</span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </>
-            )}
-          </>
-        )}
-        <DungeonRoom view={view} flare={flare} onExit={handleExit} peek={peek} />
-      </div>
 
       {/* Where the doors go. The narration sometimes says so and sometimes
           doesn't, and the arch itself only ever carried the digit — so without
@@ -283,30 +225,11 @@ export default function RoomStage({
                 >
                   {exit.digit}
                 </span>
-                {/* In the "every state" view this is a read-out; standing in
-                    one state it is the switch, because that is the state whose
-                    doors you are editing. Long-pressing either — or tapping the
-                    marker in the authoring view — opens the whole question. */}
-                {onSetDoorShown && view.viewing !== 'all' ? (
-                  <label
-                    className="flex shrink-0 items-center gap-1 text-xs text-mortar"
-                    title="Whether this caller is offered this door at all"
-                  >
-                    <input
-                      type="checkbox"
-                      checked
-                      onChange={() => onSetDoorShown(exit.choiceId!, false)}
-                      className="accent-torch"
-                    />
-                    here
-                  </label>
-                ) : /* §0's first rule: every visual element encodes real data.
-                       "Always offered" is the absence of data and every door
-                       starts that way, so it earns no room on the line —
-                       marking all three doors "always" said nothing and cost
-                       exactly as much space as saying something. Making a door
-                       conditional lives in its sheet. */
-                onOffered && (exit.neverShown || exit.hiddenIn > 0 || exit.gate?.behavior === 'hide') ? (
+                {/* §0's first rule: every visual element encodes real data.
+                    "Always offered" is the absence of data and every door
+                    starts that way, so it earns no room on the line. Making a
+                    door conditional lives in its sheet. */}
+                {onOffered && (exit.neverShown || exit.hiddenIn > 0 || exit.gate?.behavior === 'hide') ? (
                   <button
                     type="button"
                     onClick={() => onOffered(exit.choiceId!)}
@@ -477,40 +400,6 @@ export default function RoomStage({
           })}
         </ul>
       )}
-
-      {/* Doors this caller is NOT offered. Not on the wall — they cannot see
-          them — but listed here, because a door you have withheld is one you
-          have to be able to give back, and a wall it is missing from gives you
-          nowhere to do that. */}
-      {peek && view.withheldExits.length > 0 && onSetDoorShown && (
-        <div className="px-4 pt-3">
-          <span className="text-xs uppercase tracking-wider text-mortar">Not offered here</span>
-          <ul className="mt-1 flex flex-col gap-1">
-            {view.withheldExits.map((exit) => (
-              <li
-                key={`withheld-${exit.choiceId}`}
-                className="flex flex-wrap items-center gap-2 rounded border border-dashed border-mortar/25 p-2 opacity-70"
-              >
-                <span className="w-6 shrink-0 text-center font-carved text-mortar">{exit.digit}</span>
-                <span className="min-w-0 flex-1 truncate text-sm text-cold">
-                  {exit.label || <em>unlabelled</em>}
-                  {exit.targetTitle ? ` → ${exit.targetTitle}` : ''}
-                </span>
-                <label className="flex shrink-0 items-center gap-1 text-xs text-mortar">
-                  <input
-                    type="checkbox"
-                    checked={false}
-                    onChange={() => onSetDoorShown(exit.choiceId!, true)}
-                    className="accent-torch"
-                  />
-                  here
-                </label>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
 
       {/* The fight, as a caller meets it: one round at a time, each with the
           move that answers it. Shown in full because this is the authoring

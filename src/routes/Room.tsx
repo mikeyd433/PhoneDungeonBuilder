@@ -1,15 +1,14 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useDelve } from '@/features/graph/store'
-import * as api from '@/lib/api'
 import { buildRoomView, type ExitView } from '@/features/room/roomModel'
-import { slotsToHideNewDoor } from '@/features/room/keys'
 import RoomStage from '@/features/room/RoomStage'
 import ReactionSheet from '@/features/room/ReactionSheet'
 import ForkSheet from '@/features/room/ForkSheet'
 import OfferedSheet from '@/features/room/OfferedSheet'
 import DoorSheet from '@/features/room/DoorSheet'
 import ReactionGate from '@/features/room/ReactionGate'
+import ForkGate from '@/features/room/ForkGate'
 import LoopBackSheet from '@/features/room/LoopBackSheet'
 import EditorSheet from '@/features/room/EditorSheet'
 import Automap from '@/features/automap/Automap'
@@ -18,7 +17,6 @@ import SatchelPanel from '@/features/state/SatchelPanel'
 import { useSolver } from '@/features/state/useSolver'
 import { usePresence } from '@/features/collab/usePresence'
 import { useOfflineSync } from '@/features/offline/useOfflineSync'
-import { errorText } from '@/lib/errorText'
 
 export default function Room() {
   const { storyId } = useParams<{ storyId: string }>()
@@ -51,22 +49,12 @@ export default function Room() {
   /** Which door has its whole sheet open. */
   const [openingDoor, setOpeningDoor] = useState<string | null>(null)
   /** A door being walked through that has something to be heard first. */
-  const [passing, setPassing] = useState<{ choiceId: string; toId: string } | null>(null)
+  const [passing, setPassing] = useState<{ choiceId: string; toId: string | null } | null>(null)
+  /** Which forking door is being walked through — the modal that asks which of
+   *  its two rooms you want to stand in. */
+  const [forkingThrough, setForkingThrough] = useState<string | null>(null)
   /** Which door is being pointed at a room, from the doors panel. */
   const [wiring, setWiring] = useState<string | null>(null)
-  /**
-   * Which state of the room is being stood in — a reading id, null for the room
-   * as written, or 'all' for every door at once.
-   *
-   * Reset on walking somewhere, because a state belongs to a room: "Has the
-   * lamp" means nothing three rooms later, and carrying the selection would
-   * silently hide doors in a room that never had a reading by that name.
-   */
-  const [viewingState, setViewingState] = useState<string | null | 'all'>('all')
-  useEffect(() => setViewingState('all'), [currentNodeId])
-  /** Door-visibility writes go straight to the API rather than through the
-   *  store, so they need somewhere of their own to fail into. */
-  const [doorError, setDoorError] = useState<string | null>(null)
   const { layout } = useAutomapLayout()
   const { result: solverResult, solving } = useSolver()
   const [satchelOpen, setSatchelOpen] = useState(false)
@@ -96,18 +84,34 @@ export default function Room() {
     )
   }
 
-  const view = buildRoomView(graph, derived, currentNodeId, viewingState)
+  const view = buildRoomView(graph, derived, currentNodeId)
   if (!view) return <p className="p-6">This room has collapsed.</p>
 
-  // A door carrying a reaction stops you on the way through, so what is heard
-  // between the two rooms gets heard. An ordinary door walks straight on.
+  /**
+   * Walking through a door.
+   *
+   * Two things live BETWEEN two rooms and can therefore be seen from neither:
+   * what is heard on the way through, and — for a door that forks — which of
+   * its two rooms you land in. Each stops you; an ordinary door walks straight
+   * on, because a confirm on every step would be intolerable.
+   *
+   * The reaction comes first, because that is the order the export emits: a
+   * fork's reaction wraps the whole split, so both routes hear it.
+   */
   const onEnter = (exit: ExitView) => {
-    if (!exit.targetId) return
-    if (exit.reaction !== 'none' && exit.choiceId) {
+    if (!exit.choiceId) {
+      if (exit.targetId) walkTo(exit.targetId)
+      return
+    }
+    if (exit.reaction !== 'none') {
       setPassing({ choiceId: exit.choiceId, toId: exit.targetId })
       return
     }
-    walkTo(exit.targetId)
+    if (exit.forksTo !== null) {
+      setForkingThrough(exit.choiceId)
+      return
+    }
+    if (exit.targetId) walkTo(exit.targetId)
   }
 
   // F1.11 — cycle through rooms sharing this one's parent.
@@ -130,51 +134,8 @@ export default function Room() {
   // Either there is a trail to walk back down, or the graph itself has a way in.
   const canRetreat = trailLength > 1 || view.retreats.length > 0
 
-  /**
-   * Offer or withhold a door in the state being stood in.
-   *
-   * Only ever the CURRENT state — there is no way to reach another room's rules
-   * from here, and no way to change 'all', which is not a state a caller can be
-   * in. Written straight through and re-read, like everything else that hangs
-   * off a reading.
-   */
-  const setDoorShown = async (choiceId: string, shown: boolean) => {
-    if (viewingState === 'all') return
-    setDoorError(null)
-    try {
-      await api.setDoorHidden(graph.story.id, choiceId, viewingState, !shown)
-      await useDelve.getState().refresh()
-    } catch (e) {
-      setDoorError(errorText(e))
-    }
-  }
-
-  /**
-   * Make this key mean something different in the state being stood in.
-   *
-   * Two doors on one key needs the first hidden HERE before the second can be
-   * made, and nothing said so — the blank arch simply did not offer that key.
-   * One action does both, in the order that leaves nothing broken half way: the
-   * old door stops being offered here first, so the key is free when the new
-   * one lands on it.
-   */
-  const splitKey = async (choiceId: string) => {
-    if (viewingState === 'all') return
-    const existing = graph.choices.get(choiceId)
-    if (!existing) return
-    try {
-      await api.setDoorHidden(graph.story.id, choiceId, viewingState, true)
-      await useDelve.getState().refresh()
-      await makeDoor(existing.digit)
-    } catch (e) {
-      setDoorError(errorText(e))
-    }
-  }
-
   /** Point a door at an existing room, making the door first if need be. */
   const openWiring = async (digit: string) => {
-    // Only a door THIS state offers counts as already there: a key whose door
-    // is hidden here is free here, and wiring it makes a second one.
     const existing = view.exits
       .concat(view.overflowExits)
       .find((e) => e.digit === digit && e.choiceId)
@@ -193,36 +154,13 @@ export default function Room() {
     if (made) await createChildNode(made)
   }
 
-  /**
-   * Put a door on a key, and make it belong to the state you are standing in.
-   *
-   * A key free in THIS state may already carry a door in another one — that is
-   * how "press 2 means something different with the crowbar" gets built. The
-   * new door is therefore hidden everywhere except here, because the other
-   * states already have their answer for that key and a second visible door
-   * would make only the first reachable.
-   *
-   * A key free everywhere gets no rows at all, which is the ordinary case and
-   * has to stay "offered in every state".
-   */
+  /** Put a door on a key. */
   const makeDoor = async (digit: ExitView['digit']): Promise<string | null> => {
     const before = new Set((derived.children.get(currentNodeId) ?? []).map((c) => c.id))
-    const hideIn = slotsToHideNewDoor(graph, currentNodeId, digit, viewingState)
     await useDelve.getState().addChoice(currentNodeId, digit)
     const fresh = useDelve.getState().derived?.children.get(currentNodeId) ?? []
     const created = fresh.find((c) => c.digit === digit && !before.has(c.id))
-    if (!created) return null
-    if (hideIn.length > 0) {
-      try {
-        for (const slot of hideIn) {
-          await api.setDoorHidden(graph.story.id, created.id, slot, true)
-        }
-        await useDelve.getState().refresh()
-      } catch (e) {
-        setDoorError(errorText(e))
-      }
-    }
-    return created.id
+    return created?.id ?? null
   }
 
   return (
@@ -383,11 +321,6 @@ export default function Room() {
            door — which is what that wall slot already was, so nothing is worse
            off than before the tap. */
         onWire={(digit) => void openWiring(digit)}
-        /* Stand in the room as one kind of caller. Kept on the route rather
-           than in the stage so it survives opening the editor — the reason to
-           switch states is usually to edit that state's doors. */
-        onViewState={setViewingState}
-        onSetDoorShown={(choiceId, shown) => void setDoorShown(choiceId, shown)}
       />
 
       {forking && <ForkSheet choiceId={forking} onClose={() => setForking(null)} />}
@@ -403,8 +336,6 @@ export default function Room() {
           onFork={setForking}
           onReact={setReacting}
           onOffered={setOffering}
-          viewing={viewingState}
-          onSplitKey={splitKey}
         />
       )}
 
@@ -432,9 +363,24 @@ export default function Room() {
           choiceId={passing.choiceId}
           onCancel={() => setPassing(null)}
           onContinue={() => {
-            const { toId } = passing
+            const { choiceId, toId } = passing
             setPassing(null)
-            walkTo(toId)
+            // A forking door asks which room next — the reaction is heard on
+            // both routes, so it plays before the split rather than inside it.
+            const exit = [...view.exits, ...view.overflowExits].find((e) => e.choiceId === choiceId)
+            if (exit?.forksTo) return setForkingThrough(choiceId)
+            if (toId) walkTo(toId)
+          }}
+        />
+      )}
+
+      {forkingThrough && (
+        <ForkGate
+          choiceId={forkingThrough}
+          onCancel={() => setForkingThrough(null)}
+          onWalk={(id) => {
+            setForkingThrough(null)
+            walkTo(id)
           }}
         />
       )}
@@ -502,17 +448,11 @@ export default function Room() {
         )}
       </footer>
 
-      {(error || doorError) && (
+      {error && (
         <div className="fixed inset-x-4 bottom-24 z-30 rounded border border-grave bg-grave/20 p-3 text-sm">
           <div className="flex items-start justify-between gap-3">
-            <span>{error ?? doorError}</span>
-            <button
-              onClick={() => {
-                setDoorError(null)
-                clearError()
-              }}
-              className="underline"
-            >
+            <span>{error}</span>
+            <button onClick={clearError} className="underline">
               Dismiss
             </button>
           </div>
@@ -528,7 +468,7 @@ export default function Room() {
         />
       )}
 
-      {editing && <EditorSheet nodeId={currentNodeId} viewing={viewingState} onClose={() => setEditing(false)} />}
+      {editing && <EditorSheet nodeId={currentNodeId} onClose={() => setEditing(false)} />}
     </main>
   )
 }
