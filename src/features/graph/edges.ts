@@ -19,7 +19,6 @@ export const fightEdgeId = (fightId: string, outcome: 'win' | 'lose') =>
 
 export const fightMoveEdgeId = (outcomeId: string) => `fightmove:${outcomeId}`
 
-export const readingEdgeId = (variantId: string) => `reading:${variantId}`
 
 export const divertEdgeId = (gateId: string) => `divert:${gateId}`
 
@@ -83,29 +82,6 @@ export function graphEdges(graph: StoryGraph): GraphEdge[] {
       digit: null,
       label: move ? `answer with ${move.slug}` : 'answer',
       sort_order: 102,
-      choice: null,
-    })
-  }
-
-  // An arrival check that sends the caller onward is a way through the dungeon
-  // like any other — more so, since they have no say in it. Left out, the rooms
-  // behind a check would report as sealed and never appear on the map, which is
-  // exactly the failure that made the fight edges necessary.
-  //
-  // `choice: null`, so it never becomes a door: `derived.children` only takes
-  // edges with a choice behind them, and there is no digit to press here.
-  for (const variant of graph.variants.values()) {
-    if (!variant.goto_node_id || !graph.nodes.has(variant.node_id)) continue
-    edges.push({
-      id: readingEdgeId(variant.id),
-      kind: 'reading',
-      from_node_id: variant.node_id,
-      to_node_id: variant.goto_node_id,
-      digit: null,
-      label: 'on arrival, carrying',
-      // After the keypad and after the fight outcomes: nothing about this is a
-      // key the caller presses, so it must never lead a digit-ordered list.
-      sort_order: 103 + variant.sort_order,
       choice: null,
     })
   }

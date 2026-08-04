@@ -8,14 +8,10 @@ import { describeCollapse, planCollapse } from './collapse'
 import LoopBackSheet from './LoopBackSheet'
 import { isPromptLine, promptsFor, unlabelledDoors, withPrompts, type Joiner } from './prompts'
 import { keyConflicts } from './keys'
-import { doorShows, variantsOf } from './variants'
-import { shortCondition } from '@/features/state/describe'
-import * as api from '@/lib/api'
 import AudioPanel from '@/features/audio/AudioPanel'
 import ItemsSection from '@/features/state/ItemsSection'
 import CollabPanel from '@/features/collab/CollabPanel'
 import DialogueSection from '@/features/cast/DialogueSection'
-import ReadingsSection from './ReadingsSection'
 import FightSection from '@/features/fight/FightSection'
 import { ROOM_DESIGNS } from './vector/designs'
 import { DIGITS, canWrite, type Digit, type StoryNode } from '@/types/domain'
@@ -243,20 +239,9 @@ function CollapseRoom({ nodeId, onCollapsed }: { nodeId: string; onCollapsed: ()
 export default function EditorSheet({
   nodeId,
   onClose,
-  /**
-   * The state being stood in, so the sheet edits THAT room rather than the
-   * room-in-general.
-   *
-   * A reading has its own words, its own take and its own doors; opening the
-   * editor while standing in one and being handed the base narration is the
-   * editor disagreeing with the wall behind it. `'all'` and `null` both mean
-   * the room as written, which is what the sheet has always edited.
-   */
-  viewing = 'all',
 }: {
   nodeId: string
   onClose: () => void
-  viewing?: string | null | 'all'
 }) {
   const graph = useDelve((s) => s.graph)
   const derived = useDelve((s) => s.derived)
@@ -285,18 +270,11 @@ export default function EditorSheet({
     void updateNode(node.id, { [key]: next } as Partial<StoryNode>)
   }
 
-  /**
-   * The doors of the state being stood in.
-   *
-   * The exits list is the wall's list, so standing in "Has crowbar" it has to
-   * be that wall — otherwise the sheet offers a door the room behind it is not
-   * showing, and on a shared key the two disagree about what pressing 2 does.
-   */
-  const outgoing = useMemo(() => {
-    const all = derived && node ? (derived.children.get(node.id) ?? []) : []
-    if (!graph || !node || viewing === 'all') return all
-    return all.filter((c) => doorShows(graph, c.id, viewing))
-  }, [derived, node, graph, viewing])
+  /** Every door this room has — the same wall the room view draws. */
+  const outgoing = useMemo(
+    () => (derived && node ? (derived.children.get(node.id) ?? []) : []),
+    [derived, node],
+  )
 
   // Inserting walks you into the new room. The sheet is keyed on the store's
   // current node, so it follows automatically — you land with the editor open
@@ -305,8 +283,6 @@ export default function EditorSheet({
     await insertRoomOnChoice(choiceId)
   }
 
-  /** With readings, a key may open different doors in different states. */
-  const hasReadings = Boolean(graph && node && variantsOf(graph, node.id).length > 0)
   const clashes = useMemo(
     () => (graph && node ? keyConflicts(graph, node.id) : []),
     [graph, node],
@@ -414,21 +390,7 @@ export default function EditorSheet({
 
   if (!node || !graph || !derived) return null
 
-  // The reading being stood in, if it is one. Its words are what this sheet
-  // edits in the Write tab, because they are what the wall behind it is showing.
-  const reading =
-    viewing !== 'all' && viewing !== null
-      ? variantsOf(graph, node.id).find((v) => v.id === viewing)
-      : undefined
-
-  const stateLabel = reading
-    ? shortCondition(
-        [...graph.stateVars.values()].map((v) => ({ slug: v.slug, name: v.name })),
-        reading.expression,
-      )
-    : 'the room as written'
-
-  const narration = reading ? reading.narration : String(value('narration') ?? '')
+  const narration = String(value('narration') ?? '')
   const seconds = estimateSeconds(narration)
 
   const field = 'w-full rounded border border-mortar/60 bg-stone px-3 py-2 outline-none focus:border-torch disabled:opacity-60'
@@ -511,19 +473,9 @@ export default function EditorSheet({
           slug={node.slug}
         />
 
-        {/* Standing in a reading, this box is that reading's script. Said out
-            loud, because two boxes that look identical and write to different
-            rows is exactly how an author loses an afternoon. */}
-        {reading && (
-          <p className="rounded border border-torch/40 bg-torch/5 px-3 py-2 text-xs text-parchment">
-            Editing the room as <strong>{stateLabel}</strong> finds it. The title, the design and
-            the notes below belong to the room itself and are shared by every state.
-          </p>
-        )}
-
         <label className="flex flex-col gap-1">
           <span className="flex items-center justify-between text-xs uppercase tracking-wider text-mortar">
-            <span>{reading ? `Narration — ${stateLabel}` : 'Narration'}</span>
+            <span>Narration</span>
             {/* F2.7 — live estimate, warn past 15s. */}
             <span className={isLongNarration(narration) ? 'text-grave' : 'text-mortar'}>
               {narration.length} chars · ~{seconds}s
@@ -532,28 +484,13 @@ export default function EditorSheet({
           </span>
           <textarea
             rows={5}
-            // Remounts when the reading changes underneath, so switching state
-            // with the sheet open swaps the words rather than keeping the last
-            // room's in a box labelled for this one.
-            key={reading ? `alt:${reading.id}:${reading.narration}` : `node:${nodeId}`}
+            key={`node:${nodeId}`}
             className={field}
-            defaultValue={reading ? reading.narration : undefined}
-            value={reading ? undefined : narration}
-            onChange={
-              reading ? undefined : (e) => setDraft((d) => ({ ...d, narration: e.target.value }))
-            }
-            onBlur={(e) => {
-              if (!reading) return commit('narration')
-              if (e.target.value !== reading.narration) {
-                void api
-                  .updateVariant(reading.id, { narration: e.target.value })
-                  .then(() => useDelve.getState().refresh())
-              }
-            }}
+            value={narration}
+            onChange={(e) => setDraft((d) => ({ ...d, narration: e.target.value }))}
+            onBlur={() => commit('narration')}
           />
         </label>
-
-        <ReadingsSection nodeId={nodeId} />
 
         {/* The doors, as the words that offer them. Press it again after editing
             a label: it replaces the block it wrote rather than stacking a
@@ -624,13 +561,10 @@ export default function EditorSheet({
             ⤵ puts a new room on a door, between here and where it goes. The door keeps its label,
             the new room gets the way onward, and you land in it ready to write.
           </p>
-          {/* Two doors on one key is legal now; two OFFERED AT ONCE is not,
-              and only the first is reachable on the phone. */}
           {clashes.map((c) => (
-            <p key={`${c.digit}:${c.slot ?? 'base'}`} className="text-xs text-grave">
-              Digit {c.digit} opens {c.choiceIds.length} doors in{' '}
-              {c.slot === null ? 'the room as written' : 'one of the readings'} — only the first is
-              reachable. Hide the others in that state.
+            <p key={c.digit} className="text-xs text-grave">
+              Digit {c.digit} has {c.choiceIds.length} doors on it — only the first is reachable on
+              the phone. Move the others to a free key.
             </p>
           ))}
           {outgoing.length === 0 && <p className="text-xs text-cold">No exits yet.</p>}
@@ -653,14 +587,11 @@ export default function EditorSheet({
               >
                 {DIGITS.map((d) => {
                   // F2.5 — a digit already used by a sibling was unpickable
-                  // outright. It is now only unpickable in a room with no
-                  // readings: with readings, two doors may share a key as long
-                  // as no state offers both, and `keyConflicts` is what says so.
                   const taken = outgoing.some((c) => c.id !== choice.id && c.digit === d)
                   return (
-                    <option key={d} value={d} disabled={taken && !hasReadings}>
+                    <option key={d} value={d} disabled={taken}>
                       {d}
-                      {taken ? (hasReadings ? ' (shared)' : ' (used)') : ''}
+                      {taken ? ' (used)' : ''}
                     </option>
                   )
                 })}

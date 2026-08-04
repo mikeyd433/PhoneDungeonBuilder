@@ -78,22 +78,12 @@ export default function Playtest() {
   const roomLines = useCallback(
     (at: PlaytestState, nodeId: string, slug: string): Line[] => {
       if (!graph || !engine) return []
-      // Asked of the engine, not of the node: a room with alternate readings
-      // plays the first one this caller's inventory satisfies, and the
-      // transcript has to be the version they would actually hear or the
-      // playtest is rehearsing a different story from the one that ships.
+      // Asked of the engine, not of the node, so the transcript is what the
+      // caller would actually hear rather than a second reading of the graph.
       const parts = engine.playback(at, nodeId)
-      const reading = engine.readingAt(at, nodeId)
       const written = parts.filter((p) => p.say.trim())
       if (written.length === 0) {
-        return [
-          {
-            who: 'story',
-            text: reading
-              ? `(${slug} has an alternate reading for this caller, with no words in it yet)`
-              : `(${slug} has no script yet)`,
-          },
-        ]
+        return [{ who: 'story', text: `(${slug} has no script yet)` }]
       }
       return written.map((p) => ({
         who: 'story',

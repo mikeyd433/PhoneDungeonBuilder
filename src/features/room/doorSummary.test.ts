@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { effectsSummary, leadsSummary, offeredSummary } from './doorSummary'
-import { addReading, addVar, choiceOf, hideDoor, idOf, makeGraph } from '@/test/factory'
+import { addVar, choiceOf, idOf, makeGraph } from '@/test/factory'
 import type { Effect, Gate, StoryGraph } from '@/types/domain'
 
 /**
@@ -74,29 +74,7 @@ describe('offeredSummary', () => {
     expect(offeredSummary(g, choiceOf(g, 'HOLD', 'DECK'))).toEqual({
       text: 'Always',
       never: false,
-      inertStateRule: false,
     })
-  })
-
-  it('lists the states that DO offer it', () => {
-    const g = ship()
-    addReading(g, 'HOLD', { op: 'has', var: 'ROPE' })
-    const door = choiceOf(g, 'HOLD', 'DECK')
-    hideDoor(g, door, null)
-    const s = offeredSummary(g, door)
-    expect(s.text).toBe('Only in: Has coil of rope')
-    expect(s.never).toBe(false)
-  })
-
-  it('calls out a door no state offers', () => {
-    const g = ship()
-    const reading = addReading(g, 'HOLD', { op: 'has', var: 'ROPE' })
-    const door = choiceOf(g, 'HOLD', 'DECK')
-    hideDoor(g, door, null)
-    hideDoor(g, door, reading.id)
-    const s = offeredSummary(g, door)
-    expect(s.text).toBe('Never — hidden in every state')
-    expect(s.never).toBe(true)
   })
 
   it('reads a hide gate as the condition it is', () => {
@@ -108,30 +86,6 @@ describe('offeredSummary', () => {
     expect(offeredSummary(g, door).text).toBe('Only when carrying a coil of rope')
   })
 
-  it('reports BOTH mechanisms when both are set, like the sheet does', () => {
-    const g = ship()
-    addReading(g, 'HOLD', { op: 'has', var: 'ROPE' })
-    const door = choiceOf(g, 'HOLD', 'DECK')
-    hideDoor(g, door, null)
-    const gate = fork(g, door, 'DOWN')
-    gate.fail_behavior = 'hide'
-    gate.fail_node_id = null
-    expect(offeredSummary(g, door).text).toBe(
-      'Only in: Has coil of rope · Only when carrying a coil of rope',
-    )
-  })
-
-  it('flags a state rule on a room with no readings, which the export ignores', () => {
-    const g = ship()
-    const door = choiceOf(g, 'HOLD', 'DECK')
-    hideDoor(g, door, null)
-    const s = offeredSummary(g, door)
-    // compileDoor warns and offers the door, so the sheet must not claim it is
-    // hidden — the two would disagree about what happens on the phone.
-    expect(s.text).toBe('Always')
-    expect(s.inertStateRule).toBe(true)
-    expect(s.never).toBe(false)
-  })
 })
 
 describe('effectsSummary', () => {

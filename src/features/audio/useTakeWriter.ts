@@ -66,15 +66,6 @@ export function useTakeWriter() {
         case 'reaction':
           await updateChoice(ref.choiceId, { audio_path: path, audio_duration_ms: durationMs })
           return
-        case 'reading':
-          // Same reason as a refusal: variants have no store action, so the
-          // graph is re-read rather than patched a row at a time.
-          await api.updateVariant(ref.variantId, {
-            audio_path: path,
-            audio_duration_ms: durationMs,
-          })
-          await refresh()
-          return
         case 'refusal':
           // Gates have no store action of their own; the graph is re-read rather
           // than patched a row at a time.

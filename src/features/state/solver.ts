@@ -41,15 +41,6 @@ export interface SolverChoice {
   toId: string | null
   digit: string
   effects: EffectLike[]
-  /**
-   * The reading slots that offer this door, or null when every one does.
-   *
-   * Which reading a caller got decides the doors as well as the words, so a
-   * door the base reading hides is not a way out of this room for a caller
-   * carrying nothing — and the solver has to agree, or it reports a route the
-   * phone will not give anybody.
-   */
-  shownIn?: Array<string | null> | null
   gate: {
     expression: GateExpression
     failBehavior: 'hide' | 'refuse' | 'divert'
@@ -64,22 +55,6 @@ export interface SolverNode {
   isEnding: boolean
   /** Node-level effects fire on arrival (§2). */
   effects: EffectLike[]
-  /**
-   * Arrival checks, in order — the first whose expression holds sends the
-   * caller straight on, with no keypress and no way to refuse.
-   *
-   * The solver has to follow these or it reports the wrong thing twice over:
-   * the room behind a check would look unreachable, and the room WITH the check
-   * would look like somewhere you can stand and pick a door while carrying the
-   * item, which on the phone you never can.
-   */
-  redirects: Array<{ expression: GateExpression; toId: string }>
-  /**
-   * Every reading on this room, in order — the same if/elsif chain the export
-   * numbers. Needed apart from `redirects` because a reading that changes only
-   * the words still decides which doors are offered.
-   */
-  readings: Array<{ id: string; expression: GateExpression }>
 }
 
 export interface SolverInput {
@@ -143,30 +118,6 @@ export function solve(input: SolverInput): SolverResult {
   }
 
   /** Add a state to a node's arrival set; returns true if it was new. */
-  /**
-   * Where a caller actually ends up when they walk into a room.
-   *
-   * Arrival checks chain, so this is a loop rather than one hop; it stops when
-   * nothing matches, when the destination is missing, or when a room repeats —
-   * a cycle the caller could never break out of. Effects fire in every room
-   * passed through, because arriving is arriving.
-   */
-  const settle = (nodeId: string, state: CallerState): { id: string; state: CallerState } => {
-    let at = nodeId
-    let carrying = state
-    const seen = new Set([nodeId])
-    for (let hop = 0; hop < 10; hop++) {
-      const node = nodeById.get(at)
-      if (!node) break
-      const hit = node.redirects.find((r) => evaluate(r.expression, carrying, index))
-      if (!hit || !nodeById.has(hit.toId) || seen.has(hit.toId)) break
-      at = hit.toId
-      seen.add(at)
-      carrying = applyEffects(carrying, nodeById.get(at)!.effects, index)
-    }
-    return { id: at, state: carrying }
-  }
-
   const addArrival = (nodeId: string, state: CallerState): boolean => {
     const set = arrivals.get(nodeId)
     if (!set) return false
@@ -184,9 +135,8 @@ export function solve(input: SolverInput): SolverResult {
   // a starting item on the entrance node.
   if (input.rootId && nodeById.has(input.rootId)) {
     const root = nodeById.get(input.rootId)!
-    const landed = settle(input.rootId, applyEffects(emptyState(index), root.effects, index))
-    addArrival(landed.id, landed.state)
-    push(landed.id)
+    addArrival(input.rootId, applyEffects(emptyState(index), root.effects, index))
+    push(input.rootId)
   }
 
   let guard = 0
@@ -207,12 +157,6 @@ export function solve(input: SolverInput): SolverResult {
 
     for (const choice of outgoing.get(nodeId) ?? []) {
       for (const state of states) {
-        // Which reading this caller arrived to, and therefore which doors are
-        // even here. Computed per state, because that is what it depends on.
-        if (choice.shownIn) {
-          const reading = node.readings.find((r) => evaluate(r.expression, state, index))
-          if (!choice.shownIn.includes(reading?.id ?? null)) continue
-        }
         const passes = choice.gate ? evaluate(choice.gate.expression, state, index) : true
 
         let targetId: string | null = null
@@ -248,10 +192,7 @@ export function solve(input: SolverInput): SolverResult {
         if (!target) continue
 
         const onArrival = applyEffects(working, target.effects, index)
-        // Not necessarily where they stay: an arrival check moves them again,
-        // and the room they were routed THROUGH is not one they can act in.
-        const landed = settle(targetId, onArrival)
-        if (addArrival(landed.id, landed.state)) push(landed.id)
+        if (addArrival(targetId, onArrival)) push(targetId)
       }
     }
   }

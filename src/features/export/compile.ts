@@ -10,12 +10,9 @@ import {
   gateVarName,
   grantLiquid,
   INV_VAR,
-  readingAssignmentLiquid,
-  readingVarName,
   revokeLiquid,
 } from './liquid'
-import { variantProblems, variantsOf } from '@/features/room/variants'
-import { doorForKey, doorsByDigit, keyConflicts } from '@/features/room/keys'
+import { doorsByDigit, keyConflicts } from '@/features/room/keys'
 import { emitFight } from './compileFight'
 import { emitDoor } from './compileDoor'
 
@@ -246,7 +243,7 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
     return wname(n.slug, 'gather')
   }
 
-  /** The room read out as itself — no alternate reading in play. */
+  /** The room read out. */
   const baseAudioName = (n: StoryNode): string | null =>
     playbackFor(graph, n.id).some((p) => p.audioPath) ? playName(n.slug) : afterAudioName(n)
 
@@ -254,14 +251,8 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
    * Replaying a room: its audio again if it has any, else its choices. Used by
    * the timeout and wrong-keypress defaults, which must NOT re-run arrival
    * effects — granting the same item twice for hesitating would be a gift.
-   *
-   * A room with alternate readings replays through the SPLIT, not through one
-   * of the readings: the caller who timed out hears the same version again, and
-   * routing straight at a play widget would have replayed the base reading to
-   * somebody the variant was written for.
    */
-  const replayName = (n: StoryNode): string | null =>
-    variantsOf(graph, n.id).length > 0 ? `${n.slug}_read` : baseAudioName(n)
+  const replayName = (n: StoryNode): string | null => baseAudioName(n)
 
   /**
    * The first widget a caller ENTERING this room actually runs.
@@ -335,94 +326,6 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
       widgets.find((w) => w.name === wname(slug, 'fx'))!.transitions = [
         { event: 'next', next: replayName(node) },
       ]
-    }
-
-    // ---- which reading of this room the caller gets
-    //
-    // Numbered in Liquid and split on once, so N alternate readings cost two
-    // widgets rather than N — the same trick §6.3 plays on gates. `0` means no
-    // condition matched and the room reads itself out, exactly as a room
-    // without variants always has.
-    //
-    // Every variant stays in the chain even with no take, because the chain is
-    // what decides WHICH words play. Dropping an unrecorded reading would let
-    // the one below it answer for cases that were never its own — so it stays,
-    // routes to the choices, and is reported as the silence it is.
-    const variants = variantsOf(graph, node.id)
-    if (variants.length > 0) {
-      const variantPlay = (i: number) => `${slug}_alt${i + 1}`
-      widgets.push({
-        name: `${slug}_read`,
-        type: 'set-variables',
-        nodeId: node.id,
-        note: `Which of this room's ${variants.length} alternate reading(s) applies. 0 = the room's own.`,
-        variables: [
-          { key: readingVarName(slug), value: readingAssignmentLiquid(variants.map((v) => v.expression)) },
-        ],
-        transitions: [{ event: 'next', next: `${slug}_alt` }],
-      })
-      /**
-       * Where a reading leaves the caller.
-       *
-       * With no destination they stay here and are offered this room's doors —
-       * the ordinary case. With one, the check is an arrival fork and they walk
-       * straight into that room, which is how two outcomes get different
-       * dialogue and different exits: they are two rooms and one check.
-       *
-       * A destination pointing at THIS room is a loop with no keypress in it,
-       * so it is ignored here and reported by `variantProblems`.
-       */
-      const readingExit = (variant: (typeof variants)[number]): string | null => {
-        const target = variant.goto_node_id ? graph.nodes.get(variant.goto_node_id) : null
-        if (!target || target.id === node.id) return afterAudioName(node)
-        return entryName(target)
-      }
-
-      widgets.push({
-        name: `${slug}_alt`,
-        type: 'split-based-on',
-        nodeId: node.id,
-        note: 'Play that reading. No match means the room as written.',
-        splitOn: `{{flow.variables.${readingVarName(slug)}}}`,
-        transitions: [
-          ...variants.map((variant, i) => ({
-            event: 'match',
-            condition: `Equal To ${i + 1}`,
-            match: { type: 'equal_to' as const, value: String(i + 1) },
-            // No take: straight on to wherever it leads. An unrecorded check
-            // that only routes is not silence, it is a decision.
-            next: variant.audio_path ? variantPlay(i) : readingExit(variant),
-          })),
-          { event: 'noMatch', next: baseAudioName(node) },
-        ],
-      })
-
-      variants.forEach((variant, i) => {
-        if (!variant.audio_path) {
-          // Only worth saying when the reading had words to lose. A check that
-          // exists purely to route the caller has nothing to record.
-          if (variant.narration.trim()) {
-            warnings.push(
-              `${slug} reading ${i + 1} has no recording, so a caller it applies to hears nothing at all — not even the room's own words, which this reading replaces.`,
-            )
-          }
-          return
-        }
-        widgets.push({
-          name: variantPlay(i),
-          type: 'say-play',
-          nodeId: node.id,
-          note: variant.goto_node_id
-            ? `Alternate reading ${i + 1}, then straight on.`
-            : `Alternate reading ${i + 1}.`,
-          playUrl: `${audioBaseUrl}${variant.audio_path}`,
-          transitions: [{ event: 'audioComplete', next: readingExit(variant) }],
-        })
-      })
-
-      for (const problem of variantProblems(graph, node.id)) {
-        warnings.push(`${slug}: ${problem}`)
-      }
     }
 
     // ---- the room itself
@@ -522,11 +425,10 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
     /**
      * Doors grouped by the key that reaches them.
      *
-     * A room with readings may have TWO doors on one digit — a different door
-     * per state, which is the whole point of 0019 dropping the unique index.
-     * That means two things here: their widgets need names that do not collide
-     * (error 81022's second cause), and the digit needs one transition that
-     * picks between them rather than two that both claim to match.
+     * Two doors on one digit is a story bug now that a room has one wall, but
+     * the rows can exist, so their widgets still need names that do not collide
+     * (error 81022's second cause) and the digit still needs ONE transition —
+     * two `Digits equals 2` off one split and Studio silently takes the first.
      */
     const byDigit = doorsByDigit(graph, node.id)
     /** `2`, then `2b`, `2c` — so `CELL_d2_gate` keeps the name it always had. */
@@ -541,12 +443,8 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
     const destOf = new Map<string, string | null>()
 
     for (const conflict of keyConflicts(graph, node.id)) {
-      const where =
-        conflict.slot === null
-          ? 'the room as written'
-          : `reading ${variants.findIndex((v) => v.id === conflict.slot) + 1}`
       warnings.push(
-        `${slug} offers ${conflict.choiceIds.length} doors on digit ${conflict.digit} in ${where}. Only the first is reachable — hide the others in that state.`,
+        `${slug} has ${conflict.choiceIds.length} doors on digit ${conflict.digit}. Only the first is reachable — move the others to a free key.`,
       )
     }
 
@@ -559,8 +457,6 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
           slug,
           choice,
           dkey: keyOf(choice),
-          sharesKey: (byDigit.get(choice.digit)?.length ?? 0) > 1,
-          variants,
           audioBaseUrl,
           widgets,
           warnings,
@@ -575,58 +471,16 @@ export function compileStory(graph: StoryGraph, audioBaseUrl: string): CompileRe
     }
 
     // ---- one transition per KEY, not per door
+    //
+    // A duplicate digit is warned about above; here the first door simply wins,
+    // deterministically, because the exporter has to emit something and a coin
+    // toss would make the same story compile two ways.
     for (const [digit, doors] of byDigit) {
-      if (doors.length === 1) {
-        keyTransitions.push({
-          event: 'match',
-          condition: `Digits equals ${digit}`,
-          match: { type: 'equal_to', value: digit },
-          next: destOf.get(doors[0].id) ?? wname(slug, 'gather'),
-        })
-        continue
-      }
-
-      /**
-       * One key, several doors — which one depends on the state the caller
-       * arrived in, and that number is already in a flow variable.
-       *
-       * Two `Digits equals 2` transitions off the gather's split would have
-       * Studio take the first and never reach the second, silently. This is the
-       * same shape as the per-door `_shown` split, asking a better question:
-       * not "is this door here" but "which door is this".
-       */
-      const pickName = `${slug}_d${digitToken(digit)}_pick`
-      const slots = [null, ...variants.map((v) => v.id)]
-      const arms = slots
-        .map((slot, number) => ({ slot, number, door: doorForKey(graph, node.id, digit, slot) }))
-        .filter((a) => a.door)
       keyTransitions.push({
         event: 'match',
         condition: `Digits equals ${digit}`,
         match: { type: 'equal_to', value: digit },
-        next: arms.length > 0 ? pickName : wname(slug, 'gather'),
-      })
-      if (arms.length === 0) {
-        warnings.push(
-          `${slug} has ${doors.length} doors on digit ${digit} and no state offers any of them, so the key does nothing.`,
-        )
-        continue
-      }
-      widgets.push({
-        name: pickName,
-        type: 'split-based-on',
-        nodeId: node.id,
-        note: `Digit ${digit} is ${doors.length} different doors; which one depends on the reading (0 = the room as written).`,
-        splitOn: `{{flow.variables.${readingVarName(slug)}}}`,
-        transitions: [
-          ...arms.map((a) => ({
-            event: 'match',
-            condition: `Equal To ${a.number}`,
-            match: { type: 'equal_to' as const, value: String(a.number) },
-            next: destOf.get(a.door!.id) ?? wname(slug, 'gather'),
-          })),
-          { event: 'noMatch', next: wname(slug, 'gather') },
-        ],
+        next: destOf.get(doors[0].id) ?? wname(slug, 'gather'),
       })
     }
 

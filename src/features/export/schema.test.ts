@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { compileStory, type Widget } from './compile'
 import { studioFlowJson } from './outputs'
-import { addFight, addReading, addVar, hideDoor, makeGraph, setOutcome } from '@/test/factory'
+import { addFight, addVar, makeGraph, setOutcome } from '@/test/factory'
 import type { StoryGraph } from '@/types/domain'
 
 /**
@@ -83,13 +83,11 @@ function stories(): Array<[string, StoryGraph]> {
     updated_at: '2026-01-01T00:00:00Z',
   })
 
-  // A room that reads two ways, behind a door either of two items opens and
-  // spends. Both of those emit widgets nothing else in this table produces.
+  // A door either of two items opens and spends, which emits the consume
+  // widget nothing else in this table produces.
   const readings = makeGraph(['HALL', 'VAULT'], ['HALL>VAULT'], { recorded: ['HALL', 'VAULT'] })
   addVar(readings, 'CROWBAR', { is_consumable: true })
   addVar(readings, 'KEY', { is_consumable: true })
-  addReading(readings, 'HALL', { op: 'has', var: 'CROWBAR' }, { audio_path: 'takes/alt1.mp3' })
-  addReading(readings, 'HALL', { op: 'has', var: 'KEY' })
   readings.gates.set('g1', {
     id: 'g1',
     story_id: readings.story.id,
@@ -111,28 +109,36 @@ function stories(): Array<[string, StoryGraph]> {
     updated_at: '2026-01-01T00:00:00Z',
   })
 
-  // A door only one reading offers, plus an arrival check that routes the
-  // caller onward — both emit splits on the reading number.
+  // A door that forks: two rooms behind one key, which emits the divert split
+  // and puts the reaction outside it.
   const doors = makeGraph(['CELL', 'CORRIDOR', 'GRATE'], ['CELL>CORRIDOR', 'CELL>GRATE'], {
     recorded: ['CELL', 'CORRIDOR', 'GRATE'],
   })
   addVar(doors, 'LAMP')
-  const lit = addReading(doors, 'CELL', { op: 'has', var: 'LAMP' }, {
-    narration: 'The lamp finds a grate.',
-    audio_path: 'takes/lit.mp3',
+  const forking = [...doors.choices.values()].find((c) => c.digit === '2')!
+  forking.reaction_narration = 'The hinge gives.'
+  forking.audio_path = 'takes/hinge.mp3'
+  doors.gates.set('g2', {
+    id: 'g2',
+    story_id: doors.story.id,
+    choice_id: forking.id,
+    expression: { op: 'has', var: 'LAMP' },
+    fail_behavior: 'divert',
+    fail_narration: null,
+    fail_audio_path: null,
+    fail_audio_duration_ms: null,
+    fail_node_id: [...doors.nodes.values()].find((n) => n.slug === 'CORRIDOR')!.id,
+    consume_on_pass: false,
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-01T00:00:00Z',
   })
-  hideDoor(doors, [...doors.choices.values()].find((c) => c.digit === '2')!.id, null)
-  addReading(doors, 'CORRIDOR', { op: 'lacks', var: 'LAMP' }, {
-    goto_node_id: [...doors.nodes.values()].find((n) => n.slug === 'CELL')!.id,
-  })
-  void lit
 
   return [
     ['a plain story', plain],
     ['a fight', fight],
     ['an inventory readback', inventory],
-    ['alternate readings and a two-item door', readings],
-    ['reading-scoped doors and an arrival check', doors],
+    ['a door either of two items opens', readings],
+    ['a forking door with a reaction', doors],
   ]
 }
 

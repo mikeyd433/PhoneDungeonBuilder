@@ -11,9 +11,8 @@ import type {
 } from '@/types/domain'
 
 import { buildFightView, type FightView } from '@/features/fight/model'
-import { linesFor, reactionPlaybackFor } from '@/features/cast/dialogue'
-import { allReadings, alwaysHidden, hidesDoor, variantsOf } from './variants'
-import { doorsByDigit, keyConflicts } from './keys'
+import { linesFor, playbackFor, reactionPlaybackFor } from '@/features/cast/dialogue'
+import { keyConflicts } from './keys'
 import { MAX_WALL_ARCHES } from './vector/geometry'
 
 /**
@@ -61,19 +60,8 @@ export interface ExitView {
    *  a script with at least one part nobody has read — silence on the phone,
    *  and the reason this is three states rather than a boolean. */
   reaction: 'none' | 'written' | 'recorded'
-  /**
-   * How many readings do NOT offer this door — §0's first rule applied to the
-   * arrival check. A door only some callers are offered must not draw like one
-   * everybody gets, or the wall is telling you something untrue about the room.
-   */
-  hiddenIn: number
-  /** Hidden under every reading there is: a key that does nothing, on any call. */
-  neverShown: boolean
-  /** This key opens a different door in some other state — so the digit on the
-   *  lintel is not the whole story about what pressing it does. */
-  sharesKey: boolean
-  /** Two doors on this key are offered to the SAME caller, and only the first
-   *  is reachable. A story bug, drawn as one. */
+  /** Two doors on this key, and only the first is reachable. A story bug,
+   *  drawn as one. */
   keyClash: boolean
 }
 
@@ -114,10 +102,6 @@ export interface RoomView {
   /** A fight room that also has doors: the doors are never offered, because the
    *  fight decides where the caller goes. */
   fightWithExits: boolean
-  /** How many alternate readings this room has. The plaque says so, because a
-   *  room that reads three ways is not a room you can judge by looking at one
-   *  of them. */
-  readings: number
   /** F1.14 — the narration, split by who says it. Empty when nobody has split
    *  this room's text into lines yet. */
   lines: Array<{ id: string; speaker: string | null; color: string; text: string }>
@@ -218,7 +202,6 @@ export function buildRoomView(
     return { grants, revokes }
   }
 
-  const byDigit = doorsByDigit(graph, nodeId)
   const clashing = new Set(keyConflicts(graph, nodeId).flatMap((c) => c.choiceIds))
 
   const gateByChoice = new Map<string, Gate>()
@@ -252,9 +235,6 @@ export function buildRoomView(
             null
           : null,
       reaction: reactionState(graph, choice.id),
-      hiddenIn: hidesDoor(graph, choice.id).length,
-      neverShown: alwaysHidden(graph, nodeId, choice.id),
-      sharesKey: (byDigit.get(choice.digit)?.length ?? 0) > 1,
       keyClash: clashing.has(choice.id),
     }
   }
@@ -300,9 +280,6 @@ export function buildRoomView(
         gate: null,
         forksTo: null,
         reaction: 'none',
-        hiddenIn: 0,
-        neverShown: false,
-        sharesKey: false,
         keyClash: false,
       })
       }
@@ -345,14 +322,9 @@ export function buildRoomView(
     // recorded line out of four is a scene with three silences in it, and
     // lighting it would be exactly the atmosphere-over-data §0 forbids.
     torchLit: (() => {
-      // F1.5 — "there is audio for this room", which now has to mean every way
-      // the room can read. A finished base and an unrecorded alternate is a
-      // room that plays silence to anyone carrying the thing it is about, and
-      // lighting that would be exactly the atmosphere-over-data §0 forbids.
-      const parts = allReadings(graph, nodeId)
+      const parts = playbackFor(graph, nodeId)
       return parts.length > 0 && parts.every((p) => Boolean(p.audioPath))
     })(),
-    readings: variantsOf(graph, nodeId).length,
     design: node.room_design || 'stone',
     figures: figuresIn(graph, nodeId),
     isEnding,

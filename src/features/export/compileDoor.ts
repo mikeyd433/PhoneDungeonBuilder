@@ -1,13 +1,11 @@
-import type { Choice, Effect, NodeVariant, StoryGraph, StoryNode } from '@/types/domain'
+import type { Choice, Effect, StoryGraph, StoryNode } from '@/types/domain'
 import { reactionPlaybackFor } from '@/features/cast/dialogue'
 import { consumePlan } from '@/features/state/consume'
-import { hidesDoor } from '@/features/room/variants'
 import {
   consumeAllLiquid,
   consumeLiquid,
   gateVarName,
   INV_VAR,
-  readingVarName,
 } from './liquid'
 import { PATIENCE_VALVE_AT, type Widget } from './compile'
 
@@ -17,14 +15,11 @@ import { PATIENCE_VALVE_AT, type Widget } from './compile'
  * Built back to front, because each widget has to know where the next one is
  * before it can be pushed. Reading the chain outward from the destination:
  *
- *   [ shown? ] -> [ gate ] -> [ reaction ] -> [ spend ] -> [ effects ] -> room
+ *   [ gate ] -> [ reaction ] -> [ spend ] -> [ effects ] -> room
  *
- * with two deliberate exceptions:
  *
- *   * a DIVERT gate is a fork, not a refusal, so the reaction wraps the whole
- *     split — both routes hear it;
- *   * a door sharing its key with another is selected by the digit's own split
- *     back in the compiler, so it emits no `_shown` of its own.
+ * with one deliberate exception: a DIVERT gate is a fork, not a refusal, so the
+ * reaction wraps the whole split — both routes hear it.
  *
  * Lifted out of `compileStory` because this is the part that changes with
  * nearly every round of work, and it was 244 lines in the middle of a
@@ -38,10 +33,6 @@ export interface DoorEmitContext {
   choice: Choice
   /** `2`, then `2b`, `2c` — so two doors on one key never collide by name. */
   dkey: string
-  /** True when another door is on this key; its `_shown` split is the digit's. */
-  sharesKey: boolean
-  /** This room's alternate readings, in the order the export numbers them. */
-  variants: NodeVariant[]
   audioBaseUrl: string
   widgets: Widget[]
   warnings: string[]
@@ -62,8 +53,6 @@ export function emitDoor(ctx: DoorEmitContext): string | null {
     slug,
     choice,
     dkey,
-    sharesKey,
-    variants,
     audioBaseUrl,
     widgets,
     warnings,
@@ -254,67 +243,6 @@ export function emitDoor(ctx: DoorEmitContext): string | null {
     // A fork: both routes are somewhere the caller chose to go, so the
     // reaction to choosing wraps the split rather than one branch of it.
     if (forks) dest = wrapReaction(dest)
-  }
-
-  /**
-   * A door only some readings offer.
-   *
-   * The reading number is already sitting in a flow variable, computed
-   * before the room played, so "is this door here" costs one split on a
-   * value that exists rather than a second evaluation of anything.
-   *
-   * The digit is still ACCEPTED — a gather takes what it takes — but it
-   * goes back to the choices instead of through, which is the same shape a
-   * `hide` gate has. What is different is that the reading which offers the
-   * door is also the one that announces it, so the caller is never left
-   * guessing at a key that works but was never mentioned.
-   */
-  // A door sharing its key is selected by the digit's own split below,
-  // which already knows which state gets which door — a second split per
-  // door would ask the same question twice and answer it identically.
-  const hiddenIn = sharesKey ? [] : hidesDoor(graph, choice.id)
-  if (hiddenIn.length > 0 && variants.length > 0) {
-    const shownIn = [null, ...variants.map((v) => v.id)]
-      .map((id, i) => ({ id, number: i }))
-      .filter((slot) => !hiddenIn.includes(slot.id))
-
-    if (shownIn.length === 0) {
-      // Hidden everywhere: no state a caller can be in reaches it. From the
-      // editor this looks like an ordinary door.
-      warnings.push(
-        `${slug} digit ${choice.digit} ("${choice.label}") is hidden under every reading, so no caller is ever offered it.`,
-      )
-    }
-
-    const showName = `${slug}_d${dkey}_shown`
-    widgets.push({
-      name: showName,
-      type: 'split-based-on',
-      nodeId: node.id,
-      note:
-        shownIn.length === 0
-          ? 'This door is hidden under every reading — the digit does nothing.'
-          : `Digit ${choice.digit} is only offered under reading(s) ${shownIn
-              .map((s) => s.number)
-              .join(', ')} (0 = the room as written).`,
-      splitOn: `{{flow.variables.${readingVarName(slug)}}}`,
-      transitions: [
-        ...shownIn.map((slot) => ({
-          event: 'match',
-          condition: `Equal To ${slot.number}`,
-          match: { type: 'equal_to' as const, value: String(slot.number) },
-          next: dest,
-        })),
-        { event: 'noMatch', next: wname(slug, 'gather') },
-      ],
-    })
-    dest = showName
-  } else if (hiddenIn.length > 0) {
-    // Visibility rules with nothing to vary on. Not silently ignored: the
-    // author wrote a rule and it has no effect.
-    warnings.push(
-      `${slug} digit ${choice.digit} is hidden under a reading, but this room has no readings — so the door is always offered.`,
-    )
   }
 
   return dest

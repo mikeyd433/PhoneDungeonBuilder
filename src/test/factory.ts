@@ -8,8 +8,6 @@ import type {
   FightRound,
   FightRoundOutcome,
   Gate,
-  HiddenDoor,
-  NodeVariant,
   StateVar,
   Story,
   StoryGraph,
@@ -110,8 +108,6 @@ export function makeGraph(
     stateVars: new Map<string, StateVar>(),
     effects: new Map(),
     gates: new Map<string, Gate>(),
-    variants: new Map<string, NodeVariant>(),
-    hiddenDoors: new Map<string, HiddenDoor>(),
     characters: new Map<string, Character>(),
     dialogue: new Map<string, DialogueLine>(),
     fights: new Map<string, Fight>(),
@@ -337,47 +333,6 @@ export function addVar(
   }
   graph.stateVars.set(v.id, v)
   return v
-}
-
-/** An alternate reading of a room. Appended, so call order is the chain order. */
-export function addReading(
-  graph: StoryGraph,
-  atSlug: string,
-  expression: NodeVariant['expression'],
-  patch: Partial<NodeVariant> & { goto?: string } = {},
-): NodeVariant {
-  const { goto, ...rest } = patch
-  const nodeId = idOf(graph, atSlug)
-  const n = [...graph.variants.values()].filter((v) => v.node_id === nodeId).length
-  const variant: NodeVariant = {
-    id: `alt-${atSlug}-${n + 1}`,
-    story_id: graph.story.id,
-    node_id: nodeId,
-    expression,
-    narration: `reading ${n + 1}`,
-    audio_path: null,
-    audio_duration_ms: null,
-    goto_node_id: null,
-    sort_order: n,
-    created_at: STAMP,
-    updated_at: STAMP,
-    ...rest,
-    ...(goto ? { goto_node_id: idOf(graph, goto) } : {}),
-  }
-  graph.variants.set(variant.id, variant)
-  return variant
-}
-
-/** Hide one door under one reading. `variantId` null is the room as written. */
-export function hideDoor(graph: StoryGraph, choiceId: string, variantId: string | null): void {
-  const id = `hd-${choiceId}-${variantId ?? 'base'}`
-  graph.hiddenDoors.set(id, {
-    id,
-    story_id: graph.story.id,
-    choice_id: choiceId,
-    variant_id: variantId,
-    created_at: STAMP,
-  })
 }
 
 export function idOf(graph: StoryGraph, slug: string): string {

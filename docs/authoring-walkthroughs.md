@@ -105,8 +105,8 @@ they are stored differently.
 ### Before — two paths, 4 taps and 8, different storage
 
 **A, through the state plate** (needs the room to have a reading): plate → the
-state → Show where doors lead → untick **here**. Four taps. *(That plate has
-since been removed — finding 10.)*
+state → Show where doors lead → untick **here**. Four taps. *(Both the plate
+and this mechanism are gone — findings 10 and 11.)*
 
 **B, through a `hide` gate** (works anywhere): EDIT → tick "an item changes
 hands" → Items → find the door → + Require something → choose the item →
@@ -122,11 +122,11 @@ on one door.
 | 1 | Show where doors lead | room |
 | 2 | ⋯ on the door | room |
 | 3 | When it is offered | door sheet |
-| 4 | Always · Only in some states · Only when carrying something | offered sheet |
+| 4 | Always · Only when carrying something | offered sheet |
 
-**4 taps**, one question, and the mechanism follows from the answer instead of
-from which screen you found first. Both are shown when both are set, and it says
-so — and now the door sheet says so too, before you open anything.
+**4 taps**, one question, one mechanism — the `hidden_doors` half went with the
+readings (finding 11). What a hide gate cannot do is *announce* the door, and
+the sheet says so, naming the thing that can: a fork on the door in.
 
 ---
 
@@ -347,3 +347,29 @@ door-ticked in the editor's Readings tab, which is where their words are.
 In its place, walking through a forking door stops at `ForkGate` and asks which
 of its two rooms to stand in (walkthrough 6). That is the thing the switcher
 was standing in for, at 2 taps instead of a mode.
+
+### 11. Readings were a second way to say what a fork says — **removed**
+
+Asked directly: is "reads differently" redundant with door forking? Partly, and
+the overlap was the expensive part.
+
+- **Different words, same room** — not redundant. A fork would need a duplicate
+  room, and the copies drift.
+- **A reading with a destination** (`goto_node_id`) — the same outcome as a
+  fork, written once on the room instead of once per door in.
+- **Which doors a reading offers** (`hidden_doors`) — the states model, whose
+  view had just been removed.
+
+Measured rather than assumed: two recorded readings cost **+4 widgets**, one
+forked twin room **+5**. Nearly identical, so "readings are cheaper on the
+phone" was never the reason to keep them. And the live story used the whole
+mechanism exactly once across 150 rooms — for the helmet door, which is the job
+a fork now does better.
+
+**Removed**: `node_variants`, `hidden_doors`, `RoomView.readings`, the reading
+chain in the exporter, reading edges, the solver's `settle`/`redirects`, the
+reading take kind, and the Readings tab. Migration 0020 appends every reading's
+words to its room's `notes` before dropping the table — script is the one thing
+that cannot be reconstructed — and says in the note when a take was orphaned.
+
+One rule left: **a room says one thing; a door can go to two rooms.**

@@ -324,13 +324,12 @@ export function audioManifestCsv(graph: StoryGraph): string {
 export function storyJson(graph: StoryGraph): string {
   return JSON.stringify(
     {
-      // Bumped when the cast, dialogue and fight tables were added: a v1 file
-      // has no characters key at all, which an importer has to be able to tell
-      // apart from a v2 file whose cast happens to be empty. v3 adds the
-      // alternate readings and their door-visibility rules — a v2 file has
-      // neither key, and a room read two ways would silently become a room read
-      // one way if that could not be told apart.
-      version: 3,
+      // v1 had no cast at all; v2 added characters, dialogue and fights; v3
+      // added alternate readings and their door-visibility rules. v4 takes
+      // those two back out — a v3 file may carry `variants` and `hiddenDoors`
+      // keys an importer must now translate rather than load, so the version
+      // has to move even though the change is a removal.
+      version: 4,
       exportedAt: null, // stamped by the caller; kept out so the payload is deterministic
       story: graph.story,
       nodes: [...graph.nodes.values()],
@@ -338,8 +337,6 @@ export function storyJson(graph: StoryGraph): string {
       stateVars: [...graph.stateVars.values()],
       effects: [...graph.effects.values()],
       gates: [...graph.gates.values()],
-      variants: [...graph.variants.values()],
-      hiddenDoors: [...graph.hiddenDoors.values()],
       characters: [...graph.characters.values()],
       dialogue: [...graph.dialogue.values()],
       fights: [...graph.fights.values()],

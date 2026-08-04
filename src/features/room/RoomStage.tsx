@@ -197,30 +197,15 @@ export default function RoomStage({
                 key={exit.choiceId}
                 className="flex flex-wrap items-center gap-2 rounded border border-mortar/25 p-2"
               >
-                {/* A door only some callers are offered must not read like one
-                    everybody gets — §0's first rule. Dimmed and marked, and
-                    flagged outright when no reading offers it at all. */}
                 <span
                   title={
                     exit.keyClash
-                      ? 'Two doors on this key are offered to the same caller — only the first is reachable'
-                      : exit.neverShown
-                        ? 'Hidden under every reading — no caller is ever offered this'
-                        : exit.sharesKey
-                          ? 'This key opens a different door in another state'
-                          : exit.hiddenIn > 0
-                            ? `Not offered under ${exit.hiddenIn} of this room's readings`
-                            : undefined
+                      ? 'Two doors on this key — only the first is reachable on the phone'
+                      : undefined
                   }
                   className={[
                     'w-6 shrink-0 text-center font-carved',
-                    exit.keyClash
-                      ? 'text-grave'
-                      : exit.neverShown
-                        ? 'text-grave line-through'
-                        : exit.hiddenIn > 0
-                          ? 'text-mortar'
-                          : 'text-torch',
+                    exit.keyClash ? 'text-grave' : 'text-torch',
                   ].join(' ')}
                 >
                   {exit.digit}
@@ -229,33 +214,16 @@ export default function RoomStage({
                     "Always offered" is the absence of data and every door
                     starts that way, so it earns no room on the line. Making a
                     door conditional lives in its sheet. */}
-                {onOffered && (exit.neverShown || exit.hiddenIn > 0 || exit.gate?.behavior === 'hide') ? (
+                {onOffered && exit.gate?.behavior === 'hide' && (
                   <button
                     type="button"
                     onClick={() => onOffered(exit.choiceId!)}
                     aria-label={`When door ${exit.digit} is offered`}
-                    title={
-                      exit.neverShown
-                        ? 'Hidden everywhere — no caller is ever offered this'
-                        : 'Only offered sometimes — tap to see when'
-                    }
-                    className={[
-                      'shrink-0 rounded border px-2 py-1.5 text-xs',
-                      exit.neverShown ? 'border-grave/60 text-grave' : 'border-torch/60 text-torch',
-                    ].join(' ')}
+                    title="Only offered sometimes — tap to see when"
+                    className="shrink-0 rounded border border-torch/60 px-2 py-1.5 text-xs text-torch"
                   >
-                    {exit.neverShown ? 'never offered' : 'sometimes'}
+                    sometimes
                   </button>
-                ) : (
-                  exit.hiddenIn > 0 && (
-                    <span
-                      className={
-                        exit.neverShown ? 'shrink-0 text-xs text-grave' : 'shrink-0 text-xs text-mortar'
-                      }
-                    >
-                      {exit.neverShown ? 'never offered' : 'only sometimes'}
-                    </span>
-                  )
                 )}
                 <input
                   // Remounts when the value changes underneath — two doors to

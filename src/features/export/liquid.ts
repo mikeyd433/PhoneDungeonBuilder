@@ -144,35 +144,6 @@ export function gateVarName(slug: string, digit: string): string {
   return `gate_${slug}_d${digitToken(digit)}`
 }
 
-/** Which alternate reading of a room is playing. `0` is the room's own. */
-export function readingVarName(slug: string): string {
-  return `read_${slug}`
-}
-
-/**
- * The whole if/elsif chain for a room's alternate readings, as ONE variable.
- *
- * Studio's Split Based On tests a single value, so N readings could have cost N
- * splits. Numbering them in Liquid instead collapses the choice to one
- * set-variables plus one split, whatever N is — the same trick §6.3 plays on
- * gates, for the same reason.
- *
- * Order is the author's: first match wins, and `0` means none matched and the
- * room reads itself out as it always did.
- */
-export function readingAssignmentLiquid(expressions: GateExpression[]): string {
-  const counters = [...new Set(expressions.flatMap(countersUsed))]
-  const preamble =
-    `{% assign inv = flow.variables.${INV_VAR} | default: "|" %}` +
-    counters
-      .map((c) => `{% assign ${localCounter(c)} = flow.variables.${counterVar(c)} | default: 0 %}`)
-      .join('')
-  const chain = expressions
-    .map((e, i) => `{% ${i === 0 ? 'if' : 'elsif'} ${compile(e)} %}${i + 1}`)
-    .join('')
-  return `${preamble}${chain}{% else %}0{% endif %}`
-}
-
 /**
  * Spend the consumables a gate just took, without disturbing the rest.
  *

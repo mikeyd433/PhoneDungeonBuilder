@@ -1,6 +1,5 @@
 import type { StoryGraph } from '@/types/domain'
-import { describeExpression, shortCondition, type NamedVar } from '@/features/state/describe'
-import { doorShows, variantsOf } from './variants'
+import { describeExpression, type NamedVar } from '@/features/state/describe'
 
 /**
  * What a door already is, in a sentence.
@@ -87,54 +86,21 @@ export function effectsSummary(graph: StoryGraph, choiceId: string): string | nu
 
 export interface OfferedSummary {
   text: string
-  /** Hidden in every state there is — worth saying in the alarm colour. */
+  /** Nobody is ever offered it — an `or` with nothing in it. Worth the alarm
+   *  colour, because from the editor it looks like a working condition. */
   never: boolean
-  /** A state rule is set on a room with no readings, so the export ignores it
-   *  and every caller is offered the door. Said here rather than only at
-   *  export time, which is after the story has been written around it. */
-  inertStateRule: boolean
 }
 
 /**
  * When the caller is offered this key at all.
  *
- * Both mechanisms are read, and both are reported when both are set — the
- * offered sheet already refuses to pick one silently, and a summary that
- * mentioned only the first would be the thing that made it look like it had.
+ * One mechanism now: a `hide` gate. The reading-slot half of this went with
+ * `hidden_doors` — a door a room only sometimes offers is a condition, and the
+ * room that announces it is a fork away.
  */
 export function offeredSummary(graph: StoryGraph, choiceId: string): OfferedSummary {
-  const choice = graph.choices.get(choiceId)
-  if (!choice) return { text: 'Always', never: false, inertStateRule: false }
-
   const gate = [...graph.gates.values()].find((g) => g.choice_id === choiceId)
-  const readings = variantsOf(graph, choice.from_node_id)
-  const slots: Array<{ id: string | null; label: string }> = [
-    { id: null, label: 'as written' },
-    ...readings.map((v) => ({ id: v.id, label: shortCondition(named(graph), v.expression) })),
-  ]
-  const shown = slots.filter((s) => doorShows(graph, choiceId, s.id))
-  const hasStateRule = shown.length < slots.length
-
-  const parts: string[] = []
-  // With no readings the export ignores the rows outright (compileDoor warns
-  // and offers the door), so the summary must say what the phone does.
-  const inertStateRule = hasStateRule && readings.length === 0
-  const never = hasStateRule && readings.length > 0 && shown.length === 0
-
-  if (hasStateRule && readings.length > 0) {
-    parts.push(
-      shown.length === 0
-        ? 'Never — hidden in every state'
-        : `Only in: ${shown.map((s) => s.label).join(', ')}`,
-    )
-  }
-  if (gate?.fail_behavior === 'hide') {
-    parts.push(`Only when ${describeExpression(named(graph), gate.expression)}`)
-  }
-
-  return {
-    text: parts.length > 0 ? parts.join(' · ') : 'Always',
-    never,
-    inertStateRule,
-  }
+  if (gate?.fail_behavior !== 'hide') return { text: 'Always', never: false }
+  const said = describeExpression(named(graph), gate.expression)
+  return { text: `Only when ${said}`, never: said === 'never' }
 }

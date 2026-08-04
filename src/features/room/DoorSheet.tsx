@@ -3,7 +3,6 @@ import { useDelve } from '@/features/graph/store'
 import { errorText } from '@/lib/errorText'
 import { DIGITS, type Digit } from '@/types/domain'
 import { doorsByDigit } from './keys'
-import { variantsOf } from './variants'
 import { effectsSummary, leadsSummary, offeredSummary } from './doorSummary'
 import EffectRows from '@/features/state/EffectRows'
 
@@ -46,7 +45,6 @@ export default function DoorSheet({
   if (!graph || !derived || !choice) return null
 
   const siblings = derived.children.get(choice.from_node_id) ?? []
-  const roomHasStates = variantsOf(graph, choice.from_node_id).length > 0
   const byDigit = doorsByDigit(graph, choice.from_node_id)
   const leads = leadsSummary(graph, choice.id)
   const offered = offeredSummary(graph, choice.id)
@@ -117,16 +115,16 @@ export default function DoorSheet({
               {DIGITS.map((d) => {
                 const taken = siblings.some((c) => c.id !== choice.id && c.digit === d)
                 return (
-                  <option key={d} value={d} disabled={taken && !roomHasStates}>
+                  <option key={d} value={d} disabled={taken}>
                     {d}
-                    {taken ? (roomHasStates ? ' (shared)' : ' (used)') : ''}
+                    {taken ? ' (used)' : ''}
                   </option>
                 )
               })}
             </select>
             {(byDigit.get(choice.digit)?.length ?? 0) > 1 && (
-              <span className="text-xs text-cold">
-                Another door shares this key. They must not both be offered in one state.
+              <span className="text-xs text-grave">
+                Another door is already on this key, and only the first is reachable. Move one.
               </span>
             )}
           </label>
@@ -165,12 +163,6 @@ export default function DoorSheet({
           <button type="button" className={row} onClick={() => hop(onOffered)}>
             <span className="block text-xs text-mortar">When it is offered</span>
             <span className={offered.never ? 'text-grave' : 'text-parchment'}>{offered.text}</span>
-            {offered.inertStateRule && (
-              <span className="block text-xs text-grave">
-                A state rule is set, but this room reads only one way — so every caller is offered
-                it. Give the room a reading, or clear the rule.
-              </span>
-            )}
           </button>
 
           <button type="button" className={row} onClick={() => hop(onReact)}>
