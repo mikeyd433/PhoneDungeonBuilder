@@ -30,7 +30,7 @@ class GoldenSessionsTest {
         javaClass.getResource("/golden/$name")?.readText() ?: fail("missing golden/$name — run JD_UPDATE_GOLDEN=1 pnpm test golden")
 
     @TestFactory
-    fun sessions(): List<DynamicTest> = listOf("demo", "kitchen").flatMap { name ->
+    fun sessions(): List<DynamicTest> = listOf("demo", "kitchen", "william", "jcfc").flatMap { name ->
         val pack = StoryPack.parse(resource("$name.pack.json"))
         val sessions = Json.parseToJsonElement(resource("$name.sessions.json")).jsonArray
         sessions.map { session ->

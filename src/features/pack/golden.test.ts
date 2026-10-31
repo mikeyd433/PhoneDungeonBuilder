@@ -6,6 +6,7 @@ import { buildDemoStory } from '@/features/demo/demoStory'
 import { PlaytestEngine, type PlaytestState, type Turn } from '@/features/playtest/engine'
 import type { Effect, Gate, GateExpression, StoryGraph } from '@/types/domain'
 import { buildStoryPack } from './storyPack'
+import { graphFromRows, type StoryRows } from './fromRows'
 
 /**
  * Golden sessions: the TypeScript engine, recorded, for the Kotlin engine to
@@ -187,7 +188,28 @@ function kitchenSink(): StoryGraph {
   return g
 }
 
+/**
+ * The real stories, as rows copied from Supabase (checksummed against the
+ * database when they were taken). Not a backup and not kept in step with the
+ * live data: they are here because a real story exercises the engines in ways
+ * an invented one doesn't, and they also ship inside the Android app.
+ */
+const real = (name: string) => () =>
+  graphFromRows(JSON.parse(readFileSync(resolve(__dirname, `fixtures/${name}.rows.json`), 'utf8')) as StoryRows)
+
 const FIXTURES: Record<string, { build: () => StoryGraph; scripts: string[][] }> = {
+  william: {
+    build: real('william'),
+    scripts: [
+      // As Carter, take the helmet: the swamp's fork lets you through to Forest 1.
+      ['2', '1', '1', '1', '1', '2', '2', '1', '1', '1', '1', '#'],
+      // Leave the helmet behind: the same door forks you to Forest 2 instead.
+      ['2', '1', '1', '3', '1', '2', '2', '1', 'T'],
+      // As Mike, all the way to the shark.
+      ['1', '1', '1', '1', '2', '1', '1', '2', '1', '2', '3', '1'],
+    ],
+  },
+  jcfc: { build: real('jcfc'), scripts: [['1', '3', '1', '1', '*', '0', '#']] },
   demo: { build: buildDemoStory, scripts: [['2', '1', '1', '1', '1', '1', '1']] },
   kitchen: {
     build: kitchenSink,

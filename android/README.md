@@ -12,8 +12,18 @@ app/      the Android app: phone keypad, car screen (OpenGL ES 3), audio
 
 ## How a story gets here
 
+The app ships with **William Son of Joel** (what it opens with), the **JCFC Hotline**
+phone tree and the walkthrough — **STORIES…** on the phone switches between them.
+Those two real stories were copied from Supabase on 2026-10-31, read only, and every
+table was checked against the database by checksum. Their rows live in
+`src/features/pack/fixtures/`, which also makes them golden fixtures: both engines
+are tested on them every run. They are a snapshot — edits made since don't appear
+until they are copied again.
+
+For anything newer:
+
 1. In the web app: **Export → Story pack (Android)** downloads `<title>.jackie.json`.
-2. On the phone: **OPEN STORY…** and pick that file.
+2. On the phone: **STORIES… → FROM A FILE…** and pick that file.
 
 The pack carries what is *heard* (lines, speakers, audio links) already worked out
 by the web app, and the *rules* (gates, items, fights, timeouts) for the Kotlin

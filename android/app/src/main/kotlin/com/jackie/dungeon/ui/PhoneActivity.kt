@@ -24,6 +24,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -83,6 +89,30 @@ private fun PhoneScreen() {
     val open = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) AppGraph.openPack(uri)
     }
+    var picking by remember { mutableStateOf(false) }
+    if (picking) {
+        Dialog(onDismissRequest = { picking = false }) {
+            Column(Modifier.border(1.dp, Phosphor.fg).background(Phosphor.bg).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("STORIES", style = style(26, Phosphor.hi))
+                LazyColumn(Modifier.weight(1f, fill = false), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    items(ui.stories) { b ->
+                        Box(
+                            Modifier.fillMaxWidth().border(1.dp, if (b.title == ui.story) Phosphor.fg else Phosphor.line)
+                                .background(Phosphor.panel)
+                                .clickable { picking = false; AppGraph.openBundled(b.file) }
+                                .padding(10.dp),
+                        ) {
+                            Column {
+                                Text(b.title, style = style(22, Phosphor.fg), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                Text("${b.scenes} scenes", style = style(16, Phosphor.dim))
+                            }
+                        }
+                    }
+                }
+                Button("FROM A FILE…", Modifier.fillMaxWidth()) { picking = false; open.launch(arrayOf("application/json", "*/*")) }
+            }
+        }
+    }
 
     Column(
         Modifier.fillMaxSize().background(Phosphor.bg).safeDrawingPadding().padding(16.dp),
@@ -109,7 +139,7 @@ private fun PhoneScreen() {
         Keypad(Modifier.weight(1f).fillMaxWidth())
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button("OPEN STORY…", Modifier.weight(1f)) { open.launch(arrayOf("application/json", "*/*")) }
+            Button("STORIES…", Modifier.weight(1f)) { picking = true }
             Button("REDIAL", Modifier.weight(1f)) { AppGraph.redial() }
         }
         if (!ui.carShowing) {

@@ -35,6 +35,8 @@ object AppGraph {
     private const val TAG = "AppGraph"
     private const val TICK_MS = 33L
     private const val SAVE_EVERY_MS = 5_000L
+    /** What a fresh install opens with: the real story, not the walkthrough. */
+    private const val FIRST_STORY = "william.jackie.json"
 
     private lateinit var app: Application
     private val worker = Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "jackie-worker") }
@@ -82,7 +84,7 @@ object AppGraph {
 
     private fun loadPack(): StoryPack {
         val text = if (storyFile.exists()) storyFile.readText()
-        else app.assets.open("stories/demo.jackie.json").bufferedReader().use { it.readText() }
+        else app.assets.open("stories/$FIRST_STORY").bufferedReader().use { it.readText() }
         return StoryPack.parse(text)
     }
 
@@ -116,14 +118,7 @@ object AppGraph {
         try {
             val text = app.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
                 ?: error("That file couldn't be opened.")
-            val pack = StoryPack.parse(text)
-            storyFile.writeText(text)
-            callFile.delete()
-            audio.stop()
-            val s = CallSession(pack)
-            session = s
-            if (showing.isNotEmpty()) s.dial()
-            _ui.value = _ui.value.copy(error = null)
+            switchTo(StoryPack.parse(text), text)
         } catch (e: Exception) {
             Log.w(TAG, "open", e)
             _ui.value = _ui.value.copy(error = e.message ?: "That isn't a story pack.")
@@ -132,6 +127,40 @@ object AppGraph {
     }
 
     fun clearError() { _ui.value = _ui.value.copy(error = null) }
+
+    /** The stories that ship inside the app, by title, for the phone's list. */
+    private fun bundled(): List<Bundled> = runCatching {
+        app.assets.list("stories").orEmpty().filter { it.endsWith(".jackie.json") }.sorted().mapNotNull { file ->
+            runCatching {
+                val pack = StoryPack.parse(app.assets.open("stories/$file").bufferedReader().use { it.readText() })
+                Bundled(file, pack.title, pack.nodes.size)
+            }.getOrNull()
+        }
+    }.getOrDefault(emptyList())
+
+    private val bundledStories by lazy { bundled() }
+
+    /** Switch to a story that ships with the app. */
+    fun openBundled(file: String) = worker.execute {
+        try {
+            val text = app.assets.open("stories/$file").bufferedReader().use { it.readText() }
+            switchTo(StoryPack.parse(text), text)
+        } catch (e: Exception) {
+            Log.w(TAG, "bundled", e)
+            _ui.value = _ui.value.copy(error = e.message ?: "That story couldn't be opened.")
+        }
+        publish(force = true)
+    }
+
+    private fun switchTo(pack: StoryPack, text: String) {
+        storyFile.writeText(text)
+        callFile.delete()
+        audio.stop()
+        val s = CallSession(pack)
+        session = s
+        if (showing.isNotEmpty()) s.dial()
+        _ui.value = _ui.value.copy(error = null)
+    }
 
     // ---- lifecycle -------------------------------------------------------------
 
@@ -230,6 +259,7 @@ object AppGraph {
             carShowing = "car" in showing,
             previewShowing = "preview" in showing,
             error = _ui.value.error,
+            stories = bundledStories,
         )
     }
 
@@ -255,7 +285,11 @@ data class PhoneUi(
     val carShowing: Boolean = false,
     val previewShowing: Boolean = false,
     val error: String? = null,
+    val stories: List<Bundled> = emptyList(),
 )
+
+/** A story that ships inside the app. */
+data class Bundled(val file: String, val title: String, val scenes: Int)
 
 /** What the car screen draws. */
 data class Screen(
