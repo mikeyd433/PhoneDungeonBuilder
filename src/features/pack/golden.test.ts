@@ -6,7 +6,8 @@ import { buildDemoStory } from '@/features/demo/demoStory'
 import { PlaytestEngine, type PlaytestState, type Turn } from '@/features/playtest/engine'
 import type { Effect, Gate, GateExpression, StoryGraph } from '@/types/domain'
 import { buildStoryPack } from './storyPack'
-import { graphFromRows, type StoryRows } from './fromRows'
+import { graphFromRows, rowsFromGraph, type StoryRows } from './fromRows'
+import { splitNarration } from '@/features/cast/dialogue'
 
 /**
  * Golden sessions: the TypeScript engine, recorded, for the Kotlin engine to
@@ -224,11 +225,45 @@ const FIXTURES: Record<string, { build: () => StoryGraph; scripts: string[][] }>
   },
 }
 
+/**
+ * Every script in every fixture, split by speaker — plus the awkward shapes —
+ * for the Kotlin port of `splitNarration`. The phone edits scripts, so it has
+ * to split them exactly the way the web app did.
+ */
+const SPLIT_EXTRAS = [
+  'Carter: hi. Mike: hello! Carter:no space',
+  'and then, Carter: run',
+  'SFX: a door slams\nNote: record twice',
+  'Mike and Carter: Hey why',
+  'A Very Long Speaker Name Here: words',
+  'Mike:   \nCarter: only me',
+  '  leading spaces\n\n\ttabs\t',
+  'Dr. Who: yes. Mr. T: no.',
+  'Time: 5 o\u2019clock. Ok.',
+  '"Quoted." Shark King: hi',
+  '',
+]
+
 describe('golden sessions for the Kotlin engine', () => {
+  it('splits: every script, as splitNarration sees it', () => {
+    const texts = new Set<string>(SPLIT_EXTRAS)
+    for (const { build } of Object.values(FIXTURES)) {
+      const g = build()
+      for (const n of g.nodes.values()) texts.add(n.narration)
+      for (const c of g.choices.values()) if (c.reaction_narration) texts.add(c.reaction_narration)
+    }
+    const body = JSON.stringify([...texts].map((text) => ({ text, lines: splitNarration(text) }))) + '\n'
+    const path = resolve(OUT, 'splits.json')
+    if (UPDATE || !existsSync(path)) writeFileSync(path, body)
+    expect(readFileSync(path, 'utf8'), 'splits.json is stale: JD_UPDATE_GOLDEN=1 pnpm test golden').toBe(body)
+  })
+
   for (const [name, { build, scripts }] of Object.entries(FIXTURES)) {
     it(`${name}: the recorded sessions still describe the engine`, () => {
       const graph = build()
       const files = {
+        // The rows too, so the Kotlin pack builder can be held to this one.
+        [`${name}.rows.json`]: JSON.stringify(rowsFromGraph(graph)) + '\n',
         [`${name}.pack.json`]: JSON.stringify(buildStoryPack(graph), null, 1) + '\n',
         [`${name}.sessions.json`]: JSON.stringify(record(graph, scripts)) + '\n',
       }

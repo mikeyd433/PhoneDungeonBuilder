@@ -43,3 +43,21 @@ export function graphFromRows(rows: StoryRows): StoryGraph {
     fightOutcomes: index(rows.fight_round_outcomes),
   }
 }
+
+/** The inverse of `graphFromRows`: table rows in Map order. */
+export function rowsFromGraph(graph: StoryGraph): StoryRows {
+  return {
+    story: graph.story,
+    nodes: [...graph.nodes.values()],
+    choices: [...graph.choices.values()],
+    state_vars: [...graph.stateVars.values()],
+    effects: [...graph.effects.values()],
+    gates: [...graph.gates.values()],
+    characters: [...graph.characters.values()],
+    dialogue_lines: [...graph.dialogue.values()],
+    fights: [...graph.fights.values()],
+    fight_moves: [...graph.fightMoves.values()],
+    fight_rounds: [...graph.fightRounds.values()],
+    fight_round_outcomes: [...graph.fightOutcomes.values()],
+  }
+}
