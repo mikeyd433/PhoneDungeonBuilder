@@ -59,6 +59,7 @@ Two rules from §0 that everything else follows from:
 | One person, cast twice | The import spells a name however the script did, so a real story came back with **Froggem** and **Froggum**, one line each. `features/cast/merge.ts` offers near-misses on the Cast page — **optimal string alignment**, not plain Levenshtein, because the commonest typo is a swap (`Carter`/`Cartre`) and Levenshtein charges that two. Tolerance scales to the SHORTER name, which is what keeps `Shark` and `Shark King` apart. Suggested, never automatic: only somebody who read the story knows. The merge repoints the lines **and recomposes every affected owner's narration** — principle 8, the script carries the speaker's NAME as text, so repointing `character_id` alone would leave the room still saying "Froggum:" until the next line edit rewrote it back. Lines are UPDATED, not replaced, so takes and ids survive. |
 | Help | `features/app/help.ts` — every feature, what it does, **where it is tap by tap**, and what has to be true first. A description with no path is a feature that still cannot be found, and three were: the call sheet was an underlined half-sentence three sections down the Cast page, the figure control was an unlabelled select whose only explanation was a `title` tooltip (which does not exist on touch), and a figure draws nothing until the room's script is split by speaker. `needs` is drawn in the alarm colour because most of what looks broken here is a prerequisite nobody mentioned. One list, searchable over the `where` line as well as the title. |
 | Changelog | `features/app/changelog.ts`, opened by the version button in the header's first line. **One copy** — a `CHANGELOG.md` beside it would be two hand-maintained lists of the same facts. A test pins its top entry to `package.json`. |
+| Phone and car app | `android/` — its own Play listing (`com.jackie.dungeon`), built the way the Brenda apps are: an Android Auto **parked app** whose car activity (`CAR_LAUNCHER`) draws a green-phosphor terminal with its own OpenGL ES 3 renderer, with the **phone as the keypad**, both in one process sharing `AppGraph`. Not Car App Library templates, and not a WebView — chosen over wrapping the web app so the car screen is native and the CRT glass can really curve. A story reaches it as a **story pack** (`src/features/pack/storyPack.ts`, Export → Story pack): what is HEARD is precomputed by the same TS functions the playtest uses, and what HAPPENS is decided by `android/engine`, a line-by-line Kotlin port of `PlaytestEngine`. See `android/README.md`. |
 | Fights | A first-class kind of room (a `fights` row hung off a node, not a `node_type`). **Functionally a room where you pick an exit**: each round names where every digit goes, and several may go to the same place. The counter rule (matching move advances, everything else loses) is only the default when a round doesn't name one. An unmapped digit loses; silence repeats the round `silence_patience` times first. |
 
 ## Spec gaps resolved in code
@@ -112,7 +113,14 @@ capture. pnpm. Target device order: **tablet portrait, then phone, then desktop.
    widget is its arrival effects, then its batched gates, then its audio — and
    an unrecorded room has no audio widget at all. Targeting `_play` by name
    skipped the effects and the gates outright, and now would point at nothing.
-9. **Playtest and export must agree about fights.** Both ask
+9. **Playtest, export and the Android engine must agree.** The Kotlin engine
+   (`android/engine`) is held to the TypeScript one by golden sessions:
+   `src/features/pack/golden.test.ts` records turns through `PlaytestEngine`,
+   `GoldenSessionsTest.kt` replays them and must hear the same words and reach
+   the same state. Change the TS engine → regenerate with
+   `JD_UPDATE_GOLDEN=1 pnpm test golden` → port the change until
+   `./gradlew :engine:test` passes. Never regenerate to make Kotlin pass.
+   **About fights in particular:** Both ask
    `resolveMove` (`src/features/fight/model.ts`) where a digit goes — neither
    decides for itself, and both count silence against the same
    `silence_patience`. A rule added to one and not the other is a bug that only
@@ -160,12 +168,14 @@ src/
     fight/      fight model (pure) + FightSection
     room/       roomModel (pure) + RoomStage (renderer seam) + EditorSheet
     import/     CSV parse -> column mapping -> plan -> commit
+    pack/       story pack for the Android app + golden sessions for its engine
     auth/       session hook
   lib/          supabase client, slug, speech estimates, api
   routes/       one file per screen
   types/        domain types — mirror the migrations
 supabase/migrations/
 docs/delve-spec.md
+android/        phone + car app (Gradle): engine/ (pure Kotlin) and app/
 ```
 
 ## Build phases (spec §10)
@@ -180,6 +190,7 @@ with `pnpm typecheck && pnpm lint && pnpm test` clean and a commit.
 
 ```
 pnpm dev | build | preview | typecheck | lint | test
+cd android && ./gradlew :engine:test :app:assembleDebug
 ```
 
 ## Environment

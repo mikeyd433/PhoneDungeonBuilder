@@ -1,0 +1,668 @@
+{
+ "format": "jackie-story-pack",
+ "version": 1,
+ "title": "Test Story",
+ "root": "n1",
+ "counterClamp": 3,
+ "inventoryKey": "#",
+ "inventoryIntroAudio": "audio/inv-intro.wav",
+ "inventoryEmptyAudio": null,
+ "vars": [
+  {
+   "slug": "KEY",
+   "name": "A brass key",
+   "kind": "item",
+   "consumable": true,
+   "nameAudio": "audio/key.wav",
+   "gain": {
+    "id": "var-KEY:gain",
+    "audio": null,
+    "say": "Cold in the hand.",
+    "speaker": null
+   },
+   "spend": {
+    "id": "var-KEY:spend",
+    "audio": null,
+    "say": "The key snaps off in the lock.",
+    "speaker": null
+   }
+  },
+  {
+   "slug": "CROWBAR",
+   "name": "A crowbar",
+   "kind": "item",
+   "consumable": true,
+   "nameAudio": null,
+   "gain": {
+    "id": "var-CROWBAR:gain",
+    "audio": "audio/crowbar-gain.wav",
+    "say": "Heavy.",
+    "speaker": null
+   },
+   "spend": null
+  },
+  {
+   "slug": "LAMP",
+   "name": "Lamp lit",
+   "kind": "flag",
+   "consumable": false,
+   "nameAudio": null,
+   "gain": null,
+   "spend": null
+  },
+  {
+   "slug": "CURSE",
+   "name": "Cursed",
+   "kind": "flag",
+   "consumable": false,
+   "nameAudio": null,
+   "gain": null,
+   "spend": null
+  },
+  {
+   "slug": "COINS",
+   "name": "Coins",
+   "kind": "counter",
+   "consumable": false,
+   "nameAudio": null,
+   "gain": {
+    "id": "var-COINS:gain",
+    "audio": null,
+    "say": "A coin clinks.",
+    "speaker": null
+   },
+   "spend": null
+  }
+ ],
+ "nodes": [
+  {
+   "id": "n1",
+   "slug": "HALL",
+   "title": "HALL",
+   "ending": false,
+   "endingKind": null,
+   "invalidTarget": null,
+   "timeoutTarget": null,
+   "timeoutSeconds": 5,
+   "playback": [
+    {
+     "id": "dl-HALL-0",
+     "audio": "audio/line-HALL-0.mp3",
+     "say": "Who is there?",
+     "speaker": "Carter"
+    },
+    {
+     "id": "dl-HALL-1",
+     "audio": "audio/line-HALL-1.mp3",
+     "say": "Nobody.",
+     "speaker": "Mike"
+    },
+    {
+     "id": "dl-HALL-2",
+     "audio": "audio/line-HALL-2.mp3",
+     "say": "A draught.",
+     "speaker": null
+    }
+   ],
+   "effects": [],
+   "fight": null
+  },
+  {
+   "id": "n2",
+   "slug": "PANTRY",
+   "title": "PANTRY",
+   "ending": false,
+   "endingKind": null,
+   "invalidTarget": null,
+   "timeoutTarget": "n1",
+   "timeoutSeconds": 5,
+   "playback": [
+    {
+     "id": "n2",
+     "audio": null,
+     "say": "",
+     "speaker": null
+    }
+   ],
+   "effects": [
+    {
+     "var": "COINS",
+     "op": "add",
+     "amount": 1
+    },
+    {
+     "var": "LAMP",
+     "op": "grant",
+     "amount": null
+    }
+   ],
+   "fight": null
+  },
+  {
+   "id": "n3",
+   "slug": "CELLAR",
+   "title": "CELLAR",
+   "ending": false,
+   "endingKind": null,
+   "invalidTarget": "n8",
+   "timeoutTarget": null,
+   "timeoutSeconds": 5,
+   "playback": [
+    {
+     "id": "n3",
+     "audio": null,
+     "say": "",
+     "speaker": null
+    }
+   ],
+   "effects": [],
+   "fight": null
+  },
+  {
+   "id": "n4",
+   "slug": "DOOR",
+   "title": "DOOR",
+   "ending": false,
+   "endingKind": null,
+   "invalidTarget": null,
+   "timeoutTarget": null,
+   "timeoutSeconds": 5,
+   "playback": [
+    {
+     "id": "n4",
+     "audio": null,
+     "say": "",
+     "speaker": null
+    }
+   ],
+   "effects": [],
+   "fight": null
+  },
+  {
+   "id": "n5",
+   "slug": "VAULT",
+   "title": "VAULT",
+   "ending": false,
+   "endingKind": null,
+   "invalidTarget": null,
+   "timeoutTarget": null,
+   "timeoutSeconds": 5,
+   "playback": [
+    {
+     "id": "n5",
+     "audio": null,
+     "say": "",
+     "speaker": null
+    }
+   ],
+   "effects": [
+    {
+     "var": "COINS",
+     "op": "set",
+     "amount": 0
+    }
+   ],
+   "fight": null
+  },
+  {
+   "id": "n6",
+   "slug": "FIGHT",
+   "title": "FIGHT",
+   "ending": false,
+   "endingKind": null,
+   "invalidTarget": null,
+   "timeoutTarget": null,
+   "timeoutSeconds": 5,
+   "playback": [
+    {
+     "id": "n6",
+     "audio": null,
+     "say": "",
+     "speaker": null
+    }
+   ],
+   "effects": [],
+   "fight": {
+    "id": "f-FIGHT",
+    "opponent": "The shark",
+    "win": "n7",
+    "lose": "n9",
+    "patience": 2,
+    "moves": [
+     {
+      "id": "f-FIGHT-m0",
+      "slug": "PUNCH",
+      "label": "punch",
+      "beats": "kick"
+     },
+     {
+      "id": "f-FIGHT-m1",
+      "slug": "KICK",
+      "label": "kick",
+      "beats": "punch"
+     },
+     {
+      "id": "f-FIGHT-m2",
+      "slug": "DUCK",
+      "label": "duck",
+      "beats": null
+     }
+    ],
+    "rounds": [
+     {
+      "id": "f-FIGHT-r0",
+      "opponentMove": "kick",
+      "narration": "The shark throws a kick.",
+      "audio": null
+     },
+     {
+      "id": "f-FIGHT-r1",
+      "opponentMove": "punch",
+      "narration": "The shark throws a punch.",
+      "audio": null
+     },
+     {
+      "id": "f-FIGHT-r2",
+      "opponentMove": "kick",
+      "narration": "The shark throws a kick.",
+      "audio": null
+     }
+    ],
+    "outcomes": [
+     {
+      "round": "f-FIGHT-r1",
+      "move": "f-FIGHT-m2",
+      "to": "n10"
+     },
+     {
+      "round": "f-FIGHT-r2",
+      "move": "f-FIGHT-m2",
+      "to": null
+     }
+    ]
+   }
+  },
+  {
+   "id": "n7",
+   "slug": "WON",
+   "title": "WON",
+   "ending": false,
+   "endingKind": null,
+   "invalidTarget": null,
+   "timeoutTarget": null,
+   "timeoutSeconds": 5,
+   "playback": [
+    {
+     "id": "n7",
+     "audio": null,
+     "say": "",
+     "speaker": null
+    }
+   ],
+   "effects": [
+    {
+     "var": "COINS",
+     "op": "add",
+     "amount": 5
+    },
+    {
+     "var": "CURSE",
+     "op": "revoke",
+     "amount": null
+    }
+   ],
+   "fight": null
+  },
+  {
+   "id": "n8",
+   "slug": "DEAD",
+   "title": "DEAD",
+   "ending": true,
+   "endingKind": "death",
+   "invalidTarget": null,
+   "timeoutTarget": null,
+   "timeoutSeconds": 5,
+   "playback": [
+    {
+     "id": "n8",
+     "audio": null,
+     "say": "",
+     "speaker": null
+    }
+   ],
+   "effects": [],
+   "fight": null
+  },
+  {
+   "id": "n9",
+   "slug": "LOST",
+   "title": "LOST",
+   "ending": true,
+   "endingKind": "death",
+   "invalidTarget": null,
+   "timeoutTarget": null,
+   "timeoutSeconds": 5,
+   "playback": [
+    {
+     "id": "n9",
+     "audio": null,
+     "say": "",
+     "speaker": null
+    }
+   ],
+   "effects": [],
+   "fight": null
+  },
+  {
+   "id": "n10",
+   "slug": "ESCAPE",
+   "title": "ESCAPE",
+   "ending": true,
+   "endingKind": "win",
+   "invalidTarget": null,
+   "timeoutTarget": null,
+   "timeoutSeconds": 5,
+   "playback": [
+    {
+     "id": "n10",
+     "audio": null,
+     "say": "",
+     "speaker": null
+    }
+   ],
+   "effects": [],
+   "fight": null
+  }
+ ],
+ "choices": [
+  {
+   "id": "c1",
+   "from": "n1",
+   "digit": "1",
+   "label": "to PANTRY",
+   "to": "n2",
+   "sortOrder": 1,
+   "effects": [
+    {
+     "var": "KEY",
+     "op": "grant",
+     "amount": null
+    }
+   ],
+   "reaction": [],
+   "gate": null
+  },
+  {
+   "id": "c2",
+   "from": "n1",
+   "digit": "2",
+   "label": "to CELLAR",
+   "to": "n3",
+   "sortOrder": 2,
+   "effects": [],
+   "reaction": [],
+   "gate": null
+  },
+  {
+   "id": "c3",
+   "from": "n1",
+   "digit": "3",
+   "label": "to DOOR",
+   "to": "n4",
+   "sortOrder": 3,
+   "effects": [],
+   "reaction": [],
+   "gate": null
+  },
+  {
+   "id": "c4",
+   "from": "n1",
+   "digit": "4",
+   "label": "unwritten",
+   "to": null,
+   "sortOrder": 4,
+   "effects": [],
+   "reaction": [],
+   "gate": null
+  },
+  {
+   "id": "c5",
+   "from": "n1",
+   "digit": "5",
+   "label": "to HALL",
+   "to": "n1",
+   "sortOrder": 5,
+   "effects": [],
+   "reaction": [],
+   "gate": null
+  },
+  {
+   "id": "c6",
+   "from": "n2",
+   "digit": "1",
+   "label": "to HALL",
+   "to": "n1",
+   "sortOrder": 1,
+   "effects": [],
+   "reaction": [],
+   "gate": null
+  },
+  {
+   "id": "c7",
+   "from": "n3",
+   "digit": "1",
+   "label": "to HALL",
+   "to": "n1",
+   "sortOrder": 1,
+   "effects": [
+    {
+     "var": "CROWBAR",
+     "op": "grant",
+     "amount": null
+    },
+    {
+     "var": "CURSE",
+     "op": "grant",
+     "amount": null
+    },
+    {
+     "var": "CROWBAR",
+     "op": "grant",
+     "amount": null
+    }
+   ],
+   "reaction": [],
+   "gate": null
+  },
+  {
+   "id": "c8",
+   "from": "n3",
+   "digit": "2",
+   "label": "to FIGHT",
+   "to": "n6",
+   "sortOrder": 2,
+   "effects": [],
+   "reaction": [],
+   "gate": null
+  },
+  {
+   "id": "c9",
+   "from": "n4",
+   "digit": "1",
+   "label": "to VAULT",
+   "to": "n5",
+   "sortOrder": 1,
+   "effects": [],
+   "reaction": [],
+   "gate": {
+    "expression": {
+     "op": "or",
+     "args": [
+      {
+       "op": "has",
+       "var": "KEY"
+      },
+      {
+       "op": "has",
+       "var": "CROWBAR"
+      }
+     ]
+    },
+    "fail": "refuse",
+    "failNarration": null,
+    "failAudio": null,
+    "failNode": null,
+    "consumeOnPass": true
+   }
+  },
+  {
+   "id": "c10",
+   "from": "n4",
+   "digit": "2",
+   "label": "to WON",
+   "to": "n7",
+   "sortOrder": 2,
+   "effects": [],
+   "reaction": [],
+   "gate": {
+    "expression": {
+     "op": "and",
+     "args": [
+      {
+       "op": "gte",
+       "var": "COINS",
+       "value": 2
+      },
+      {
+       "op": "lte",
+       "var": "COINS",
+       "value": 3
+      }
+     ]
+    },
+    "fail": "refuse",
+    "failNarration": "Not enough coin.",
+    "failAudio": "audio/poor.wav",
+    "failNode": null,
+    "consumeOnPass": false
+   }
+  },
+  {
+   "id": "c11",
+   "from": "n4",
+   "digit": "3",
+   "label": "to HALL",
+   "to": "n1",
+   "sortOrder": 3,
+   "effects": [],
+   "reaction": [],
+   "gate": {
+    "expression": {
+     "op": "has",
+     "var": "LAMP"
+    },
+    "fail": "hide",
+    "failNarration": null,
+    "failAudio": null,
+    "failNode": null,
+    "consumeOnPass": false
+   }
+  },
+  {
+   "id": "c12",
+   "from": "n4",
+   "digit": "4",
+   "label": "to ESCAPE",
+   "to": "n10",
+   "sortOrder": 4,
+   "effects": [],
+   "reaction": [
+    {
+     "id": "c12",
+     "audio": "audio/hinges.wav",
+     "say": "The hinges scream.",
+     "speaker": null
+    }
+   ],
+   "gate": {
+    "expression": {
+     "op": "and",
+     "args": [
+      {
+       "op": "not",
+       "args": [
+        {
+         "op": "has",
+         "var": "CURSE"
+        }
+       ]
+      },
+      {
+       "op": "lacks",
+       "var": "KEY"
+      }
+     ]
+    },
+    "fail": "divert",
+    "failNarration": null,
+    "failAudio": null,
+    "failNode": "n8",
+    "consumeOnPass": false
+   }
+  },
+  {
+   "id": "c13",
+   "from": "n5",
+   "digit": "1",
+   "label": "to ESCAPE",
+   "to": "n10",
+   "sortOrder": 1,
+   "effects": [],
+   "reaction": [],
+   "gate": {
+    "expression": {
+     "op": "eq",
+     "var": "COINS",
+     "value": 0
+    },
+    "fail": "refuse",
+    "failNarration": null,
+    "failAudio": null,
+    "failNode": null,
+    "consumeOnPass": false
+   }
+  },
+  {
+   "id": "c14",
+   "from": "n5",
+   "digit": "2",
+   "label": "to HALL",
+   "to": "n1",
+   "sortOrder": 2,
+   "effects": [],
+   "reaction": [],
+   "gate": {
+    "expression": {
+     "op": "and",
+     "args": []
+    },
+    "fail": "refuse",
+    "failNarration": null,
+    "failAudio": null,
+    "failNode": null,
+    "consumeOnPass": false
+   }
+  },
+  {
+   "id": "c15",
+   "from": "n7",
+   "digit": "1",
+   "label": "to HALL",
+   "to": "n1",
+   "sortOrder": 1,
+   "effects": [],
+   "reaction": [],
+   "gate": null
+  }
+ ]
+}

@@ -1,0 +1,406 @@
+{
+ "format": "jackie-story-pack",
+ "version": 1,
+ "title": "Jackie Dungeon — walkthrough",
+ "root": "n-1",
+ "counterClamp": 10,
+ "inventoryKey": null,
+ "inventoryIntroAudio": null,
+ "inventoryEmptyAudio": null,
+ "vars": [
+  {
+   "slug": "ROPE",
+   "name": "A coil of rope",
+   "kind": "item",
+   "consumable": false,
+   "nameAudio": null,
+   "gain": {
+    "id": "v-18:gain",
+    "audio": null,
+    "say": "The rope is heavier than it looked. Salt, and something older.",
+    "speaker": null
+   },
+   "spend": {
+    "id": "v-18:spend",
+    "audio": null,
+    "say": "The last of it goes over the side.",
+    "speaker": null
+   }
+  }
+ ],
+ "nodes": [
+  {
+   "id": "n-1",
+   "slug": "ENTRANCE",
+   "title": "The hotline",
+   "ending": false,
+   "endingKind": null,
+   "invalidTarget": null,
+   "timeoutTarget": null,
+   "timeoutSeconds": 5,
+   "playback": [
+    {
+     "id": "n-1",
+     "audio": "demo/entrance.mp3",
+     "say": "You have reached the JCFC hotline. A door swings open onto black water.",
+     "speaker": null
+    }
+   ],
+   "effects": [],
+   "fight": null
+  },
+  {
+   "id": "n-2",
+   "slug": "DECK",
+   "title": "The listing deck",
+   "ending": false,
+   "endingKind": null,
+   "invalidTarget": null,
+   "timeoutTarget": null,
+   "timeoutSeconds": 5,
+   "playback": [
+    {
+     "id": "n-2",
+     "audio": "demo/deck.mp3",
+     "say": "The deck tilts. Something circles below the waterline.",
+     "speaker": null
+    }
+   ],
+   "effects": [],
+   "fight": null
+  },
+  {
+   "id": "n-3",
+   "slug": "HOLD",
+   "title": "The flooded hold",
+   "ending": false,
+   "endingKind": null,
+   "invalidTarget": null,
+   "timeoutTarget": null,
+   "timeoutSeconds": 5,
+   "playback": [
+    {
+     "id": "n-3",
+     "audio": "demo/hold.mp3",
+     "say": "Water to the ankle. A coil of rope floats past.",
+     "speaker": null
+    }
+   ],
+   "effects": [],
+   "fight": null
+  },
+  {
+   "id": "n-4",
+   "slug": "SHARKS",
+   "title": "Circled",
+   "ending": false,
+   "endingKind": null,
+   "invalidTarget": null,
+   "timeoutTarget": null,
+   "timeoutSeconds": 5,
+   "playback": [
+    {
+     "id": "n-4",
+     "audio": "demo/sharks.mp3",
+     "say": "It surfaces. It has been waiting.",
+     "speaker": null
+    }
+   ],
+   "effects": [],
+   "fight": {
+    "id": "f-32",
+    "opponent": "The shark",
+    "win": "n-5",
+    "lose": "n-6",
+    "patience": 3,
+    "moves": [
+     {
+      "id": "fm-33",
+      "slug": "PUNCH",
+      "label": "punch",
+      "beats": "Rising Tiger"
+     },
+     {
+      "id": "fm-34",
+      "slug": "KICK",
+      "label": "kick",
+      "beats": "Low Roll"
+     },
+     {
+      "id": "fm-35",
+      "slug": "BLOCK",
+      "label": "block",
+      "beats": "Breach"
+     }
+    ],
+    "rounds": [
+     {
+      "id": "fr-36",
+      "opponentMove": "Rising Tiger",
+      "narration": "Rising Tiger Shark! It comes up under you.",
+      "audio": "demo/r1.mp3"
+     },
+     {
+      "id": "fr-37",
+      "opponentMove": "Low Roll",
+      "narration": "It rolls low and fast.",
+      "audio": "demo/r2.mp3"
+     },
+     {
+      "id": "fr-38",
+      "opponentMove": "Breach",
+      "narration": "It breaches. This is the last of it.",
+      "audio": null
+     }
+    ],
+    "outcomes": []
+   }
+  },
+  {
+   "id": "n-5",
+   "slug": "SHORE",
+   "title": "The shore",
+   "ending": false,
+   "endingKind": null,
+   "invalidTarget": null,
+   "timeoutTarget": null,
+   "timeoutSeconds": 5,
+   "playback": [
+    {
+     "id": "dl-29",
+     "audio": "demo/shore-1.mp3",
+     "say": "You are bleeding.",
+     "speaker": "Carter"
+    },
+    {
+     "id": "dl-30",
+     "audio": null,
+     "say": "I know what I am.",
+     "speaker": "Mike"
+    },
+    {
+     "id": "dl-31",
+     "audio": "demo/shore-3.mp3",
+     "say": "We are not doing that again.",
+     "speaker": "Carter"
+    }
+   ],
+   "effects": [],
+   "fight": null
+  },
+  {
+   "id": "n-6",
+   "slug": "DROWNED",
+   "title": "Down",
+   "ending": true,
+   "endingKind": "death",
+   "invalidTarget": null,
+   "timeoutTarget": null,
+   "timeoutSeconds": 5,
+   "playback": [
+    {
+     "id": "n-6",
+     "audio": "demo/drowned.mp3",
+     "say": "The water closes. The line goes dead.",
+     "speaker": null
+    }
+   ],
+   "effects": [],
+   "fight": null
+  },
+  {
+   "id": "n-7",
+   "slug": "LOCKER",
+   "title": "The locker",
+   "ending": false,
+   "endingKind": null,
+   "invalidTarget": null,
+   "timeoutTarget": null,
+   "timeoutSeconds": 5,
+   "playback": [
+    {
+     "id": "n-7",
+     "audio": null,
+     "say": "Bolted shut. The rope would hold your weight.",
+     "speaker": null
+    }
+   ],
+   "effects": [],
+   "fight": null
+  },
+  {
+   "id": "n-8",
+   "slug": "FIN",
+   "title": "Ashore",
+   "ending": true,
+   "endingKind": "win",
+   "invalidTarget": null,
+   "timeoutTarget": null,
+   "timeoutSeconds": 5,
+   "playback": [
+    {
+     "id": "n-8",
+     "audio": null,
+     "say": "You make it out. You do not look back.",
+     "speaker": null
+    }
+   ],
+   "effects": [],
+   "fight": null
+  },
+  {
+   "id": "n-9",
+   "slug": "CUT_SCENE",
+   "title": "A room nothing leads to",
+   "ending": false,
+   "endingKind": null,
+   "invalidTarget": null,
+   "timeoutTarget": null,
+   "timeoutSeconds": 5,
+   "playback": [
+    {
+     "id": "n-9",
+     "audio": null,
+     "say": "Written, then stranded.",
+     "speaker": null
+    }
+   ],
+   "effects": [],
+   "fight": null
+  }
+ ],
+ "choices": [
+  {
+   "id": "c-10",
+   "from": "n-1",
+   "digit": "1",
+   "label": "go up on deck",
+   "to": "n-2",
+   "sortOrder": 1,
+   "effects": [],
+   "reaction": [],
+   "gate": null
+  },
+  {
+   "id": "c-11",
+   "from": "n-1",
+   "digit": "2",
+   "label": "go below",
+   "to": "n-3",
+   "sortOrder": 2,
+   "effects": [],
+   "reaction": [
+    {
+     "id": "c-11",
+     "audio": null,
+     "say": "The stairs are wet. Something moves below.",
+     "speaker": null
+    }
+   ],
+   "gate": null
+  },
+  {
+   "id": "c-12",
+   "from": "n-1",
+   "digit": "3",
+   "label": "listen to the music",
+   "to": null,
+   "sortOrder": 3,
+   "effects": [],
+   "reaction": [],
+   "gate": null
+  },
+  {
+   "id": "c-13",
+   "from": "n-2",
+   "digit": "1",
+   "label": "dive",
+   "to": "n-4",
+   "sortOrder": 1,
+   "effects": [],
+   "reaction": [],
+   "gate": null
+  },
+  {
+   "id": "c-14",
+   "from": "n-3",
+   "digit": "1",
+   "label": "swim for it",
+   "to": "n-4",
+   "sortOrder": 1,
+   "effects": [
+    {
+     "var": "ROPE",
+     "op": "grant",
+     "amount": null
+    }
+   ],
+   "reaction": [],
+   "gate": null
+  },
+  {
+   "id": "c-15",
+   "from": "n-5",
+   "digit": "1",
+   "label": "walk inland",
+   "to": "n-8",
+   "sortOrder": 1,
+   "effects": [],
+   "reaction": [],
+   "gate": null
+  },
+  {
+   "id": "c-16",
+   "from": "n-5",
+   "digit": "2",
+   "label": "force the locker",
+   "to": "n-7",
+   "sortOrder": 2,
+   "effects": [],
+   "reaction": [],
+   "gate": {
+    "expression": {
+     "op": "has",
+     "var": "ROPE"
+    },
+    "fail": "refuse",
+    "failNarration": "The locker will not give. You would need something to haul on.",
+    "failAudio": null,
+    "failNode": null,
+    "consumeOnPass": false
+   }
+  },
+  {
+   "id": "c-17",
+   "from": "n-7",
+   "digit": "1",
+   "label": "climb out",
+   "to": "n-8",
+   "sortOrder": 1,
+   "effects": [],
+   "reaction": [],
+   "gate": null
+  },
+  {
+   "id": "c-22",
+   "from": "n-3",
+   "digit": "2",
+   "label": "climb the ladder",
+   "to": "n-8",
+   "sortOrder": 2,
+   "effects": [],
+   "reaction": [],
+   "gate": {
+    "expression": {
+     "op": "has",
+     "var": "ROPE"
+    },
+    "fail": "divert",
+    "failNarration": null,
+    "failAudio": null,
+    "failNode": "n-6",
+    "consumeOnPass": false
+   }
+  }
+ ]
+}

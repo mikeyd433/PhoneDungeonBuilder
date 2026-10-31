@@ -1,0 +1,7 @@
+<!-- A keypad on a green screen: what the app is. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#8DFC9A" android:pathData="M36,34h8v8h-8z M50,34h8v8h-8z M64,34h8v8h-8z M36,47h8v8h-8z M50,47h8v8h-8z M64,47h8v8h-8z M36,60h8v8h-8z M50,60h8v8h-8z M64,60h8v8h-8z M50,73h8v8h-8z" />
+    <path android:fillColor="#DCFFE0" android:pathData="M50,34h8v8h-8z" />
+</vector>

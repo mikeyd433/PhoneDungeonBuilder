@@ -14,6 +14,7 @@ import {
 } from '@/features/export/outputs'
 import { workloads } from '@/features/cast/dialogue'
 import { publicAudioUrl } from '@/features/audio/storage'
+import { buildStoryPack } from '@/features/pack/storyPack'
 
 function download(name: string, body: string, type = 'text/plain') {
   const url = URL.createObjectURL(new Blob([body], { type }))
@@ -137,6 +138,13 @@ export default function Export() {
             help: 'Flow definition with layout coordinates from the automap. Verify your account can import a flow definition before relying on this.',
             file: `${graph.story.title}-flow.json`,
             body: studioFlowJson(graph, compiled, positions),
+            type: 'application/json',
+          },
+          {
+            label: 'Story pack (Android)',
+            help: 'The whole story for the Jackie Dungeon phone and car app: open it from the app on your phone. Audio streams from the same public links Twilio plays.',
+            file: `${graph.story.title}.jackie.json`,
+            body: JSON.stringify(buildStoryPack(graph, publicAudioUrl)),
             type: 'application/json',
           },
           {

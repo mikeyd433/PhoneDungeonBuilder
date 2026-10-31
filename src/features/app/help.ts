@@ -213,6 +213,12 @@ export const HELP: HelpSection[] = [
         what: 'A build sheet and a flow definition. Nothing is ever written to your Twilio account. The warnings are the list of what will be silent on the phone.',
       },
       {
+        title: 'Play it on the phone app, or in the car',
+        where: 'Export → Story pack (Android) → open the file from Jackie Dungeon on the phone → OPEN STORY….',
+        what: 'The whole story in one file. The phone is the keypad; the story types out on the car screen while parked, or on the phone with PREVIEW ON PHONE.',
+        needs: 'The phone app (android/ in this repo). Android Auto parked apps need Android 15 or newer on the phone.',
+      },
+      {
         title: 'Undo',
         where: 'Undo in the top menu.',
         what: 'Replays the inverse against the database rather than restoring a snapshot, so it survives a reload and cannot be undone by the next read.',

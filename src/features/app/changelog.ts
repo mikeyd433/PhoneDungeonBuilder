@@ -24,6 +24,16 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: '0.9.0',
+    date: '2026-10-31',
+    title: 'A story pack',
+    changes: [
+      'Export has a new download, “Story pack (Android)”: the whole story in one file, for the Jackie Dungeon phone and car app. Open it from the app on your phone.',
+      'The app plays the story the way Dial in does — same doors, same items, same refusals, same fights — because it is checked against recordings of Dial in, turn by turn.',
+      'Recordings stream from the same public links the Twilio flow plays, so there is nothing to upload twice.',
+    ],
+  },
+  {
     version: '0.8.0',
     date: '2026-08-04',
     title: 'What an item says',
