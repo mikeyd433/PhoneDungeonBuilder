@@ -44,20 +44,43 @@ class CallSessionTest {
     @Test
     fun `the room's timeout only counts once the prompt is fully up`() {
         val s = CallSession(kitchen)
-        s.dial()
-        while (s.takeAudio() != null) Unit
+        s.dial(); s.settle()
+        s.press("1"); while (s.takeAudio() != null) Unit
+        assertEquals("n2", s.state!!.nodeId, "the pantry, which sends a silent caller back to the hall")
         s.audioBusy = true
         repeat(400) { s.tick(100) }
         assertNotEquals(Phase.WAITING, s.phase, "a take still playing holds the prompt back")
         s.audioBusy = false
         s.tick(100)
         assertEquals(Phase.WAITING, s.phase)
-        val node = s.state!!.nodeId
-        val timeout = s.engine.node(node)!!.timeoutSeconds
+        val timeout = s.engine.node("n2")!!.timeoutSeconds
         repeat(timeout * 10 - 2) { s.tick(100) }
-        assertFalse(text(s).contains("[no answer]"))
+        assertEquals("n2", s.state!!.nodeId)
         repeat(3) { s.tick(100) }
-        assertTrue(text(s).contains("[no answer]"))
+        assertEquals("n1", s.state!!.nodeId, "silence took the caller back to the hall")
+    }
+
+    @Test
+    fun `waiting in a scene that only repeats on the phone doesn't retype it on screen`() {
+        val s = CallSession(kitchen)
+        s.dial(); s.settle()
+        val before = s.visible().size
+        repeat(600) { s.tick(100) } // a minute of silence in the hall
+        assertEquals(before, s.visible().size, "nothing was added")
+        assertEquals(Phase.WAITING, s.phase)
+    }
+
+    @Test
+    fun `a wrong key says so once, without the scene and the choices again`() {
+        val s = CallSession(kitchen)
+        s.dial(); s.settle()
+        val hallLines = s.visible().count { it.text.contains("Who is there?") }
+        s.press("9"); s.settle()
+        assertEquals(hallLines, s.visible().count { it.text.contains("Who is there?") }, "the hall's script wasn't retyped")
+        assertTrue(text(s).endsWith("That isn't one of the options."), text(s).takeLast(200))
+        s.press("#"); s.settle()
+        assertTrue(text(s).contains("Carrying nothing"), "the pockets readback still shows")
+        assertEquals(hallLines, s.visible().count { it.text.contains("Who is there?") })
     }
 
     @Test

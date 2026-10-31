@@ -124,11 +124,22 @@ class CallSession(val pack: StoryPack, private val speakers: List<String> = spea
         skipTyping()
         audioQueue.clear()
         add("> $key", Kind.INPUT)
-        val before = s.nodeId
-        val turn = engine.press(s, key)
+        take(s, engine.press(s, key))
+    }
+
+    /**
+     * Show a turn. When the caller stays where they were (a wrong key, the
+     * pockets key, a refusal), the phone line reads the scene out again — the
+     * engine says so, and the export does it — but on a screen the scene is
+     * still right there, so retyping it is only noise. Show what is NEW, and
+     * leave the choices on the keypad rather than listing them again.
+     */
+    private fun take(before: State, turn: com.jackie.dungeon.engine.Turn) {
         state = turn.next
-        hear(turn.heard, header = turn.next.nodeId != before || turn.heard.isEmpty())
-        afterTurn()
+        val stayed = turn.next.nodeId == before.nodeId
+        val replay = if (stayed) engine.arrival(before).map { it.id }.toSet() else emptySet()
+        hear(turn.heard.filter { it.id !in replay }, header = !stayed)
+        afterTurn(prompt = !stayed || turn.next.fightRound != before.fightRound)
     }
 
     /** Skip the typing to the end, as a tap on the car screen does. */
@@ -172,15 +183,18 @@ class CallSession(val pack: StoryPack, private val speakers: List<String> = spea
             if (doneTyping && audioQueue.isEmpty() && !audioBusy) { phase = Phase.WAITING; waitedMillis = 0 }
         } else if (phase == Phase.WAITING) {
             val s = state ?: return
-            val limit = (engine.node(s.nodeId)?.timeoutSeconds ?: 8).coerceAtLeast(1) * 1000L
+            // Silence only matters on screen when it DOES something: a scene that
+            // sends a quiet caller elsewhere, or a fight round, where silence
+            // counts against you. Otherwise the phone would just read the scene
+            // again, and the screen waits instead of retyping it every few seconds.
+            val node = engine.node(s.nodeId) ?: return
+            if (node.timeoutTarget == null && s.fightRound == null) return
+            val limit = node.timeoutSeconds.coerceAtLeast(1) * 1000L
             waitedMillis += dtMillis
             if (waitedMillis >= limit) {
                 waitedMillis = 0
                 add("[no answer]", Kind.SYS)
-                val turn = engine.timeout(s)
-                state = turn.next
-                hear(turn.heard, header = turn.next.nodeId != s.nodeId)
-                afterTurn()
+                take(s, engine.timeout(s))
             }
         }
     }
@@ -236,7 +250,7 @@ class CallSession(val pack: StoryPack, private val speakers: List<String> = spea
         }
     }
 
-    private fun afterTurn() {
+    private fun afterTurn(prompt: Boolean = true) {
         val s = state ?: return
         if (s.finished) {
             val win = engine.node(s.nodeId)?.endingKind == "win"
@@ -247,7 +261,7 @@ class CallSession(val pack: StoryPack, private val speakers: List<String> = spea
             return
         }
         phase = Phase.TALKING
-        prompt(s)
+        if (prompt) prompt(s)
     }
 
     private fun prompt(s: State) {
