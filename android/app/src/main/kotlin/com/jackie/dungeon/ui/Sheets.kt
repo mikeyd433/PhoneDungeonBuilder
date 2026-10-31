@@ -88,6 +88,14 @@ private fun SheetButtons(vararg buttons: Pair<String, () -> Unit>, danger: Set<S
     }
 }
 
+/** A bottom sheet on the phone; a plain panel where there's no room for one to pop up (tests). */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SheetFrame(inSheet: Boolean, onDismiss: () -> Unit, content: @Composable () -> Unit) {
+    if (inSheet) ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = Phosphor.panel) { content() }
+    else Box(Modifier.background(Phosphor.panel)) { content() }
+}
+
 fun sceneName(rows: StoryRows, id: String?): String =
     rows.nodes.firstOrNull { it.id == id }?.let { it.title.ifBlank { it.slug } } ?: "nowhere yet"
 
@@ -95,7 +103,7 @@ fun sceneName(rows: StoryRows, id: String?): String =
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SceneSheet(rows: StoryRows, id: String, onClose: () -> Unit, onChoice: (String) -> Unit, onPlay: (String) -> Unit, onGo: (String) -> Unit) {
+fun SceneSheet(rows: StoryRows, id: String, onClose: () -> Unit, onChoice: (String) -> Unit, onPlay: (String) -> Unit, onGo: (String) -> Unit, inSheet: Boolean = true) {
     val n = rows.nodes.firstOrNull { it.id == id } ?: return onClose()
     var title by remember(id) { mutableStateOf(n.title) }
     var script by remember(id) { mutableStateOf(n.narration) }
@@ -105,7 +113,7 @@ fun SceneSheet(rows: StoryRows, id: String, onClose: () -> Unit, onChoice: (Stri
         if (title != n.title) Studio.edit("Rename scene") { StoryEditor.updateScene(it, id, title = title) }
         if (script != n.narration) Studio.edit("Edit script") { StoryEditor.setScript(it, id, script) }
     }
-    ModalBottomSheet(onDismissRequest = { save(); onClose() }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = Phosphor.panel) {
+    SheetFrame(inSheet, onDismiss = { save(); onClose() }) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Text(if (id == rows.story.rootNodeId) "START SCENE" else "SCENE", style = label())
             Field("Name", title, { title = it }, hint = "Name this scene")
@@ -157,7 +165,7 @@ fun SceneSheet(rows: StoryRows, id: String, onClose: () -> Unit, onChoice: (Stri
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ChoiceSheet(rows: StoryRows, id: String, onClose: () -> Unit, onGo: (String) -> Unit) {
+fun ChoiceSheet(rows: StoryRows, id: String, onClose: () -> Unit, onGo: (String) -> Unit, inSheet: Boolean = true) {
     val c = rows.choices.firstOrNull { it.id == id } ?: return onClose()
     var words by remember(id) { mutableStateOf(c.label) }
     var reply by remember(id) { mutableStateOf(c.reactionNarration ?: "") }
@@ -174,7 +182,7 @@ fun ChoiceSheet(rows: StoryRows, id: String, onClose: () -> Unit, onGo: (String)
             Studio.edit("Edit refusal") { StoryEditor.setRequires(it, id, simple, "refuse", failLine = failLine) }
     }
 
-    ModalBottomSheet(onDismissRequest = { save(); onClose() }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = Phosphor.panel) {
+    SheetFrame(inSheet, onDismiss = { save(); onClose() }) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Text("CHOICE IN ${sceneName(rows, c.fromNodeId).uppercase()}", style = label())
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {

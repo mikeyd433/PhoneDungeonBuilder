@@ -6,6 +6,7 @@ import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -73,14 +74,21 @@ fun Flowchart(
         val h = constraints.maxHeight.toFloat()
         fun centreOn(id: String, s: Float) {
             val b = layout.boxes[id] ?: return
-            offset = Offset(w / 2 - b.cx * s, h * 0.3f - b.y * s)
+            offset = Offset(w / 2 - b.cx * s, h * 0.08f - b.y * s)
         }
-        if (scale == 0f) {
-            // Open at a readable size, with the entrance near the top.
-            scale = (w * 0.62f / FlowLayout.W).coerceIn(0.4f, 4f)
-            rows.story.rootNodeId?.let { centreOn(it, scale) } ?: run { offset = Offset(w / 2 - layout.minX * scale, 40f) }
+        // Set after layout, never during it: writing state while composing
+        // makes Compose run the composition again, and again.
+        LaunchedEffect(w, h) {
+            if (scale == 0f) {
+                // Open at a readable size, with the entrance near the top.
+                scale = (w * 0.62f / FlowLayout.W).coerceIn(0.4f, 4f)
+                rows.story.rootNodeId?.let { centreOn(it, scale) } ?: run { offset = Offset(w / 2 - layout.minX * scale, 40f) }
+            }
         }
-        if (jumpTo != null && jumpTo != lastJump) { lastJump = jumpTo; centreOn(jumpTo, scale) }
+        LaunchedEffect(jumpTo) {
+            if (jumpTo != null && jumpTo != lastJump && scale > 0f) { lastJump = jumpTo; centreOn(jumpTo, scale) }
+        }
+        if (scale == 0f) return@BoxWithConstraints
 
         fun toLayout(p: Offset) = Offset((p.x - offset.x) / scale, (p.y - offset.y) / scale)
 
@@ -160,7 +168,7 @@ fun Flowchart(
                             drawLine(Phosphor.fg, from, Offset(d.x, d.y - 12f), stroke)
                             val dia = Path().apply { moveTo(d.x, d.y - 12f); lineTo(d.x + 12f, d.y); lineTo(d.x, d.y + 12f); lineTo(d.x - 12f, d.y); close() }
                             drawPath(dia, Phosphor.bg); drawPath(dia, Phosphor.warn, style = Stroke(1.5f))
-                            if (!blocks) text(e.item.take(30) + "?", d.x + 16f, d.y - 8f, style(10.5f, Phosphor.warn))
+                            if (!blocks) text(e.item.let { if (it.length > 26) it.take(25) + "…" else it } + "?", d.x + 16f, d.y - 30f, style(10.5f, Phosphor.warn))
                             e.yes?.let { t -> layout.boxes[t]?.let { b -> curve(Offset(d.x, d.y + 12f), Offset(b.cx, b.y - 1f), Phosphor.fg.copy(alpha = 0.8f)) } }
                             e.no?.let { t ->
                                 layout.boxes[t]?.let { b ->

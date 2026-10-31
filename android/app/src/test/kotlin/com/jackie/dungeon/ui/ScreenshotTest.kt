@@ -5,10 +5,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.asAndroidBitmap
-import androidx.compose.ui.test.captureToImage
-import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onRoot
+import android.graphics.Canvas
+import androidx.activity.ComponentActivity
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import com.jackie.dungeon.story.StoryRows
 import org.junit.Rule
 import org.junit.Test
@@ -27,12 +26,16 @@ import java.io.File
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [35], qualifiers = "w411dp-h891dp-xxhdpi")
 class ScreenshotTest {
-    @get:Rule val compose = createComposeRule()
+    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
 
     private val william = StoryRows.parse(File("../engine/src/test/resources/golden/william.rows.json").readText())
 
     private fun shoot(name: String) {
-        val bmp = compose.onRoot().captureToImage().asAndroidBitmap()
+        compose.waitForIdle()
+        // Draw the window ourselves: captureToImage waits for a frame Robolectric never sends.
+        val v = compose.activity.window.decorView
+        val bmp = Bitmap.createBitmap(v.width, v.height, Bitmap.Config.ARGB_8888)
+        v.draw(Canvas(bmp))
         val out = File("build/screenshots").apply { mkdirs() }
         File(out, "$name.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
@@ -60,14 +63,14 @@ class ScreenshotTest {
 
     @Test fun choiceSheet() {
         val door = william.choices.first { it.label == "Offer Helmet" }.id
-        compose.setContent { Box(Modifier.fillMaxSize().background(Phosphor.bg)) { ChoiceSheet(william, door, onClose = {}, onGo = {}) } }
+        compose.setContent { Box(Modifier.fillMaxSize().background(Phosphor.bg)) { ChoiceSheet(william, door, onClose = {}, onGo = {}, inSheet = false) } }
         compose.waitForIdle()
         shoot("choice-sheet")
     }
 
     @Test fun sceneSheet() {
         val room = william.nodes.first { it.slug == "PRESS_1_TO_BUY" }.id
-        compose.setContent { Box(Modifier.fillMaxSize().background(Phosphor.bg)) { SceneSheet(william, room, onClose = {}, onChoice = {}, onPlay = {}, onGo = {}) } }
+        compose.setContent { Box(Modifier.fillMaxSize().background(Phosphor.bg)) { SceneSheet(william, room, onClose = {}, onChoice = {}, onPlay = {}, onGo = {}, inSheet = false) } }
         compose.waitForIdle()
         shoot("scene-sheet")
     }
