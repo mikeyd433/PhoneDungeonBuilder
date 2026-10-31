@@ -125,12 +125,25 @@ class Engine(val pack: StoryPack) {
 
     // ---- the runtime --------------------------------------------------------
 
-    fun start(): State {
+    /**
+     * The call's first turn. [carrying] is for "play from here" only — the
+     * caller starts with these items (slug -> 1) and counters (slug -> n),
+     * so a locked door can be tried from the scene it is in. The real call
+     * always starts empty-handed, as the web app's does.
+     */
+    fun start(carrying: Map<String, Int> = emptyMap()): State {
         val root = pack.root
         if (root == null || nodes[root] == null) {
             return State("", emptyCaller(), emptyList(), 0, true, null, 0)
         }
-        return enter(State(root, emptyCaller(), emptyList(), 0, false, null, 0), root).next
+        val given = carrying.flatMap { (slug, n) ->
+            when {
+                slug in slot -> listOf(PackEffect(slug, "set", n))
+                n > 0 && slug in bit -> listOf(PackEffect(slug, "grant"))
+                else -> emptyList()
+            }
+        }
+        return enter(State(root, apply(emptyCaller(), given), emptyList(), 0, false, null, 0), root).next
     }
 
     /** The fight in this room, if any. */

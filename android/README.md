@@ -8,6 +8,23 @@ keypad. On the **car screen, while parked**: the same story as a green-phosphor
 terminal, with the phone as the keypad. Built the Brenda way — an Android Auto
 *parked app*, not Car App Library templates.
 
+**Editing on the car screen**, while parked: the car has two modes, **PLAY** (the
+terminal) and **EDIT**, switched from a corner tab on the terminal, PLAY MODE on the
+editor's toolbar, or CAR SCREEN PLAY | EDIT on the phone. EDIT is a map of the whole
+story (drag, pinch, or VIEW ▾ to fit, zoom, jump to the start or a chapter) and a
+full-screen page per scene: the script with a ▶ on every recorded part, what the scene
+gives and what is still silent, and the choices as tiles along the bottom (tap the key
+to pick the choice, the destination to walk there, the ◆ line for its items). The
+toolbar's menus edit: SCENE ▾ (rename, script, ending, play its take, play from here,
+make start, delete), CHOICE ▾ (words, reply, key, where it leads, delete), ITEMS ▾
+(gives, needs, refuse or fork), plus + CHOICE, ▶ PLAY HERE (pick what to carry, on the
+car or the phone) and UNDO. **Typing happens on the phone**, which opens whatever the car
+opens — and the car opens whatever the phone opens; text shows on the car as it is typed.
+The map can outline empty scenes, dead ends and unrecorded scenes, switched on from the
+phone (LIGHT UP). All of it is `engine/.../car/` — pure, and tested in `CarEditorTest`;
+the call holds while the car is editing. The editor's text goes up to L; at XL only the
+terminal grows.
+
 Recording: tap ● REC on a scene, a speaker line, a reply or a refusal (or FILE… to
 bring one in). Every take is stored as 8 kHz mono WAV (`engine/.../audio/IvrWav.kt`),
 the shape Twilio's Play needs.
@@ -27,6 +44,7 @@ Next: sync with Supabase, after which the web app can retire.
 engine/   pure Kotlin, no Android, all tested on the JVM:
             engine/  the story engine (port of PlaytestEngine)
             call/    one phone call: typing, hold, resume, saves
+            car/     the car screen's editor: state, every tap, and what each frame draws
             story/   the rows the phone edits, StoryEditor (every edit), PackBuilder,
                      Dialogue (speaker split), FlowLayout (where the flowchart puts things)
 app/      the Android app: Studio (stories on the phone, undo), the Compose editor

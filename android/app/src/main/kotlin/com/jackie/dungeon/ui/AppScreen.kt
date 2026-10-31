@@ -42,6 +42,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.jackie.dungeon.AppGraph
+import com.jackie.dungeon.CarEdit
+import com.jackie.dungeon.car.Focus
 import com.jackie.dungeon.Studio
 import com.jackie.dungeon.call.CallSession
 import com.jackie.dungeon.call.CallSession.Kind
@@ -109,6 +111,23 @@ private fun StoryScreen() {
     var jump by remember { mutableStateOf<String?>(null) }
     var renaming by remember { mutableStateOf(false) }
     var exporting by remember { mutableStateOf(false) }
+    val carPresent by CarEdit.present.collectAsStateWithLifecycle()
+
+    // In step with the car: what it opens, this opens; what this opens, it goes to.
+    val focus by CarEdit.focus.collectAsStateWithLifecycle()
+    var handled by rememberSaveable { mutableStateOf(CarEdit.focus.value?.second ?: 0L) }
+    LaunchedEffect(focus) {
+        val (f, at) = focus ?: return@LaunchedEffect
+        if (at == handled) return@LaunchedEffect
+        handled = at
+        tab = "edit"
+        when (f) {
+            is Focus.Scene -> { choice = null; scene = f.id; selected = f.id; jump = f.id + "#" + at }
+            is Focus.Choice -> { scene = null; choice = f.id }
+        }
+    }
+    LaunchedEffect(scene) { scene?.let(CarEdit::followScene) }
+    LaunchedEffect(choice) { choice?.let(CarEdit::followChoice) }
 
     BackHandler { if (tab == "play") tab = "edit" else Studio.close() }
 
@@ -129,6 +148,7 @@ private fun StoryScreen() {
                 }
             }
         }
+        if (carPresent) CarControls(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp))
         if (undo.isNotEmpty() && tab == "edit") Text("Undo: ${undo.last().first}", style = mono(11, Phosphor.dim), modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp))
 
         val chapters = remember(r) { StoryEditor.chapters(r) }
@@ -169,6 +189,7 @@ private fun StoryScreen() {
         ChoiceSheet(r, id, onClose = { choice = null }, onGo = { sid -> choice = null; selected = sid; jump = sid })
     }
     if (exporting) ExportDialog(r) { exporting = false }
+    PlayHereDialog()
     if (renaming) AskText("Name this story", "Rename", r.story.title) { t -> renaming = false; if (t != null) Studio.edit("Rename story") { StoryEditor.setStoryTitle(it, t) } }
 }
 

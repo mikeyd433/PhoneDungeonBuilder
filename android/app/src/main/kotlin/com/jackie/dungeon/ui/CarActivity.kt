@@ -24,19 +24,38 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.getValue
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.jackie.dungeon.AppGraph
+import com.jackie.dungeon.CarEdit
+import com.jackie.dungeon.Studio
+import com.jackie.dungeon.car.Action
+import com.jackie.dungeon.car.Focus
+import com.jackie.dungeon.car.Mode
 import com.jackie.dungeon.gl.CrtRenderer
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 
 /**
  * The terminal, on the car display while parked — and, with [EXTRA_PREVIEW],
  * on the phone, at a head unit's proportions with the keypad beside it.
  *
- * A tap on the car touchscreen does one simple thing: skip the typing (or
- * redial once the call has ended). Everything else is the phone's.
- * It reports when it's showing, so the call goes on hold the moment it isn't.
+ * Two modes, switched from either screen. PLAY is the terminal: a tap skips
+ * the typing (or redials once the call has ended), and a corner tab goes to
+ * EDIT. EDIT is the story's map and a page per scene ([com.jackie.dungeon.car.CarView]),
+ * with typing done on the phone. The call is only "showing" in PLAY, so it
+ * holds while the car is editing, exactly as when the screen goes away.
  */
 class CarActivity : ComponentActivity() {
     private lateinit var surface: GLSurfaceView
+    private lateinit var renderer: CrtRenderer
+    private var resumed = false
     private val preview get() = intent.getBooleanExtra(EXTRA_PREVIEW, false)
     private val screenKey get() = if (preview) "preview" else "car"
 
@@ -52,11 +71,19 @@ class CarActivity : ComponentActivity() {
         hideSystemBars()
         surface = GLSurfaceView(this).apply {
             setEGLContextClientVersion(3)
-            setRenderer(CrtRenderer(applicationContext))
+            renderer = CrtRenderer(applicationContext)
+            setRenderer(renderer)
             renderMode = GLSurfaceView.RENDERMODE_CONTINUOUSLY
+            val touch = CarTouch(renderer)
             setOnTouchListener { v, e ->
-                if (e.actionMasked == MotionEvent.ACTION_DOWN) { AppGraph.tapScreen(); v.performClick() }
-                true
+                if (e.actionMasked == MotionEvent.ACTION_UP) v.performClick()
+                touch.onTouch(e)
+            }
+        }
+        // The call runs only while this screen shows it: in PLAY, not while editing.
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                CarEdit.state.map { it.mode }.distinctUntilChanged().collect { m -> AppGraph.setShowing(screenKey, m == Mode.PLAY) }
             }
         }
         if (!preview) {
@@ -68,10 +95,7 @@ class CarActivity : ComponentActivity() {
                     Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
                         AndroidView(factory = { surface }, modifier = Modifier.aspectRatio(5f / 3f).padding(8.dp))
                     }
-                    androidx.compose.foundation.layout.Column(Modifier.width(300.dp).fillMaxHeight().padding(12.dp)) {
-                        Keypad(Modifier.weight(1f), compact = true)
-                        CarTextSize(Modifier.padding(top = 8.dp))
-                    }
+                    PreviewPanel()
                 }
             }
         }
@@ -84,12 +108,13 @@ class CarActivity : ComponentActivity() {
         super.onResume()
         hideSystemBars()
         surface.onResume()
-        AppGraph.setShowing(screenKey, true)
+        CarEdit.setPresent(screenKey, true)
     }
 
     override fun onPause() {
         // Leaving park, Android Auto disconnecting or backgrounding: hold at once.
         AppGraph.setShowing(screenKey, false)
+        CarEdit.setPresent(screenKey, false)
         surface.onPause()
         super.onPause()
     }
@@ -105,4 +130,32 @@ class CarActivity : ComponentActivity() {
     }
 
     companion object { const val EXTRA_PREVIEW = "preview" }
+}
+
+/**
+ * Beside the preview: the car's switches, then the keypad in PLAY, or in EDIT
+ * the sheet for whatever the car has open — the preview stands in for the
+ * phone, so typing happens here.
+ */
+@androidx.compose.runtime.Composable
+private fun PreviewPanel() {
+    val s by CarEdit.state.collectAsStateWithLifecycle()
+    val rows by Studio.rows.collectAsStateWithLifecycle()
+    val focus by CarEdit.focus.collectAsStateWithLifecycle()
+    androidx.compose.foundation.layout.Column(Modifier.width(320.dp).fillMaxHeight().padding(12.dp)) {
+        CarControls()
+        if (s.mode == Mode.PLAY || rows == null) {
+            Keypad(Modifier.weight(1f).padding(top = 8.dp), compact = true)
+            CarTextSize(Modifier.padding(top = 8.dp))
+        } else Box(Modifier.weight(1f).padding(top = 8.dp)) {
+            val r = rows!!
+            when (val f = focus?.first) {
+                is Focus.Choice -> ChoiceSheet(r, f.id, onClose = { CarEdit.clearDrafts() }, onGo = { CarEdit.dispatch(Action.OpenScene(it)) }, inSheet = false)
+                is Focus.Scene -> SceneSheet(r, f.id, onClose = { CarEdit.clearDrafts() }, onChoice = { CarEdit.dispatch(Action.SelectChoice(it)) },
+                    onPlay = { CarEdit.dispatch(Action.PlayHere(it)) }, onGo = { CarEdit.dispatch(Action.OpenScene(it)) }, inSheet = false)
+                null -> androidx.compose.material3.Text("Tap a scene on the screen to edit it here.", style = style(18, Phosphor.dim))
+            }
+        }
+    }
+    PlayHereDialog()
 }

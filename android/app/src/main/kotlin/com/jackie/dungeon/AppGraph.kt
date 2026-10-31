@@ -116,13 +116,19 @@ object AppGraph {
     }
     private var pending: StoryPack? = null
 
-    /** Dial straight into one scene — "play from here" on the flowchart. */
-    fun playFrom(pack: StoryPack) = worker.execute {
+    /** Dial straight into one scene — "play from here" — optionally already carrying things. */
+    fun playFrom(pack: StoryPack, carrying: Map<String, Int> = emptyMap()) = worker.execute {
         pending = null
         audio.stop()
         callFile.delete()
-        session = CallSession(pack).also { if (showing.isNotEmpty()) it.dial() }
+        session = CallSession(pack, carrying).also { if (showing.isNotEmpty()) it.dial() }
         publish(force = true)
+    }
+
+    /** One take, from the car editor's ▶. Stops whatever the call was saying. */
+    fun playClip(url: String) = worker.execute {
+        audio.stop()
+        audio.play(url)
     }
 
     // ---- phone actions -------------------------------------------------------

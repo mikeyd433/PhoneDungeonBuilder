@@ -12,6 +12,15 @@ import com.jackie.dungeon.Screen
 import com.jackie.dungeon.call.CallSession.Kind
 import com.jackie.dungeon.call.CallSession.Phase
 import com.jackie.dungeon.call.TerminalLayout
+import com.jackie.dungeon.CarEdit
+import com.jackie.dungeon.Studio
+import com.jackie.dungeon.car.CarView
+import com.jackie.dungeon.car.Frame
+import com.jackie.dungeon.car.Ink
+import com.jackie.dungeon.car.Mode
+import com.jackie.dungeon.car.Op
+import com.jackie.dungeon.car.Viewport
+import kotlin.math.abs
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
@@ -60,7 +69,7 @@ class CrtRenderer(private val context: Context, private val fps: Int = 30, priva
         textProgram = program(TEXT_VS, TEXT_FS)
         crtProgram = program(CRT_VS, CRT_FS)
         atlasTex = 0
-        buildAtlas()
+        buildAtlas(AppGraph.carTextSize)
 
         val ids = IntArray(1)
         glGenBuffers(1, ids, 0); vbo = ids[0]
@@ -97,8 +106,8 @@ class CrtRenderer(private val context: Context, private val fps: Int = 30, priva
      * still rendered at [internalHeight] and scaled up, so bigger text keeps
      * its chunky pixels rather than going smooth.
      */
-    private fun buildAtlas() {
-        builtSize = AppGraph.carTextSize
+    private fun buildAtlas(size: Int) {
+        builtSize = size
         val face = ResourcesCompat.getFont(context, R.font.vt323) ?: android.graphics.Typeface.MONOSPACE
         atlas = GlyphAtlas(face, internalHeight / AppGraph.CAR_TEXT_LINES[builtSize].toFloat())
         if (atlasTex != 0) { val ids = intArrayOf(atlasTex); glDeleteTextures(1, ids, 0) }
@@ -111,9 +120,12 @@ class CrtRenderer(private val context: Context, private val fps: Int = 30, priva
 
     override fun onDrawFrame(gl: GL10?) {
         capFrameRate()
-        if (AppGraph.carTextSize != builtSize) buildAtlas()
+        val editing = CarEdit.state.value.mode == Mode.EDIT && Studio.rows.value != null
+        // The editor tops out at L: at XL its toolbar and tiles leave the script one row.
+        val size = if (editing) minOf(AppGraph.carTextSize, 2) else AppGraph.carTextSize
+        if (size != builtSize) buildAtlas(size)
         val time = ((System.nanoTime() - startNs) / 1e9f) % 1000f
-        val count = buildText(AppGraph.screen, time)
+        val count = if (editing) buildEdit() else buildText(AppGraph.screen, time)
 
         // Pass 1: the terminal, small.
         glBindFramebuffer(GL_FRAMEBUFFER, fbo)
@@ -162,6 +174,9 @@ class CrtRenderer(private val context: Context, private val fps: Int = 30, priva
         verts.clear()
         val cw = atlas.cellW; val ch = atlas.cellH
         val cols = (srcW / cw - 2).coerceAtLeast(10)
+        // The corner tab back to EDIT, when there's a story to edit.
+        val tab = if (Studio.rows.value != null) CarView.playOverlay(viewport()) else null
+        CarEdit.frame = tab
         // One row of margin shared top and bottom: the glass bends there.
         val rows = (srcH / ch - 1).coerceAtLeast(6)
         val x0 = (srcW - cols * cw) / 2f
@@ -178,6 +193,7 @@ class CrtRenderer(private val context: Context, private val fps: Int = 30, priva
         if (s.phase == null) {
             row(rows / 2 - 1, centre("JACKIE DUNGEON", cols), BRIGHT, 1f)
             row(rows / 2 + 1, centre("OPEN A STORY ON YOUR PHONE", cols), DIM, 1f)
+            tab?.let(::draw)
             return n
         }
 
@@ -187,7 +203,7 @@ class CrtRenderer(private val context: Context, private val fps: Int = 30, priva
         val items = s.held.joinToString(", ").uppercase()
         val room = (cols / 2 - label.length - s.clock.length - 2).coerceAtLeast(4)
         val carrying = if (s.held.isEmpty()) "" else "$label${if (items.length > room) items.take(room - 1) + "…" else items}  "
-        row(0, TerminalLayout.status(s.scene.uppercase(), carrying + s.clock, cols), DIM)
+        row(0, TerminalLayout.status(s.scene.uppercase(), carrying + s.clock, if (tab != null) cols - 8 else cols), DIM)
         row(1, "─".repeat(cols), RULE)
 
         val hints = s.keys.entries.joinToString("  ") { (k, v) -> "[$k] ${v.uppercase()}" }
@@ -226,7 +242,62 @@ class CrtRenderer(private val context: Context, private val fps: Int = 30, priva
                 text.forEachIndexed { j, chr -> glyph(chr, x + j * cw * scale, y, (cw * scale).toFloat(), (ch * scale).toFloat(), BRIGHT, 1f) }
             }
         }
+        tab?.let(::draw)
         return n
+    }
+
+    // ---- the editor ------------------------------------------------------------------
+
+    private fun viewport() = Viewport(srcW.toFloat(), srcH.toFloat(), atlas.cellW.toFloat(), atlas.cellH.toFloat())
+
+    private fun buildEdit(): Int {
+        n = 0
+        verts.clear()
+        CarEdit.render(viewport())?.let(::draw)
+        return n
+    }
+
+    private fun draw(f: Frame) {
+        for (op in f.ops) when (op) {
+            is Op.Fill -> fill(op.x, op.y, op.w, op.h, inkOf(op.ink))
+            is Op.Text -> {
+                val c = inkOf(op.ink)
+                op.text.forEachIndexed { i, chr -> if (chr != ' ') glyph(chr, op.x + i * atlas.cellW, op.y, atlas.cellW.toFloat(), atlas.cellH.toFloat(), c, 1f) }
+            }
+        }
+    }
+
+    private fun fill(x: Float, y: Float, w: Float, h: Float, rgb: FloatArray) {
+        atlas.solid(uv)
+        if (verts.remaining() < 6 * STRIDE) grow()
+        fun v(px: Float, py: Float) { verts.put(px).put(py).put(uv[0]).put(uv[1]).put(rgb[0]).put(rgb[1]).put(rgb[2]).put(1f) }
+        v(x, y); v(x + w, y); v(x, y + h); v(x + w, y); v(x + w, y + h); v(x, y + h)
+        n += 6
+    }
+
+    private fun inkOf(i: Ink) = when (i) {
+        Ink.BG, Ink.INVERSE -> BG
+        Ink.PANEL -> PANEL
+        Ink.RULE -> RULE
+        Ink.DIM -> DIM
+        Ink.FG -> VOICES[0]
+        Ink.BRIGHT -> BRIGHT
+        Ink.AMBER -> AMBER
+        Ink.RED -> RED
+        Ink.CYAN -> VOICES[1]
+    }
+
+    /**
+     * Where a touch on the real screen lands on the terminal's own pixels —
+     * through the same bulge the CRT pass draws with, so a tap on a curved
+     * button hits the button it looks like it's on.
+     */
+    fun toSource(px: Float, py: Float): Pair<Float, Float> {
+        var x = px / outW * 2f - 1f
+        var y = (1f - py / outH) * 2f - 1f
+        val ox = abs(y) / 7f; val oy = abs(x) / 6f
+        x += x * ox * ox; y += y * oy * oy
+        return (x * 0.5f + 0.5f) * srcW to (1f - (y * 0.5f + 0.5f)) * srcH
     }
 
     private fun centre(t: String, cols: Int) = " ".repeat(((cols - t.length) / 2).coerceAtLeast(0)) + t
@@ -292,6 +363,8 @@ class CrtRenderer(private val context: Context, private val fps: Int = 30, priva
 
         private fun rgb(hex: Int) = floatArrayOf(((hex shr 16) and 255) / 255f, ((hex shr 8) and 255) / 255f, (hex and 255) / 255f)
         private val BRIGHT = rgb(0xDCFFE0)
+        private val BG = rgb(0x030904)
+        private val PANEL = rgb(0x0A1E0F)
         private val DIM = rgb(0x4C8A55)
         private val RULE = rgb(0x1F4A27)
         private val OPT = rgb(0xC8FFD0)

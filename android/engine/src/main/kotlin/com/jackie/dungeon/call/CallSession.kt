@@ -25,7 +25,12 @@ import kotlinx.serialization.json.Json
  *   RECONNECTING  3-2-1 on the way back, so nobody is dropped mid-sentence
  *   ENDED         an ending was reached; any key redials
  */
-class CallSession(val pack: StoryPack, private val speakers: List<String> = speakersOf(pack)) {
+class CallSession(
+    val pack: StoryPack,
+    /** What the caller starts with — "play from here" with items in hand. */
+    private val carrying: Map<String, Int> = emptyMap(),
+    private val speakers: List<String> = speakersOf(pack),
+) {
 
     enum class Phase { DIALING, TALKING, WAITING, ON_HOLD, RECONNECTING, ENDED }
 
@@ -102,7 +107,7 @@ class CallSession(val pack: StoryPack, private val speakers: List<String> = spea
         phase = Phase.DIALING
         add("ATDT ${pack.title.uppercase()}", Kind.SYS)
         add("RING . . . RING . . . CONNECTED", Kind.SYS)
-        val s = engine.start()
+        val s = engine.start(carrying)
         state = s
         if (s.finished && s.nodeId.isEmpty()) {
             add("[this story has no entrance yet]", Kind.WARN)

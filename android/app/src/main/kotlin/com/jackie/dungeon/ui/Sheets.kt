@@ -21,6 +21,8 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -34,6 +36,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.jackie.dungeon.CarEdit
 import com.jackie.dungeon.Studio
 import com.jackie.dungeon.story.FlowLayout
 import com.jackie.dungeon.story.StoryEditor
@@ -114,10 +117,13 @@ fun SceneSheet(rows: StoryRows, id: String, onClose: () -> Unit, onChoice: (Stri
         if (title != n.title) Studio.edit("Rename scene") { StoryEditor.updateScene(it, id, title = title) }
         if (script != n.narration) Studio.edit("Edit script") { StoryEditor.setScript(it, id, script) }
     }
+    // The car can open something else while this is open: keep what was typed.
+    val latestSave by rememberUpdatedState(save)
+    DisposableEffect(id) { onDispose { latestSave(); CarEdit.clearDrafts() } }
     SheetFrame(inSheet, onDismiss = { save(); onClose() }) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Text(if (id == rows.story.rootNodeId) "START SCENE" else "SCENE", style = label())
-            Field("Name", title, { title = it }, hint = "Name this scene")
+            Field("Name", title, { title = it; CarEdit.draft("title:$id", it) }, hint = "Name this scene")
             ChapterPicker(rows, id) { save() }
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("ENDS THE CALL?", style = label())
@@ -125,7 +131,7 @@ fun SceneSheet(rows: StoryRows, id: String, onClose: () -> Unit, onChoice: (Stri
                     for ((k, t) in listOf("room" to "No", "death" to "Death", "win" to "Win")) Chip(t, kind == k) { Studio.edit("Change ending") { StoryEditor.updateScene(it, id, kind = k) } }
                 }
             }
-            Field("Script · \"Name: line\" for a speaker", script, { script = it }, lines = 5, hint = "What the caller hears in this scene")
+            Field("Script · \"Name: line\" for a speaker", script, { script = it; CarEdit.draft("script:$id", it) }, lines = 5, hint = "What the caller hears in this scene")
             val lines = rows.dialogueLines.filter { it.nodeId == id }.sortedBy { it.sortOrder }
             if (lines.isNotEmpty()) Text("Split into ${lines.size} speaker lines. They follow the script when you edit it.", style = body(12, Phosphor.dim))
             else if (script.contains(':')) Text("Split by speaker", style = body(13, Phosphor.cyan), modifier = Modifier.clickable { save(); Studio.edit("Split by speaker") { StoryEditor.splitIntoLines(it, nodeId = id) } })
@@ -197,6 +203,8 @@ fun ChoiceSheet(rows: StoryRows, id: String, onClose: () -> Unit, onGo: (String)
         if (gate != null && gate.failBehavior == "refuse" && simple != null && failLine != (gate.failNarration ?: ""))
             Studio.edit("Edit refusal") { StoryEditor.setRequires(it, id, simple, "refuse", failLine = failLine) }
     }
+    val latestSave by rememberUpdatedState(save)
+    DisposableEffect(id) { onDispose { latestSave(); CarEdit.clearDrafts() } }
 
     SheetFrame(inSheet, onDismiss = { save(); onClose() }) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -207,9 +215,9 @@ fun ChoiceSheet(rows: StoryRows, id: String, onClose: () -> Unit, onGo: (String)
                     for (k in StoryEditor.KEYS) Box(Modifier.weight(1f)) { Chip(k, k == c.digit, enabled = k !in taken) { Studio.edit("Change key") { StoryEditor.updateChoice(it, id, digit = k) } } }
                 }
             }
-            Field("What the caller hears", words, { words = it }, hint = "go below")
+            Field("What the caller hears", words, { words = it; CarEdit.draft("label:$id", it) }, hint = "go below")
             LinkRow("Leads to", sceneName(rows, c.toNodeId), if (c.toNodeId == null) Phosphor.alert else Phosphor.fg) { save(); picking = "to" }
-            Field("Reply · heard before the next scene", reply, { reply = it }, lines = 2, hint = "Carter: Careful. The stairs are wet.")
+            Field("Reply · heard before the next scene", reply, { reply = it; CarEdit.draft("reply:$id", it) }, lines = 2, hint = "Carter: Careful. The stairs are wet.")
             val from = rows.nodes.firstOrNull { it.id == c.fromNodeId }?.slug ?: "CHOICE"
             if (reply.isNotBlank()) TakeRow("Reply take", c.audioPath, c.audioDurationMs, "${from}_reply_${c.digit}") { path, ms ->
                 save(); Studio.edit(if (path == null) "Clear reply take" else "Record reply") { StoryEditor.setReplyTake(it, id, path, ms) }
@@ -230,7 +238,7 @@ fun ChoiceSheet(rows: StoryRows, id: String, onClose: () -> Unit, onGo: (String)
                         Chip("If not: go elsewhere", gate.failBehavior == "divert") { save(); picking = "fork" }
                     }
                     if (gate.failBehavior == "refuse") {
-                        Field("What a refused caller hears", failLine, { failLine = it }, lines = 2, hint = "You need something to haul on.")
+                        Field("What a refused caller hears", failLine, { failLine = it; CarEdit.draft("refuse:$id", it) }, lines = 2, hint = "You need something to haul on.")
                         TakeRow("Refusal take", gate.failAudioPath, null, "${from}_refused_${c.digit}") { path, _ ->
                             save(); Studio.edit(if (path == null) "Clear refusal take" else "Record refusal") { StoryEditor.setRefusalTake(it, id, path) }
                         }

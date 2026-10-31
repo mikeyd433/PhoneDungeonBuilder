@@ -38,7 +38,8 @@ class GlyphAtlas(typeface: Typeface, textPx: Float) {
         val fm = paint.fontMetrics
         cellW = ceil(paint.measureText("M")).toInt().coerceAtLeast(1)
         cellH = ceil(fm.descent - fm.ascent).toInt().coerceAtLeast(1)
-        val rows = (CHARS.length + columns - 1) / columns
+        // One spare row at the bottom, for the solid patch boxes and lines are filled from.
+        val rows = (CHARS.length + columns - 1) / columns + 1
         bitmap = Bitmap.createBitmap(columns * pitchW, rows * pitchH, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         CHARS.forEachIndexed { i, c ->
@@ -47,6 +48,14 @@ class GlyphAtlas(typeface: Typeface, textPx: Float) {
             val y = (i / columns) * pitchH + pad - fm.ascent
             canvas.drawText(c.toString(), x.toFloat(), y, paint)
         }
+        canvas.drawRect((bitmap.width - 6).toFloat(), (bitmap.height - 6).toFloat(), (bitmap.width - 2).toFloat(), (bitmap.height - 2).toFloat(), paint)
+    }
+
+    /** A texel inside the solid patch: a quad sampled only here is a filled rectangle. */
+    fun solid(out: FloatArray) {
+        out[0] = (bitmap.width - 4f) / bitmap.width
+        out[1] = (bitmap.height - 4f) / bitmap.height
+        out[2] = out[0]; out[3] = out[1]
     }
 
     /** Texture coordinates of [c]: u0, v0, u1, v1. */
@@ -63,7 +72,7 @@ class GlyphAtlas(typeface: Typeface, textPx: Float) {
     companion object {
         val CHARS: String = buildString {
             for (c in 32..126) append(c.toChar())
-            append("—–·×↺…“”‘’■▣□◇◆♪✕◎█▒░─│")
+            append("—–·×↺…“”‘’■▣□◇◆♪✕◎█▒░─│◀▶▲▼▾‹›→←»«•")
         }
     }
 }

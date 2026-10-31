@@ -80,6 +80,7 @@ object Studio {
         val rows = runCatching { StoryRows.parse(file(id).readText()) }.onFailure {
             _error.value = "That story couldn't be opened: ${it.message}"
         }.getOrNull() ?: return
+        if (_rows.value?.story?.id != rows.story.id) CarEdit.reset()
         _rows.value = rows
         _undo.value = emptyList()
         runCatching { currentFile.writeText(id) }
