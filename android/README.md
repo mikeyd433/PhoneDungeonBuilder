@@ -9,7 +9,8 @@ terminal, with the phone as the keypad. Built the Brenda way — an Android Auto
 *parked app*, not Car App Library templates.
 
 Planned next, in order: recording takes on the phone (converted to the 8 kHz WAV
-Twilio plays), publishing to Twilio, then sync with Supabase — after which the web
+Twilio plays), exporting for Twilio (a Studio flow JSON plus the WAVs, to import and
+upload by hand — the app never logs in to Twilio), then sync with Supabase — after which the web
 app can retire.
 
 ```
@@ -122,7 +123,7 @@ Same routine as the Brenda apps:
 
 ## Not done yet
 
-- Recording on the phone, and publishing to Twilio (next).
+- Recording on the phone (next), and exporting for Twilio (a Studio flow JSON plus WAVs).
 - Sync with Supabase; until then the phone's stories and the web app's drift apart.
 - Nudging boxes on the flowchart, and chapters (the field exists; no UI yet).
 
