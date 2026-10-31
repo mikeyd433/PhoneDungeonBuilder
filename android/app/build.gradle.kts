@@ -22,8 +22,8 @@ android {
         applicationId = "com.jackie.dungeon"
         minSdk = 26
         targetSdk = 36
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = 3
+        versionName = "0.3.0"
     }
 
     signingConfigs {
@@ -71,6 +71,8 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.10.1")
     implementation("androidx.core:core-ktx:1.16.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.1")
+    // Runs the web app's own Twilio exporter (assets/js/exporter.js) on the phone.
+    implementation("io.github.dokar3:quickjs-kt:1.0.3")
 
     // Robolectric renders the phone screens on the JVM, so they can be looked at
     // (and checked) without a device — the Brenda apps' approach.

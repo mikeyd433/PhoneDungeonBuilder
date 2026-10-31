@@ -41,5 +41,13 @@
                 <category android:name="android.intent.category.CAR_LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- Hands a finished Twilio export to Drive, Files, email… -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
+        </provider>
     </application>
 </manifest>

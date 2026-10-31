@@ -8,10 +8,20 @@ keypad. On the **car screen, while parked**: the same story as a green-phosphor
 terminal, with the phone as the keypad. Built the Brenda way — an Android Auto
 *parked app*, not Car App Library templates.
 
-Planned next, in order: recording takes on the phone (converted to the 8 kHz WAV
-Twilio plays), exporting for Twilio (a Studio flow JSON plus the WAVs, to import and
-upload by hand — the app never logs in to Twilio), then sync with Supabase — after which the web
-app can retire.
+Recording: tap ● REC on a scene, a speaker line, a reply or a refusal (or FILE… to
+bring one in). Every take is stored as 8 kHz mono WAV (`engine/.../audio/IvrWav.kt`),
+the shape Twilio's Play needs.
+
+Exporting: **EXPORT** on a story makes one zip — `flow.json` (Studio → Import from
+JSON), `audio/` (upload to the address you set, e.g. a Twilio Assets service), a README
+with the steps and everything that will be silent, the build sheet, the audio manifest
+and the script. The app never logs in to Twilio. The flow comes from the **web app's
+own exporter**, bundled (`pnpm build:phone-export` → `app/src/main/assets/js/exporter.js`)
+and run in QuickJS; `TwilioExportTest` runs that bundle in QuickJS on the phone's own
+copy of each fixture story and requires the web app's output. Rebuild the bundle after
+changing anything under `src/features/export/` — a vitest check fails until you do.
+
+Next: sync with Supabase, after which the web app can retire.
 
 ```
 engine/   pure Kotlin, no Android, all tested on the JVM:
@@ -123,7 +133,7 @@ Same routine as the Brenda apps:
 
 ## Not done yet
 
-- Recording on the phone (next), and exporting for Twilio (a Studio flow JSON plus WAVs).
+- Takes for items (picked up / used up / readback) and the inventory key: not in the phone's editor yet.
 - Sync with Supabase; until then the phone's stories and the web app's drift apart.
 - Nudging boxes on the flowchart, and chapters (the field exists; no UI yet).
 

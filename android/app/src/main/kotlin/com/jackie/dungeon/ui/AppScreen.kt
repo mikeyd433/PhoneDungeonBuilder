@@ -106,6 +106,7 @@ private fun StoryScreen() {
     var selected by remember { mutableStateOf<String?>(null) }
     var jump by remember { mutableStateOf<String?>(null) }
     var renaming by remember { mutableStateOf(false) }
+    var exporting by remember { mutableStateOf(false) }
 
     BackHandler { if (tab == "play") tab = "edit" else Studio.close() }
 
@@ -114,7 +115,9 @@ private fun StoryScreen() {
             Text("◄", style = style(26, Phosphor.fg), modifier = Modifier.clickable { Studio.close() }.padding(6.dp))
             Text(r.story.title.ifBlank { "Untitled story" }, style = style(24, Phosphor.hi), maxLines = 1, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f).clickable { renaming = true })
-            Text(if (undo.isEmpty()) "UNDO" else "UNDO", style = style(20, if (undo.isEmpty()) Phosphor.line else Phosphor.fg),
+            Text("EXPORT", style = style(20, Phosphor.fg),
+                modifier = Modifier.border(1.dp, Phosphor.line).clickable { exporting = true }.padding(horizontal = 10.dp, vertical = 4.dp))
+            Text("UNDO", style = style(20, if (undo.isEmpty()) Phosphor.line else Phosphor.fg),
                 modifier = Modifier.border(1.dp, Phosphor.line).clickable(enabled = undo.isNotEmpty()) { Studio.undo() }.padding(horizontal = 10.dp, vertical = 4.dp))
         }
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(0.dp)) {
@@ -152,6 +155,7 @@ private fun StoryScreen() {
     choice?.let { id ->
         ChoiceSheet(r, id, onClose = { choice = null }, onGo = { sid -> choice = null; selected = sid; jump = sid })
     }
+    if (exporting) ExportDialog(r) { exporting = false }
     if (renaming) AskText("Name this story", "Rename", r.story.title) { t -> renaming = false; if (t != null) Studio.edit("Rename story") { StoryEditor.setStoryTitle(it, t) } }
 }
 
