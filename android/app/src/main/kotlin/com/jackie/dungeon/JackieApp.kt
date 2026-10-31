@@ -6,5 +6,6 @@ class JackieApp : Application() {
     override fun onCreate() {
         super.onCreate()
         AppGraph.init(this)
+        Studio.init(this)
     }
 }

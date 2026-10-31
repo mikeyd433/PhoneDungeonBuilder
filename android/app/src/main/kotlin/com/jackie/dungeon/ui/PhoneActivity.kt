@@ -61,7 +61,7 @@ class PhoneActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        setContent { PhoneScreen() }
+        setContent { AppScreen() }
     }
 
     override fun onStart() { super.onStart(); AppGraph.activityStarted() }
@@ -77,78 +77,12 @@ object Phosphor {
     val line = Color(0xFF1D4424)
     val warn = Color(0xFFE8D24A)
     val alert = Color(0xFFFF6B4A)
+    val raise = Color(0xFF0F1C11)
+    val cyan = Color(0xFF62E3D3)
     val font = FontFamily(Font(R.font.vt323))
 }
 
-private fun style(size: Int, color: Color = Phosphor.fg) = TextStyle(fontFamily = Phosphor.font, fontSize = size.sp, color = color)
-
-@Composable
-private fun PhoneScreen() {
-    val ui by AppGraph.ui.collectAsStateWithLifecycle()
-    val context = LocalContext.current
-    val open = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) AppGraph.openPack(uri)
-    }
-    var picking by remember { mutableStateOf(false) }
-    if (picking) {
-        Dialog(onDismissRequest = { picking = false }) {
-            Column(Modifier.border(1.dp, Phosphor.fg).background(Phosphor.bg).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("STORIES", style = style(26, Phosphor.hi))
-                LazyColumn(Modifier.weight(1f, fill = false), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    items(ui.stories) { b ->
-                        Box(
-                            Modifier.fillMaxWidth().border(1.dp, if (b.title == ui.story) Phosphor.fg else Phosphor.line)
-                                .background(Phosphor.panel)
-                                .clickable { picking = false; AppGraph.openBundled(b.file) }
-                                .padding(10.dp),
-                        ) {
-                            Column {
-                                Text(b.title, style = style(22, Phosphor.fg), maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                Text("${b.scenes} scenes", style = style(16, Phosphor.dim))
-                            }
-                        }
-                    }
-                }
-                Button("FROM A FILE…", Modifier.fillMaxWidth()) { picking = false; open.launch(arrayOf("application/json", "*/*")) }
-            }
-        }
-    }
-
-    Column(
-        Modifier.fillMaxSize().background(Phosphor.bg).safeDrawingPadding().padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Text("JACKIE DUNGEON", style = style(30, Phosphor.hi))
-        Text(ui.story, style = style(20, Phosphor.dim), maxLines = 1, overflow = TextOverflow.Ellipsis)
-
-        val status = when {
-            ui.phase == null -> "No story loaded."
-            !ui.carShowing && !ui.previewShowing -> "ON HOLD · open Jackie Dungeon on the car screen while parked"
-            ui.phase == Phase.RECONNECTING -> "RECONNECTING ${ui.countdown}"
-            ui.phase == Phase.ENDED -> "CALL ENDED · any key redials"
-            else -> "ON THE LINE · ${ui.scene}"
-        }
-        Box(Modifier.fillMaxWidth().border(1.dp, Phosphor.line).background(Phosphor.panel).padding(10.dp)) {
-            Column {
-                Text(status, style = style(20, if (ui.carShowing || ui.previewShowing) Phosphor.fg else Phosphor.warn))
-                if (ui.held.isNotEmpty()) Text("CARRYING: " + ui.held.joinToString(", "), style = style(18, Phosphor.dim))
-            }
-        }
-        ui.error?.let { Text(it, style = style(18, Phosphor.alert), modifier = Modifier.clickable { AppGraph.clearError() }) }
-
-        Keypad(Modifier.weight(1f).fillMaxWidth())
-
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button("STORIES…", Modifier.weight(1f)) { picking = true }
-            Button("REDIAL", Modifier.weight(1f)) { AppGraph.redial() }
-        }
-        if (!ui.carShowing) {
-            Button("PREVIEW ON PHONE", Modifier.fillMaxWidth(), primary = true) {
-                context.startActivity(Intent(context, CarActivity::class.java).putExtra(CarActivity.EXTRA_PREVIEW, true))
-            }
-        }
-    }
-}
+internal fun style(size: Int, color: Color = Phosphor.fg) = TextStyle(fontFamily = Phosphor.font, fontSize = size.sp, color = color)
 
 /** The twelve keys. Lit when they do something right now. Shared with the preview. */
 @Composable
@@ -190,7 +124,7 @@ fun Keypad(modifier: Modifier = Modifier, compact: Boolean = false) {
 }
 
 @Composable
-private fun Button(text: String, modifier: Modifier = Modifier, primary: Boolean = false, onClick: () -> Unit) {
+internal fun Button(text: String, modifier: Modifier = Modifier, primary: Boolean = false, onClick: () -> Unit) {
     Box(
         modifier.height(52.dp)
             .border(1.dp, if (primary) Phosphor.fg else Phosphor.line)

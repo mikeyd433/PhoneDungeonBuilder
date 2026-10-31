@@ -31,9 +31,9 @@ class AudioPlayer(app: Application, private val onDone: () -> Unit) {
     @Volatile var playing = false
         private set
 
-    /** False when there is nothing playable at [url] — a storage path rather than a link. */
+    /** False when there is nothing playable at [url]. Links stream; file:// is a take recorded on this phone. */
     fun play(url: String): Boolean {
-        if (!url.startsWith("http://") && !url.startsWith("https://")) return false
+        if (!url.startsWith("http://") && !url.startsWith("https://") && !url.startsWith("file://")) return false
         playing = true
         main.post {
             release()
@@ -42,7 +42,7 @@ class AudioPlayer(app: Application, private val onDone: () -> Unit) {
             player = p
             try {
                 p.setAudioAttributes(attrs)
-                p.setDataSource(url)
+                p.setDataSource(if (url.startsWith("file://")) url.removePrefix("file://") else url)
                 p.setOnPreparedListener { it.start() }
                 p.setOnCompletionListener { finish() }
                 p.setOnErrorListener { _, what, extra -> Log.w("AudioPlayer", "error $what/$extra on $url"); finish(); true }

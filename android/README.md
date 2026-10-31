@@ -1,29 +1,52 @@
 # Jackie Dungeon — phone and car app
 
-A story you built in the web app, played as a phone call: the story types out on a
-green-phosphor terminal on the **car screen while parked**, and the **phone is the
-keypad**. Built the Brenda way — an Android Auto *parked app*, not Car App Library
-templates.
+The phone app is becoming the main way to build a story, not just play one.
+On the **phone**: a list of stories kept on the phone, a **flowchart editor**
+(scenes, choices, keys, scripts with speakers, replies, items given and required,
+refusals and forks, undo), and a **PLAY** tab with a readable transcript and a
+keypad. On the **car screen, while parked**: the same story as a green-phosphor
+terminal, with the phone as the keypad. Built the Brenda way — an Android Auto
+*parked app*, not Car App Library templates.
+
+Planned next, in order: recording takes on the phone (converted to the 8 kHz WAV
+Twilio plays), publishing to Twilio, then sync with Supabase — after which the web
+app can retire.
 
 ```
-engine/   pure Kotlin, no Android: the story engine and the call session
-app/      the Android app: phone keypad, car screen (OpenGL ES 3), audio
+engine/   pure Kotlin, no Android, all tested on the JVM:
+            engine/  the story engine (port of PlaytestEngine)
+            call/    one phone call: typing, hold, resume, saves
+            story/   the rows the phone edits, StoryEditor (every edit), PackBuilder,
+                     Dialogue (speaker split), FlowLayout (where the flowchart puts things)
+app/      the Android app: Studio (stories on the phone, undo), the Compose editor
+          and play screens, the car screen (OpenGL ES 3), audio
 ```
+
+## Stories on the phone
+
+Each story is saved as table rows in `files/stories/<id>.rows.json` — the
+Supabase table shapes, so sync can be added without a second model. Every edit
+is a pure function in `StoryEditor`, applied by `Studio.edit`, which keeps the
+undo stack, saves, and hands the player a fresh pack built by `PackBuilder`.
+
+`PackBuilderTest` holds the phone to the web app: from each fixture's rows it must
+build exactly the pack `buildStoryPack` built, and split every script exactly as
+`splitNarration` did.
 
 ## How a story gets here
 
 The app ships with **William Son of Joel** (what it opens with), the **JCFC Hotline**
-phone tree and the walkthrough — **STORIES…** on the phone switches between them.
+phone tree and the walkthrough, copied into the phone's story list on first launch
+and editable from then on.
 Those two real stories were copied from Supabase on 2026-10-31, read only, and every
 table was checked against the database by checksum. Their rows live in
 `src/features/pack/fixtures/`, which also makes them golden fixtures: both engines
 are tested on them every run. They are a snapshot — edits made since don't appear
 until they are copied again.
 
-For anything newer:
-
-1. In the web app: **Export → Story pack (Android)** downloads `<title>.jackie.json`.
-2. On the phone: **STORIES… → FROM A FILE…** and pick that file.
+The web app's **Export → Story pack (Android)** still exists, but a pack is for
+playing, not editing, so the phone no longer opens one; stories are made and edited
+on the phone.
 
 The pack carries what is *heard* (lines, speakers, audio links) already worked out
 by the web app, and the *rules* (gates, items, fights, timeouts) for the Kotlin
@@ -68,7 +91,7 @@ Needs JDK 17+ and the Android SDK (`local.properties` → `sdk.dir=…`, git-ign
 
 ## Try it
 
-- **Without a car:** open the app → **PREVIEW ON PHONE**. The terminal sits in
+- **Without a car:** open a story → **PLAY**, or **CAR PREVIEW** from there. The terminal sits in
   the middle at a head unit's shape with the keypad beside it.
 - **Desktop Head Unit:** Android Auto developer settings → start head unit server,
   then run the DHU. Test 800×480 and 1920×720 at least.
@@ -98,6 +121,10 @@ Same routine as the Brenda apps:
   then upload to the **internal testing** track.
 
 ## Not done yet
+
+- Recording on the phone, and publishing to Twilio (next).
+- Sync with Supabase; until then the phone's stories and the web app's drift apart.
+- Nudging boxes on the flowchart, and chapters (the field exists; no UI yet).
 
 - Not yet run on a real phone, the DHU or a car — everything here was built and
   unit-tested on a machine with no device. The car screen was previewed by running

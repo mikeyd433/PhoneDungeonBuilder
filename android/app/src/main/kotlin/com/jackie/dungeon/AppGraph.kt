@@ -1,7 +1,6 @@
 package com.jackie.dungeon
 
 import android.app.Application
-import android.net.Uri
 import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
@@ -35,8 +34,6 @@ object AppGraph {
     private const val TAG = "AppGraph"
     private const val TICK_MS = 33L
     private const val SAVE_EVERY_MS = 5_000L
-    /** What a fresh install opens with: the real story, not the walkthrough. */
-    private const val FIRST_STORY = "william.jackie.json"
 
     private lateinit var app: Application
     private val worker = Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "jackie-worker") }
@@ -58,34 +55,55 @@ object AppGraph {
     @Volatile var screen: Screen = Screen.EMPTY
         private set
 
-    private val storyFile get() = File(app.filesDir, "current.jackie.json")
     private val callFile get() = File(app.filesDir, "call.json")
 
     fun init(application: Application) {
         app = application
         audio = AudioPlayer(application) { worker.execute { session?.audioBusy = false } }
-        worker.execute {
-            val pack = runCatching { loadPack() }.onFailure { Log.w(TAG, "story", it) }.getOrNull()
-            if (pack != null) {
-                val s = CallSession(pack)
-                // Pick up a call that was in progress when the process died —
-                // the same story only; a snapshot from another one is stale.
-                runCatching {
-                    if (callFile.exists()) {
-                        val snap = CallSession.json.decodeFromString(CallSession.Snapshot.serializer(), callFile.readText())
-                        if (snap.title == pack.title) s.restore(snap)
-                    }
-                }.onFailure { Log.w(TAG, "snapshot", it) }
-                session = s
-            }
-            publish(force = true)
-        }
     }
 
-    private fun loadPack(): StoryPack {
-        val text = if (storyFile.exists()) storyFile.readText()
-        else app.assets.open("stories/$FIRST_STORY").bufferedReader().use { it.readText() }
-        return StoryPack.parse(text)
+    /**
+     * The story to play, from [Studio]. A call already in progress in the same
+     * story is picked back up from its snapshot; a different story starts fresh.
+     */
+    fun setStory(pack: StoryPack) = worker.execute {
+        pending = null
+        audio.stop()
+        val s = CallSession(pack)
+        runCatching {
+            if (callFile.exists()) {
+                val snap = CallSession.json.decodeFromString(CallSession.Snapshot.serializer(), callFile.readText())
+                if (snap.title == pack.title) s.restore(snap)
+            }
+        }.onFailure { Log.w(TAG, "snapshot", it) }
+        session = s
+        if (showing.isNotEmpty() && s.state == null) s.dial()
+        publish(force = true)
+    }
+
+    /**
+     * The open story was edited. A call isn't torn up mid-sentence for it: the
+     * new version is used the next time the call is dialled, and right away if
+     * nothing is showing it.
+     */
+    fun storyEdited(pack: StoryPack) = worker.execute {
+        val s = session
+        if (s == null || showing.isEmpty() || s.phase == CallSession.Phase.ENDED) {
+            pending = null
+            session = CallSession(pack)
+            callFile.delete()
+        } else pending = pack
+        publish(force = true)
+    }
+    private var pending: StoryPack? = null
+
+    /** Dial straight into one scene — "play from here" on the flowchart. */
+    fun playFrom(pack: StoryPack) = worker.execute {
+        pending = null
+        audio.stop()
+        callFile.delete()
+        session = CallSession(pack).also { if (showing.isNotEmpty()) it.dial() }
+        publish(force = true)
     }
 
     // ---- phone actions -------------------------------------------------------
@@ -101,11 +119,15 @@ object AppGraph {
     /** The car touchscreen's one job: skip the typing (or redial at the end). */
     fun tapScreen() = worker.execute {
         val s = session ?: return@execute
-        if (s.phase == CallSession.Phase.ENDED) s.dial() else s.skipTyping()
+        if (s.phase == CallSession.Phase.ENDED) {
+            pending?.let { p -> session = CallSession(p); pending = null }
+            session?.dial()
+        } else s.skipTyping()
         publish(force = true)
     }
 
     fun redial() = worker.execute {
+        pending?.let { session = CallSession(it); pending = null }
         val s = session ?: return@execute
         audio.stop(); s.audioBusy = false
         s.dial()
@@ -113,54 +135,7 @@ object AppGraph {
         save(); publish(force = true)
     }
 
-    /** A story pack the phone picked from storage. */
-    fun openPack(uri: Uri) = worker.execute {
-        try {
-            val text = app.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
-                ?: error("That file couldn't be opened.")
-            switchTo(StoryPack.parse(text), text)
-        } catch (e: Exception) {
-            Log.w(TAG, "open", e)
-            _ui.value = _ui.value.copy(error = e.message ?: "That isn't a story pack.")
-        }
-        publish(force = true)
-    }
-
     fun clearError() { _ui.value = _ui.value.copy(error = null) }
-
-    /** The stories that ship inside the app, by title, for the phone's list. */
-    private fun bundled(): List<Bundled> = runCatching {
-        app.assets.list("stories").orEmpty().filter { it.endsWith(".jackie.json") }.sorted().mapNotNull { file ->
-            runCatching {
-                val pack = StoryPack.parse(app.assets.open("stories/$file").bufferedReader().use { it.readText() })
-                Bundled(file, pack.title, pack.nodes.size)
-            }.getOrNull()
-        }
-    }.getOrDefault(emptyList())
-
-    private val bundledStories by lazy { bundled() }
-
-    /** Switch to a story that ships with the app. */
-    fun openBundled(file: String) = worker.execute {
-        try {
-            val text = app.assets.open("stories/$file").bufferedReader().use { it.readText() }
-            switchTo(StoryPack.parse(text), text)
-        } catch (e: Exception) {
-            Log.w(TAG, "bundled", e)
-            _ui.value = _ui.value.copy(error = e.message ?: "That story couldn't be opened.")
-        }
-        publish(force = true)
-    }
-
-    private fun switchTo(pack: StoryPack, text: String) {
-        storyFile.writeText(text)
-        callFile.delete()
-        audio.stop()
-        val s = CallSession(pack)
-        session = s
-        if (showing.isNotEmpty()) s.dial()
-        _ui.value = _ui.value.copy(error = null)
-    }
 
     // ---- lifecycle -------------------------------------------------------------
 
@@ -259,7 +234,10 @@ object AppGraph {
             carShowing = "car" in showing,
             previewShowing = "preview" in showing,
             error = _ui.value.error,
-            stories = bundledStories,
+            edited = pending != null,
+            lines = s?.visible() ?: emptyList(),
+            clock = s?.let { TerminalLayout.clock(it.callMillis) } ?: "00:00",
+            phoneShowing = "phone" in showing,
         )
     }
 
@@ -285,11 +263,13 @@ data class PhoneUi(
     val carShowing: Boolean = false,
     val previewShowing: Boolean = false,
     val error: String? = null,
-    val stories: List<Bundled> = emptyList(),
+    /** An edit is waiting for the next redial. */
+    val edited: Boolean = false,
+    /** The transcript, for the phone's own play screen. */
+    val lines: List<CallSession.Line> = emptyList(),
+    val clock: String = "00:00",
+    val phoneShowing: Boolean = false,
 )
-
-/** A story that ships inside the app. */
-data class Bundled(val file: String, val title: String, val scenes: Int)
 
 /** What the car screen draws. */
 data class Screen(
