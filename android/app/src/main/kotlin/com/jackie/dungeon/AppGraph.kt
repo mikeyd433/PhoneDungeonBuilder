@@ -60,6 +60,25 @@ object AppGraph {
     fun init(application: Application) {
         app = application
         audio = AudioPlayer(application) { worker.execute { session?.audioBusy = false } }
+        carTextSize = app.getSharedPreferences("car", android.content.Context.MODE_PRIVATE).getInt("textSize", 1).coerceIn(0, CAR_TEXT_LINES.lastIndex)
+        _carText.value = carTextSize
+    }
+
+    /** Lines of text that fill the car screen, per size: S, M, L, XL. */
+    val CAR_TEXT_LINES = listOf(22, 17, 13, 10)
+    val CAR_TEXT_NAMES = listOf("S", "M", "L", "XL")
+
+    /** The car screen's text size, an index into [CAR_TEXT_LINES]. The renderer picks it up next frame. */
+    @Volatile var carTextSize = 1
+        private set
+
+    private val _carText = MutableStateFlow(1)
+    val carText: StateFlow<Int> = _carText
+
+    fun setCarTextSize(i: Int) {
+        carTextSize = i.coerceIn(0, CAR_TEXT_LINES.lastIndex)
+        _carText.value = carTextSize
+        app.getSharedPreferences("car", android.content.Context.MODE_PRIVATE).edit().putInt("textSize", carTextSize).apply()
     }
 
     /**

@@ -134,3 +134,21 @@ internal fun Button(text: String, modifier: Modifier = Modifier, primary: Boolea
     ) { Text(text, style = style(22, if (primary) Phosphor.bg else Phosphor.fg)) }
 }
 
+/** S / M / L / XL for the car screen's text. Lives on the phone: the phone is the car's controller. */
+@Composable
+fun CarTextSize(modifier: Modifier = Modifier) {
+    val size by AppGraph.carText.collectAsStateWithLifecycle()
+    Row(modifier, horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text("CAR TEXT", style = style(18, Phosphor.dim))
+        AppGraph.CAR_TEXT_NAMES.forEachIndexed { i, name ->
+            Box(
+                Modifier.weight(1f).border(1.dp, if (i == size) Phosphor.fg else Phosphor.line)
+                    .background(if (i == size) Phosphor.fg else Phosphor.panel)
+                    .clickable { AppGraph.setCarTextSize(i) }
+                    .semantics { contentDescription = "Car text size $name" }
+                    .padding(vertical = 6.dp),
+                contentAlignment = Alignment.Center,
+            ) { Text(name, style = style(20, if (i == size) Phosphor.bg else Phosphor.fg)) }
+        }
+    }
+}

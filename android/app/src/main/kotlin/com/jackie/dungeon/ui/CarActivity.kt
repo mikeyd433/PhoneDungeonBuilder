@@ -68,7 +68,10 @@ class CarActivity : ComponentActivity() {
                     Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
                         AndroidView(factory = { surface }, modifier = Modifier.aspectRatio(5f / 3f).padding(8.dp))
                     }
-                    Keypad(Modifier.width(300.dp).fillMaxHeight().padding(12.dp), compact = true)
+                    androidx.compose.foundation.layout.Column(Modifier.width(300.dp).fillMaxHeight().padding(12.dp)) {
+                        Keypad(Modifier.weight(1f), compact = true)
+                        CarTextSize(Modifier.padding(top = 8.dp))
+                    }
                 }
             }
         }

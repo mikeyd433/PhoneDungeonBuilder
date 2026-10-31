@@ -104,6 +104,8 @@ Needs JDK 17+ and the Android SDK (`local.properties` → `sdk.dir=…`, git-ign
 
 - **Without a car:** open a story → **PLAY**, or **CAR PREVIEW** from there. The terminal sits in
   the middle at a head unit's shape with the keypad beside it.
+- **Text size on the car screen:** **CAR TEXT  S M L XL**, under the keypad on PLAY and
+  beside it in CAR PREVIEW. It takes effect at once and is remembered (22, 17, 13 or 10 rows).
 - **Desktop Head Unit:** Android Auto developer settings → start head unit server,
   then run the DHU. Test 800×480 and 1920×720 at least.
 - **In a car:** the phone needs **Android 15+**. For sideloaded or internal-testing
@@ -142,5 +144,5 @@ Same routine as the Brenda apps:
   its exact shaders in WebGL2.
 - Fetching a story by link (rather than opening a file) and listing several
   stories.
-- Settings for frame rate (fixed at 30) and internal resolution (fixed at 360p).
+- Settings for frame rate (fixed at 30) and internal resolution (fixed at 360p). Text size is set (CAR TEXT).
 - Renderer screenshot tests on headless Mesa, as Brenda Arcade has.

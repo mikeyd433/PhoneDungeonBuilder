@@ -57,16 +57,10 @@ class CrtRenderer(private val context: Context, private val fps: Int = 30, priva
     private var lastFrameNs = 0L
 
     override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
-        val face = ResourcesCompat.getFont(context, R.font.vt323) ?: android.graphics.Typeface.MONOSPACE
-        atlas = GlyphAtlas(face, internalHeight / 17f)
         textProgram = program(TEXT_VS, TEXT_FS)
         crtProgram = program(CRT_VS, CRT_FS)
-
-        atlasTex = genTexture()
-        glBindTexture(GL_TEXTURE_2D, atlasTex)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
-        GLUtils.texImage2D(GL_TEXTURE_2D, 0, atlas.bitmap, 0)
+        atlasTex = 0
+        buildAtlas()
 
         val ids = IntArray(1)
         glGenBuffers(1, ids, 0); vbo = ids[0]
@@ -94,8 +88,30 @@ class CrtRenderer(private val context: Context, private val fps: Int = 30, priva
         glBindFramebuffer(GL_FRAMEBUFFER, 0)
     }
 
+    /** The text size the atlas was drawn at; rebuilt when the phone changes it. */
+    private var builtSize = -1
+
+    /**
+     * Draw the glyphs at the chosen size: [AppGraph.carTextSize] picks how many
+     * lines fill the screen (fewer lines, bigger letters). The terminal is
+     * still rendered at [internalHeight] and scaled up, so bigger text keeps
+     * its chunky pixels rather than going smooth.
+     */
+    private fun buildAtlas() {
+        builtSize = AppGraph.carTextSize
+        val face = ResourcesCompat.getFont(context, R.font.vt323) ?: android.graphics.Typeface.MONOSPACE
+        atlas = GlyphAtlas(face, internalHeight / AppGraph.CAR_TEXT_LINES[builtSize].toFloat())
+        if (atlasTex != 0) { val ids = intArrayOf(atlasTex); glDeleteTextures(1, ids, 0) }
+        atlasTex = genTexture()
+        glBindTexture(GL_TEXTURE_2D, atlasTex)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
+        GLUtils.texImage2D(GL_TEXTURE_2D, 0, atlas.bitmap, 0)
+    }
+
     override fun onDrawFrame(gl: GL10?) {
         capFrameRate()
+        if (AppGraph.carTextSize != builtSize) buildAtlas()
         val time = ((System.nanoTime() - startNs) / 1e9f) % 1000f
         val count = buildText(AppGraph.screen, time)
 
@@ -165,7 +181,12 @@ class CrtRenderer(private val context: Context, private val fps: Int = 30, priva
             return n
         }
 
-        val carrying = if (s.held.isEmpty()) "" else "CARRYING: ${s.held.joinToString(", ").uppercase()}  "
+        // At the big text sizes the bar is ~38 columns: keep the scene's name
+        // readable by giving what you carry at most half of it.
+        val label = if (cols >= 60) "CARRYING: " else "+"
+        val items = s.held.joinToString(", ").uppercase()
+        val room = (cols / 2 - label.length - s.clock.length - 2).coerceAtLeast(4)
+        val carrying = if (s.held.isEmpty()) "" else "$label${if (items.length > room) items.take(room - 1) + "…" else items}  "
         row(0, TerminalLayout.status(s.scene.uppercase(), carrying + s.clock, cols), DIM)
         row(1, "─".repeat(cols), RULE)
 

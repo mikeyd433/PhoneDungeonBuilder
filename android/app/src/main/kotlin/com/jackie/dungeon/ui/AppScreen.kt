@@ -218,6 +218,7 @@ private fun PlayScreen() {
             items(lines.size) { i -> TranscriptLine(lines[i]) }
         }
         Keypad(Modifier.fillMaxWidth().height(260.dp), compact = true)
+        CarTextSize(Modifier.fillMaxWidth())
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button("REDIAL", Modifier.weight(1f)) { AppGraph.redial() }
             Button("CAR PREVIEW", Modifier.weight(1f)) {
