@@ -4,6 +4,7 @@ import { formatDuration } from '@/lib/speech'
 import { audioTargets } from '@/features/audio/targets'
 import { castList, linesFor, workloads } from '@/features/cast/dialogue'
 import { buildFightView } from '@/features/fight/model'
+import { byCode } from '@/lib/order'
 
 /**
  * §6.6 path B — the build sheet.
@@ -38,7 +39,7 @@ export function buildSheet(
     const da = depth?.get(a) ?? Number.MAX_SAFE_INTEGER
     const db = depth?.get(b) ?? Number.MAX_SAFE_INTEGER
     if (da !== db) return da - db
-    return (graph.nodes.get(a)?.slug ?? '').localeCompare(graph.nodes.get(b)?.slug ?? '')
+    return byCode(graph.nodes.get(a)?.slug ?? '', graph.nodes.get(b)?.slug ?? '')
   })
 
   // Every widget name that exists anywhere, so forward references can be marked.
@@ -256,7 +257,7 @@ export function audioManifestCsv(graph: StoryGraph): string {
       ].join(','),
     )
 
-  for (const n of [...graph.nodes.values()].sort((a, b) => a.slug.localeCompare(b.slug))) {
+  for (const n of [...graph.nodes.values()].sort((a, b) => byCode(a.slug, b.slug))) {
     const lines = linesFor(graph, n.id)
     const split = lines.some((l) => l.audio_path)
 
@@ -380,7 +381,7 @@ export function printableScript(graph: StoryGraph, onlyActor?: string): string {
 
   const nodes = [...graph.nodes.values()]
     .filter((n) => speaksHere(n.id))
-    .sort((a, b) => a.slug.localeCompare(b.slug))
+    .sort((a, b) => byCode(a.slug, b.slug))
 
   for (const n of nodes) {
     out.push(`## ${n.slug}${n.title ? ` — ${n.title}` : ''}`)

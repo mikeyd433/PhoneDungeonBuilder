@@ -1,5 +1,6 @@
 import type { StateVar, StoryGraph } from '@/types/domain'
 import { INV_VAR } from './liquid'
+import { byCode } from '@/lib/order'
 
 /**
  * "What am I carrying?", answered on the phone.
@@ -55,7 +56,7 @@ export function planInventory(graph: StoryGraph): InventoryPlan | null {
 
   const items = [...graph.stateVars.values()]
     .filter((v) => v.kind === 'item')
-    .sort((a, b) => a.slug.localeCompare(b.slug))
+    .sort((a, b) => byCode(a.slug, b.slug))
 
   return {
     key,

@@ -6,6 +6,7 @@ import type {
   FightRoundOutcome,
   StoryGraph,
 } from '@/types/domain'
+import { byCode } from '@/lib/order'
 
 /**
  * A fight, as a pure view over the graph.
@@ -97,7 +98,7 @@ export function fightFor(graph: StoryGraph, nodeId: string): Fight | null {
 export function movesOf(graph: StoryGraph, fightId: string): FightMove[] {
   return [...graph.fightMoves.values()]
     .filter((m) => m.fight_id === fightId)
-    .sort((a, b) => a.sort_order - b.sort_order || a.slug.localeCompare(b.slug))
+    .sort((a, b) => a.sort_order - b.sort_order || byCode(a.slug, b.slug))
 }
 
 export function roundsOf(graph: StoryGraph, fightId: string): FightRound[] {

@@ -6,6 +6,8 @@ import { buildDemoStory } from '@/features/demo/demoStory'
 import { PlaytestEngine, type PlaytestState, type Turn } from '@/features/playtest/engine'
 import type { Effect, Gate, GateExpression, StoryGraph } from '@/types/domain'
 import { buildStoryPack } from './storyPack'
+import { exportForTwilio } from '@/features/export/phoneExport'
+import { runInNewContext } from 'node:vm'
 import { graphFromRows, rowsFromGraph, type StoryRows } from './fromRows'
 import { splitNarration } from '@/features/cast/dialogue'
 
@@ -244,6 +246,18 @@ const SPLIT_EXTRAS = [
   '',
 ]
 
+describe('the exporter bundled into the phone app', () => {
+  it('is current: running the bundle gives what the source gives', () => {
+    const path = resolve(__dirname, '../../../android/app/src/main/assets/js/exporter.js')
+    const sandbox: { JackieExport?: { exportForTwilio: typeof exportForTwilio } } = {}
+    runInNewContext(readFileSync(path, 'utf8') + '\n;this.JackieExport = JackieExport', sandbox)
+    for (const [name, { build }] of Object.entries(FIXTURES)) {
+      const rows = JSON.stringify(rowsFromGraph(build()))
+      expect(sandbox.JackieExport!.exportForTwilio(rows), `${name}: run pnpm build:phone-export`).toBe(exportForTwilio(rows))
+    }
+  })
+})
+
 describe('golden sessions for the Kotlin engine', () => {
   it('splits: every script, as splitNarration sees it', () => {
     const texts = new Set<string>(SPLIT_EXTRAS)
@@ -265,6 +279,8 @@ describe('golden sessions for the Kotlin engine', () => {
         // The rows too, so the Kotlin pack builder can be held to this one.
         [`${name}.rows.json`]: JSON.stringify(rowsFromGraph(graph)) + '\n',
         [`${name}.pack.json`]: JSON.stringify(buildStoryPack(graph), null, 1) + '\n',
+        // What the phone's Twilio export must produce from these rows.
+        [`${name}.export.json`]: exportForTwilio(JSON.stringify(rowsFromGraph(graph))) + '\n',
         [`${name}.sessions.json`]: JSON.stringify(record(graph, scripts)) + '\n',
       }
       for (const [file, body] of Object.entries(files)) {

@@ -11,8 +11,6 @@ import com.jackie.dungeon.engine.PackNode
 import com.jackie.dungeon.engine.PackVar
 import com.jackie.dungeon.engine.Part
 import com.jackie.dungeon.engine.StoryPack
-import java.text.Collator
-import java.util.Locale
 
 /**
  * Port of `buildStoryPack` (src/features/pack/storyPack.ts): the rows the phone
@@ -20,8 +18,6 @@ import java.util.Locale
  * from each fixture's rows and requires it to equal the one the web app built.
  */
 object PackBuilder {
-
-    private val collator: Collator = Collator.getInstance(Locale.ROOT)
 
     fun build(rows: StoryRows, resolve: (String) -> String = { it }): StoryPack {
         fun url(path: String?) = if (path.isNullOrEmpty()) null else resolve(path)
@@ -40,7 +36,7 @@ object PackBuilder {
         fun fightAt(nodeId: String): PackFight? {
             val f = rows.fights.firstOrNull { it.nodeId == nodeId } ?: return null
             val moves = rows.fightMoves.filter { it.fightId == f.id }
-                .sortedWith { a, b -> if (a.sortOrder != b.sortOrder) a.sortOrder - b.sortOrder else collator.compare(a.slug, b.slug) }
+                .sortedWith { a, b -> if (a.sortOrder != b.sortOrder) a.sortOrder - b.sortOrder else a.slug.compareTo(b.slug) }
             val rounds = rows.fightRounds.filter { it.fightId == f.id }.sortedBy { it.sortOrder }
             // A JS Map keeps a key where it was first set and takes the last value.
             val outcomes = LinkedHashMap<String, FightOutcomeRow>()

@@ -1,4 +1,5 @@
 import type { Choice, StoryGraph } from '@/types/domain'
+import { byCode } from '@/lib/order'
 
 /**
  * Two doors on one key.
@@ -21,7 +22,7 @@ export function doorsByDigit(graph: StoryGraph, nodeId: string): Map<string, Cho
   const out = new Map<string, Choice[]>()
   const doors = [...graph.choices.values()]
     .filter((c) => c.from_node_id === nodeId)
-    .sort((a, b) => a.sort_order - b.sort_order || a.id.localeCompare(b.id))
+    .sort((a, b) => a.sort_order - b.sort_order || byCode(a.id, b.id))
   for (const door of doors) {
     const list = out.get(door.digit) ?? []
     list.push(door)
@@ -41,5 +42,5 @@ export function keyConflicts(graph: StoryGraph, nodeId: string): KeyConflict[] {
   for (const [digit, doors] of doorsByDigit(graph, nodeId)) {
     if (doors.length > 1) out.push({ digit, choiceIds: doors.map((d) => d.id) })
   }
-  return out.sort((a, b) => a.digit.localeCompare(b.digit))
+  return out.sort((a, b) => byCode(a.digit, b.digit))
 }

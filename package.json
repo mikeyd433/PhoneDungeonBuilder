@@ -16,7 +16,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.node.json",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "build:phone-export": "node scripts/build-phone-export.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",
