@@ -5,6 +5,8 @@
     <!-- Recordings stream from the story's public audio links. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Recording takes on the phone. Asked for the first time ● REC is tapped. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
     <!-- Parked-only Android Auto game. Do NOT add distractionOptimized metadata. -->
     <application

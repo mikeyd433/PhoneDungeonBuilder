@@ -99,6 +99,28 @@ class StoryEditorTest {
     }
 
     @Test
+    fun `a take on a scene, a reply and a refusal is what the player plays`() {
+        var r = StoryEditor.newStory("Takes")
+        val start = r.story.rootNodeId!!
+        r = StoryEditor.setScript(r, start, "Hello.")
+        val (a, door) = StoryEditor.addChoice(r, start, "Go", newScene = true); r = a
+        val (b, key) = StoryEditor.addItem(r, "Key"); r = b
+        r = StoryEditor.setReply(r, door, "Off you go.")
+        r = StoryEditor.setRequires(r, door, key.slug, "refuse", failLine = "Locked.")
+        r = StoryEditor.setSceneTake(r, start, "/takes/start.wav", 1200)
+        r = StoryEditor.setReplyTake(r, door, "/takes/reply.wav", 800)
+        r = StoryEditor.setRefusalTake(r, door, "/takes/locked.wav")
+        val pack = PackBuilder.build(r)
+        assertEquals("/takes/start.wav", pack.nodes.first { it.id == start }.playback.single().audio)
+        assertEquals("/takes/reply.wav", pack.choices.single().reaction.single().audio)
+        val e = Engine(pack)
+        assertEquals("/takes/locked.wav", e.press(e.start(), "1").heard.single().audio)
+        // Clearing forgets the length too.
+        val cleared = StoryEditor.setSceneTake(r, start, null)
+        assertNull(cleared.nodes.first { it.id == start }.audioDurationMs)
+    }
+
+    @Test
     fun `william's helmet conditions read back in words`() {
         val g = william.gates.first()
         assertEquals("has CARTERHELMET or has MIKEHELMET", StoryEditor.describe(g.expression))

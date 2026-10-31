@@ -191,6 +191,35 @@ object StoryEditor {
         dialogueLines = r.dialogueLines.filter { it.choiceId != id },
     )
 
+    // ---- takes ------------------------------------------------------------------
+
+    /**
+     * Where a take can go. One function per kind of slot, all the same shape:
+     * a path to an 8 kHz WAV (or null to clear it) and how long it runs.
+     * Takes are never deleted here — undo has to be able to bring one back.
+     */
+    fun setSceneTake(r: StoryRows, nodeId: String, path: String?, ms: Int? = null) =
+        r.copy(nodes = r.nodes.map { if (it.id == nodeId) it.copy(audioPath = path, audioDurationMs = if (path == null) null else ms) else it })
+
+    fun setReplyTake(r: StoryRows, choiceId: String, path: String?, ms: Int? = null) =
+        r.copy(choices = r.choices.map { if (it.id == choiceId) it.copy(audioPath = path, audioDurationMs = if (path == null) null else ms) else it })
+
+    fun setRefusalTake(r: StoryRows, choiceId: String, path: String?) =
+        r.copy(gates = r.gates.map { if (it.choiceId == choiceId) it.copy(failAudioPath = path) else it })
+
+    fun setLineTake(r: StoryRows, lineId: String, path: String?, ms: Int? = null) =
+        r.copy(dialogueLines = r.dialogueLines.map { if (it.id == lineId) it.copy(audioPath = path, audioDurationMs = if (path == null) null else ms) else it })
+
+    /** [which] is "name" (the readback), "gain" or "spend". */
+    fun setItemTake(r: StoryRows, varId: String, which: String, path: String?) =
+        r.copy(stateVars = r.stateVars.map { v ->
+            if (v.id != varId) v else when (which) {
+                "gain" -> v.copy(gainAudioPath = path)
+                "spend" -> v.copy(spendAudioPath = path)
+                else -> v.copy(audioPath = path)
+            }
+        })
+
     // ---- items ------------------------------------------------------------------
 
     fun addItem(r: StoryRows, name: String, kind: String = "item"): Pair<StoryRows, StateVarRow> {

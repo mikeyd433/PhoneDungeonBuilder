@@ -124,9 +124,23 @@ fun SceneSheet(rows: StoryRows, id: String, onClose: () -> Unit, onChoice: (Stri
                 }
             }
             Field("Script · \"Name: line\" for a speaker", script, { script = it }, lines = 5, hint = "What the caller hears in this scene")
-            val split = rows.dialogueLines.count { it.nodeId == id }
-            if (split > 0) Text("Split into $split speaker lines. They follow the script when you edit it.", style = body(12, Phosphor.dim))
+            val lines = rows.dialogueLines.filter { it.nodeId == id }.sortedBy { it.sortOrder }
+            if (lines.isNotEmpty()) Text("Split into ${lines.size} speaker lines. They follow the script when you edit it.", style = body(12, Phosphor.dim))
             else if (script.contains(':')) Text("Split by speaker", style = body(13, Phosphor.cyan), modifier = Modifier.clickable { save(); Studio.edit("Split by speaker") { StoryEditor.splitIntoLines(it, nodeId = id) } })
+
+            Text("RECORDING", style = label())
+            TakeRow("The whole scene, one take", n.audioPath, n.audioDurationMs, n.slug) { path, ms ->
+                save(); Studio.edit(if (path == null) "Clear take" else "Record scene") { StoryEditor.setSceneTake(it, id, path, ms) }
+            }
+            if (lines.isNotEmpty()) {
+                Text("Or one take per line, for actors recorded separately. Once any line has a take, the lines are what plays.", style = body(12, Phosphor.dim))
+                lines.forEachIndexed { i, l ->
+                    val who = rows.characters.firstOrNull { it.id == l.characterId }?.name
+                    TakeRow((if (who != null) "$who: " else "") + l.text, l.audioPath, l.audioDurationMs, "${n.slug}_line_${i + 1}") { path, ms ->
+                        save(); Studio.edit(if (path == null) "Clear line take" else "Record line") { StoryEditor.setLineTake(it, l.id, path, ms) }
+                    }
+                }
+            }
 
             if (n.nodeType != "ending") {
                 Text("CHOICES", style = label())
@@ -194,6 +208,10 @@ fun ChoiceSheet(rows: StoryRows, id: String, onClose: () -> Unit, onGo: (String)
             Field("What the caller hears", words, { words = it }, hint = "go below")
             LinkRow("Leads to", sceneName(rows, c.toNodeId), if (c.toNodeId == null) Phosphor.alert else Phosphor.fg) { save(); picking = "to" }
             Field("Reply · heard before the next scene", reply, { reply = it }, lines = 2, hint = "Carter: Careful. The stairs are wet.")
+            val from = rows.nodes.firstOrNull { it.id == c.fromNodeId }?.slug ?: "CHOICE"
+            if (reply.isNotBlank()) TakeRow("Reply take", c.audioPath, c.audioDurationMs, "${from}_reply_${c.digit}") { path, ms ->
+                save(); Studio.edit(if (path == null) "Clear reply take" else "Record reply") { StoryEditor.setReplyTake(it, id, path, ms) }
+            }
 
             LinkRow("Gives", StoryEditor.gives(rows, id)?.name ?: "nothing") { save(); picking = "gives" }
             if (gate != null && simple == null) {
@@ -209,7 +227,12 @@ fun ChoiceSheet(rows: StoryRows, id: String, onClose: () -> Unit, onGo: (String)
                         Chip("If not: refuse", gate.failBehavior == "refuse") { Studio.edit("Refuse") { StoryEditor.setRequires(it, id, simple, "refuse", failLine = failLine) } }
                         Chip("If not: go elsewhere", gate.failBehavior == "divert") { save(); picking = "fork" }
                     }
-                    if (gate.failBehavior == "refuse") Field("What a refused caller hears", failLine, { failLine = it }, lines = 2, hint = "You need something to haul on.")
+                    if (gate.failBehavior == "refuse") {
+                        Field("What a refused caller hears", failLine, { failLine = it }, lines = 2, hint = "You need something to haul on.")
+                        TakeRow("Refusal take", gate.failAudioPath, null, "${from}_refused_${c.digit}") { path, _ ->
+                            save(); Studio.edit(if (path == null) "Clear refusal take" else "Record refusal") { StoryEditor.setRefusalTake(it, id, path) }
+                        }
+                    }
                     else LinkRow("Without it, go to", sceneName(rows, gate.failNodeId), if (gate.failNodeId == null) Phosphor.alert else Phosphor.fg) { picking = "fork" }
                 }
             }
