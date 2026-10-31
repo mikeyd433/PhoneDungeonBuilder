@@ -52,4 +52,34 @@ class FlowLayoutTest {
         assertEquals(a.boxes[id]!!.x + 40f, b.boxes[id]!!.x)
         assertEquals(a.boxes[r.nodes[0].id], b.boxes[r.nodes[0].id])
     }
+
+    @Test
+    fun `chapters are lanes - Mike's and Carter's stories never share a column`() {
+        var r = rows("william")
+        val mike = r.nodes.first { it.slug == "GNOME_RUNS_BY_AND" }.id
+        val carter = r.nodes.first { it.slug == "CARTER_INTRO_0" }.id
+        val mikeBranch = StoryEditor.branchOf(r, mike)
+        val carterBranch = StoryEditor.branchOf(r, carter)
+        assertTrue(mikeBranch.size > 3 && carterBranch.size > 3, "${mikeBranch.size} / ${carterBranch.size}")
+        assertTrue(mikeBranch.intersect(carterBranch).isEmpty())
+        r = StoryEditor.setChapter(r, mikeBranch, "Mike")
+        r = StoryEditor.setChapter(r, carterBranch, "Carter")
+        val l = FlowLayout.layout(r)
+        val m = l.chapters.first { it.name == "Mike" }
+        val c = l.chapters.first { it.name == "Carter" }
+        assertTrue(m.x1 <= c.x0 || c.x1 <= m.x0, "the two lanes overlap: $m / $c")
+        for (id in mikeBranch) assertTrue(l.boxes[id]!!.x >= m.x0 && l.boxes[id]!!.x + FlowLayout.W <= m.x1)
+        assertEquals(listOf("Mike", "Carter").sorted(), StoryEditor.chapters(r).sorted())
+    }
+
+    @Test
+    fun `a branch stops where another path joins it`() {
+        val r = rows("william")
+        val swamp = r.nodes.first { it.slug == "PRESS_1_TO_BUY" }.id
+        val corridor = r.nodes.first { it.slug == "PRESS_1_TO_TURN" }.id
+        // The swamp is reached from the lily pads and from the frog's spell, both inside the corridor's branch.
+        assertTrue(swamp in StoryEditor.branchOf(r, corridor))
+        // But the corridor itself is reached by three different doors from Carter's helmet scene only.
+        assertTrue(StoryEditor.branchOf(r, swamp).none { it == corridor })
+    }
 }

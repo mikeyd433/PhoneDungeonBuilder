@@ -135,7 +135,7 @@ Same routine as the Brenda apps:
 
 - Takes for items (picked up / used up / readback) and the inventory key: not in the phone's editor yet.
 - Sync with Supabase; until then the phone's stories and the web app's drift apart.
-- Nudging boxes on the flowchart, and chapters (the field exists; no UI yet).
+- Nudging boxes on the flowchart by hand. (Chapters do the grouping: each is its own lane.)
 
 - Not yet run on a real phone, the DHU or a car — everything here was built and
   unit-tested on a machine with no device. The car screen was previewed by running

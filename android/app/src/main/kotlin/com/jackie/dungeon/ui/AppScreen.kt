@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -129,6 +131,17 @@ private fun StoryScreen() {
         }
         if (undo.isNotEmpty() && tab == "edit") Text("Undo: ${undo.last().first}", style = mono(11, Phosphor.dim), modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp))
 
+        val chapters = remember(r) { StoryEditor.chapters(r) }
+        if (tab == "edit" && chapters.isNotEmpty()) {
+            // Jump to a chapter's lane: its first scene, near the top of the screen.
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                for (ch in chapters) {
+                    Text(ch, style = mono(13, Phosphor.fg), modifier = Modifier.border(1.dp, Phosphor.line).clickable {
+                        r.nodes.firstOrNull { it.chapter == ch }?.let { first -> selected = first.id; jump = first.id + "#" + System.nanoTime() }
+                    }.padding(horizontal = 10.dp, vertical = 6.dp))
+                }
+            }
+        }
         Box(Modifier.weight(1f)) {
             if (tab == "edit") {
                 Flowchart(

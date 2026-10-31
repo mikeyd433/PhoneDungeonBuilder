@@ -123,6 +123,50 @@ object StoryEditor {
         return r.copy(characters = characters, dialogueLines = r.dialogueLines.filterNot(mine) + fresh)
     }
 
+    // ---- chapters ---------------------------------------------------------------
+
+    /** Every chapter in the story, in the order scenes were made. */
+    fun chapters(r: StoryRows): List<String> = r.nodes.mapNotNull { it.chapter?.takeIf { c -> c.isNotBlank() } }.distinct()
+
+    /** Put scenes in a chapter (blank takes them out of any). */
+    fun setChapter(r: StoryRows, ids: Set<String>, chapter: String?) =
+        r.copy(nodes = r.nodes.map { if (it.id in ids) it.copy(chapter = chapter?.trim()?.takeIf { c -> c.isNotEmpty() }) else it })
+
+    fun renameChapter(r: StoryRows, from: String, to: String) =
+        r.copy(nodes = r.nodes.map { if (it.chapter == from) it.copy(chapter = to.trim().takeIf { c -> c.isNotEmpty() }) else it })
+
+    /**
+     * A scene and everything that can ONLY be reached through it — its branch.
+     * Mike's intro and everything that is Mike's alone, but not a scene Carter's
+     * path also leads into. (The scenes it dominates, in graph terms.)
+     */
+    fun branchOf(r: StoryRows, start: String): Set<String> {
+        fun next(id: String) = r.choices.filter { it.fromNodeId == id }.flatMap { c ->
+            listOfNotNull(c.toNodeId, r.gates.firstOrNull { g -> g.choiceId == c.id && g.failBehavior == "divert" }?.failNodeId)
+        }
+        val known = r.nodes.map { it.id }.toSet()
+        // Everything reachable from the entrance without passing through [start]…
+        val outside = HashSet<String>()
+        val root = r.story.rootNodeId
+        if (root != null && root != start) {
+            val stack = ArrayDeque(listOf(root))
+            while (stack.isNotEmpty()) {
+                val u = stack.removeLast()
+                if (u == start || u !in known || !outside.add(u)) continue
+                next(u).forEach(stack::addLast)
+            }
+        }
+        // …so the branch is what's reachable from it and not from there.
+        val branch = LinkedHashSet<String>()
+        val stack = ArrayDeque(listOf(start))
+        while (stack.isNotEmpty()) {
+            val u = stack.removeLast()
+            if (u !in known || u in outside || !branch.add(u)) continue
+            next(u).forEach(stack::addLast)
+        }
+        return branch
+    }
+
     /** Remove a scene and everything that hangs off it; nothing is left pointing at it. */
     fun deleteScene(r: StoryRows, id: String): StoryRows {
         require(id != r.story.rootNodeId) { "The entrance can't be deleted. Make another scene the entrance first." }

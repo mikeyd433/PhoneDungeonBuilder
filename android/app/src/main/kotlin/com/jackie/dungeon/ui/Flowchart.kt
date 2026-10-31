@@ -12,6 +12,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -55,6 +56,8 @@ fun Flowchart(
     onPlayFrom: (String) -> Unit,
     modifier: Modifier = Modifier,
     jumpTo: String? = null,
+    /** Start at this zoom instead of a readable one (the whole-story view). */
+    startScale: Float? = null,
 ) {
     val layout = remember(rows) { FlowLayout.layout(rows) }
     val measurer = rememberTextMeasurer(cacheSize = 1024)
@@ -69,7 +72,9 @@ fun Flowchart(
     val gates = remember(rows) { rows.gates.associateBy { it.choiceId } }
     val reachable = remember(layout) { layout.boxes.keys - layout.unreachable }
 
-    BoxWithConstraints(modifier.fillMaxSize()) {
+    // Clipped: a canvas draws past its own edges unless told not to, and the
+    // zoomed-out chart was painting over the header and the tabs.
+    BoxWithConstraints(modifier.fillMaxSize().clipToBounds()) {
         val w = constraints.maxWidth.toFloat()
         val h = constraints.maxHeight.toFloat()
         fun centreOn(id: String, s: Float) {
@@ -81,12 +86,13 @@ fun Flowchart(
         LaunchedEffect(w, h) {
             if (scale == 0f) {
                 // Open at a readable size, with the entrance near the top.
-                scale = (w * 0.62f / FlowLayout.W).coerceIn(0.4f, 4f)
-                rows.story.rootNodeId?.let { centreOn(it, scale) } ?: run { offset = Offset(w / 2 - layout.minX * scale, 40f) }
+                scale = startScale ?: (w * 0.62f / FlowLayout.W).coerceIn(0.4f, 4f)
+                if (startScale != null) offset = Offset(w / 2 - (layout.minX + layout.width / 2) * scale, h / 2 - layout.height / 2 * scale)
+                else rows.story.rootNodeId?.let { centreOn(it, scale) } ?: run { offset = Offset(w / 2 - layout.minX * scale, 40f) }
             }
         }
         LaunchedEffect(jumpTo) {
-            if (jumpTo != null && jumpTo != lastJump && scale > 0f) { lastJump = jumpTo; centreOn(jumpTo, scale) }
+            if (jumpTo != null && jumpTo != lastJump && scale > 0f) { lastJump = jumpTo; centreOn(jumpTo.substringBefore('#'), scale) }
         }
         if (scale == 0f) return@BoxWithConstraints
 
@@ -141,6 +147,14 @@ fun Flowchart(
 
             withTransform({ translate(offset.x, offset.y); scale(scale, scale, pivot = Offset.Zero) }) {
                 val stroke = 1.5f
+                // ---- chapters: a dashed frame per lane, named at the top ----
+                // Names stay readable however far out you zoom: that is when you navigate by them.
+                val labelSize = maxOf(24f, 18f / scale)
+                for (ch in layout.chapters) {
+                    drawRoundRect(Phosphor.dim, Offset(ch.x0, ch.y0), Size(ch.x1 - ch.x0, ch.y1 - ch.y0), CornerRadius(14f),
+                        style = Stroke(maxOf(2f, 1.5f / scale), pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f / minOf(scale, 1f), 10f / minOf(scale, 1f)))))
+                    text(ch.name.uppercase(), ch.x0 + 14f, ch.y0 - labelSize * 1.1f, style(labelSize, Phosphor.fg, family = Phosphor.font))
+                }
                 // ---- edges ----
                 fun curve(a: Offset, b: Offset, color: Color, dashed: Boolean = false) {
                     val path = Path().apply { moveTo(a.x, a.y); cubicTo(a.x, a.y + 70f, b.x, b.y - 70f, b.x, b.y) }

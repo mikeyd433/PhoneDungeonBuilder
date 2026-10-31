@@ -9,6 +9,12 @@ import android.graphics.Canvas
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import com.jackie.dungeon.story.StoryRows
+import com.jackie.dungeon.story.StoryEditor
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Text
+import androidx.compose.ui.unit.dp
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -73,5 +79,22 @@ class ScreenshotTest {
         compose.setContent { Box(Modifier.fillMaxSize().background(Phosphor.bg)) { SceneSheet(william, room, onClose = {}, onChoice = {}, onPlay = {}, onGo = {}, inSheet = false) } }
         compose.waitForIdle()
         shoot("scene-sheet")
+    }
+
+    @Test fun chaptersAsLanes() {
+        var r = william
+        r = StoryEditor.setChapter(r, StoryEditor.branchOf(r, r.nodes.first { it.slug == "GNOME_RUNS_BY_AND" }.id), "Mike")
+        r = StoryEditor.setChapter(r, StoryEditor.branchOf(r, r.nodes.first { it.slug == "CARTER_INTRO_0" }.id), "Carter")
+        compose.setContent {
+            Column(Modifier.fillMaxSize().background(Phosphor.bg)) {
+                Text("HEADER ABOVE THE CHART", style = style(26, Phosphor.hi), modifier = Modifier.fillMaxWidth().background(Phosphor.panel).padding(16.dp))
+                Box(Modifier.weight(1f)) {
+                    Flowchart(r, selected = null, focus = {}, onScene = {}, onChoice = {}, onAddChoice = {}, onPlayFrom = {}, startScale = 0.105f)
+                }
+                Text("FOOTER BELOW THE CHART", style = style(26, Phosphor.hi), modifier = Modifier.fillMaxWidth().background(Phosphor.panel).padding(16.dp))
+            }
+        }
+        compose.waitForIdle()
+        shoot("chapters-lanes")
     }
 }

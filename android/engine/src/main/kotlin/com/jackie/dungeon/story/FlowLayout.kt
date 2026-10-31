@@ -22,6 +22,7 @@ object FlowLayout {
     const val TITLE_LINE = 17f
     const val BUTTONS = 36f
     const val TITLE_CHARS = 24
+    const val LANE_GAP = 180f
 
     data class Box(val id: String, val x: Float, val y: Float, val h: Float, val titleLines: List<String>) {
         val cx get() = x + W / 2
@@ -52,7 +53,11 @@ object FlowLayout {
         val width: Float,
         val height: Float,
         val minX: Float,
+        /** A frame per chapter: its name and the area its scenes cover. */
+        val chapters: List<Chapter> = emptyList(),
     )
+
+    data class Chapter(val name: String, val x0: Float, val y0: Float, val x1: Float, val y1: Float)
 
     fun titleLines(title: String): List<String> {
         val t = title.ifBlank { "Untitled scene" }
@@ -112,17 +117,33 @@ object FlowLayout {
 
         val nodeById = r.nodes.associateBy { it.id }
         val pos = HashMap<String, Pair<Float, Float>>() // centre x, top y
+        fun bary(u: String): Float {
+            val xs = r.choices.filter { c -> targets(r, c).any { it.first == u } && pos[c.fromNodeId] != null }
+                .map { c -> pos[c.fromNodeId]!!.first + (keyOrder(c.digit) - 1) * 20f }
+            return if (xs.isEmpty()) 0f else xs.average().toFloat()
+        }
+        // Chapters are LANES: each one its own vertical band, never mixed with
+        // another, so two storylines that run side by side read as two columns.
+        // Lanes go left to right in the order the story first reaches them;
+        // scenes in no chapter share an unnamed lane of their own.
+        val lane = { u: String -> nodeById[u]?.chapter?.takeIf { it.isNotBlank() } ?: "" }
+        val laneOrder = layers.flatten().map(lane).distinct()
+        val lanes = laneOrder.size > 1 || laneOrder.firstOrNull()?.isNotEmpty() == true
+        val laneWidth = laneOrder.associateWith { l -> layers.maxOf { layer -> layer.count { lane(it) == l } }.coerceAtLeast(1).let { (it - 1) * GAP_X + W } }
+        val laneLeft = HashMap<String, Float>()
+        run { var x = 0f; for (l in laneOrder) { laneLeft[l] = x; x += laneWidth[l]!! + LANE_GAP } }
         var y = 0f
         for (layer in layers) {
             if (layer.isEmpty()) continue
-            fun bary(u: String): Float {
-                val xs = r.choices.filter { c -> targets(r, c).any { it.first == u } && pos[c.fromNodeId] != null }
-                    .map { c -> pos[c.fromNodeId]!!.first + (keyOrder(c.digit) - 1) * 20f }
-                return if (xs.isEmpty()) 0f else xs.average().toFloat()
+            if (!lanes) {
+                val sorted = layer.map { it to bary(it) }.sortedBy { it.second }
+                val centre = sorted.map { it.second }.average().toFloat()
+                sorted.forEachIndexed { i, (u, _) -> pos[u] = (centre + (i - (sorted.size - 1) / 2f) * GAP_X) to y }
+            } else for ((l, inLane) in layer.groupBy(lane)) {
+                val sorted = inLane.map { it to bary(it) }.sortedBy { it.second }
+                val centre = laneLeft[l]!! + laneWidth[l]!! / 2
+                sorted.forEachIndexed { i, (u, _) -> pos[u] = (centre + (i - (sorted.size - 1) / 2f) * GAP_X) to y }
             }
-            val sorted = layer.map { it to bary(it) }.sortedBy { it.second }
-            val centre = sorted.map { it.second }.average().toFloat()
-            sorted.forEachIndexed { i, (u, _) -> pos[u] = (centre + (i - (sorted.size - 1) / 2f) * GAP_X) to y }
             y += layer.maxOf { boxHeight(r, nodeById[it]!!) } + GAP_Y
         }
 
@@ -159,7 +180,10 @@ object FlowLayout {
         val minX = boxes.values.minOfOrNull { it.x } ?: 0f
         val maxX = boxes.values.maxOfOrNull { it.x + W } ?: W
         val maxY = boxes.values.maxOfOrNull { it.bottom } ?: 0f
-        return Layout(boxes, ports, edges, back, loose.toSet(), maxX - minX, maxY + 80f, minX)
+        val chapters = r.nodes.mapNotNull { n -> n.chapter?.takeIf { it.isNotBlank() }?.let { it to boxes[n.id] } }
+            .filter { it.second != null }.groupBy({ it.first }, { it.second!! })
+            .map { (name, bs) -> Chapter(name, bs.minOf { it.x } - 30f, bs.minOf { it.y } - 50f, bs.maxOf { it.x + W } + 30f, bs.maxOf { it.bottom } + 70f) }
+        return Layout(boxes, ports, edges, back, loose.toSet(), maxX - minX, maxY + 80f, minX, chapters)
     }
 
     /** Is this door a loop back up the story? (For the "↺" mark in its row.) */

@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -117,6 +118,7 @@ fun SceneSheet(rows: StoryRows, id: String, onClose: () -> Unit, onChoice: (Stri
         Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Text(if (id == rows.story.rootNodeId) "START SCENE" else "SCENE", style = label())
             Field("Name", title, { title = it }, hint = "Name this scene")
+            ChapterPicker(rows, id) { save() }
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("ENDS THE CALL?", style = label())
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -285,6 +287,38 @@ fun ChoiceSheet(rows: StoryRows, id: String, onClose: () -> Unit, onGo: (String)
 }
 
 const val NEW = "\u0000new"
+
+/**
+ * Which chapter a scene is in. Chapters lay out as separate lanes on the
+ * flowchart, so this is how two storylines are kept apart. "Its whole branch"
+ * also moves every scene that can ONLY be reached through this one — on
+ * William, Mike's intro takes Mike's 42 scenes with it, and nothing of Carter's.
+ */
+@Composable
+private fun ChapterPicker(rows: StoryRows, id: String, beforeEdit: () -> Unit) {
+    val n = rows.nodes.firstOrNull { it.id == id } ?: return
+    val branch = remember(rows, id) { StoryEditor.branchOf(rows, id) }
+    var wholeBranch by remember(id) { mutableStateOf(branch.size > 1) }
+    var naming by remember(id) { mutableStateOf(false) }
+    val apply = { ch: String? ->
+        beforeEdit()
+        val ids = if (wholeBranch) branch else setOf(id)
+        Studio.edit(if (ch == null) "Remove from chapter" else "Move to $ch") { StoryEditor.setChapter(it, ids, ch) }
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("CHAPTER · ITS OWN LANE ON THE FLOWCHART", style = label())
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Chip("None", n.chapter.isNullOrBlank()) { apply(null) }
+            for (ch in StoryEditor.chapters(rows)) Chip(ch, n.chapter == ch) { apply(ch) }
+            Chip("+ New…", false) { naming = true }
+        }
+        if (branch.size > 1) Row(Modifier.clickable { wholeBranch = !wholeBranch }, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(if (wholeBranch) "▣" else "□", style = body(15, Phosphor.fg))
+            Text("Its whole branch: this scene and the ${branch.size - 1} only reachable through it", style = body(13, Phosphor.fg))
+        }
+    }
+    if (naming) AskText("Name the chapter", "Create") { t -> naming = false; if (!t.isNullOrBlank()) apply(t) }
+}
 
 @Composable
 fun ScenePicker(rows: StoryRows, title: String, allowNew: Boolean, onDismiss: () -> Unit, onPick: (String?) -> Unit) {
