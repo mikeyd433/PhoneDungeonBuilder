@@ -72,6 +72,43 @@ class FlowLayoutTest {
         assertEquals(listOf("Mike", "Carter").sorted(), StoryEditor.chapters(r).sorted())
     }
 
+    private fun chaptered(): StoryRows {
+        var r = rows("william")
+        r = StoryEditor.setChapter(r, StoryEditor.branchOf(r, r.nodes.first { it.slug == "GNOME_RUNS_BY_AND" }.id), "Mike")
+        return StoryEditor.setChapter(r, StoryEditor.branchOf(r, r.nodes.first { it.slug == "CARTER_INTRO_0" }.id), "Carter")
+    }
+
+    @Test
+    fun `the entrance spans the lanes rather than sitting in a lane of its own`() {
+        val r = chaptered()
+        val l = FlowLayout.layout(r)
+        val root = l.boxes[r.story.rootNodeId]!!
+        val left = l.chapters.minOf { it.x0 }; val right = l.chapters.maxOf { it.x1 }
+        assertTrue(root.cx > left && root.cx < right, "the entrance sits over the lanes: ${root.cx} in $left..$right")
+    }
+
+    @Test
+    fun `a lane moved by hand takes every scene in it, and reset puts it back`() {
+        val r = chaptered()
+        val before = FlowLayout.layout(r)
+        val moved = StoryEditor.nudgeChapter(r, "Mike", 300f, 50f)
+        val after = FlowLayout.layout(moved)
+        for (n in r.nodes) {
+            val a = before.boxes[n.id] ?: continue; val b = after.boxes[n.id]!!
+            if (n.chapter == "Mike") { assertEquals(a.x + 300f, b.x); assertEquals(a.y + 50f, b.y) }
+            else { assertEquals(a.x, b.x); assertEquals(a.y, b.y) }
+        }
+        val one = r.nodes.first { it.chapter == "Carter" }.id
+        val nudged = StoryEditor.nudgeScene(moved, one, -20f, 10f)
+        assertEquals(before.boxes[one]!!.x - 20f, FlowLayout.layout(nudged).boxes[one]!!.x)
+        assertTrue(StoryEditor.hasNudges(nudged))
+        val reset = StoryEditor.resetLayout(nudged)
+        assertTrue(!StoryEditor.hasNudges(reset))
+        assertEquals(before.boxes, FlowLayout.layout(reset).boxes)
+        // Renaming a chapter keeps where its lane was moved to.
+        assertEquals(listOf(300f, 50f), StoryEditor.renameChapter(moved, "Mike", "Mikey").story.laneNudges["Mikey"])
+    }
+
     @Test
     fun `a branch stops where another path joins it`() {
         val r = rows("william")

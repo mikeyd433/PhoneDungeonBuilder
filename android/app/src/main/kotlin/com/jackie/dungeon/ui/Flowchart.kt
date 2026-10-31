@@ -1,8 +1,13 @@
 package com.jackie.dungeon.ui
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateCentroid
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -58,8 +63,15 @@ fun Flowchart(
     jumpTo: String? = null,
     /** Start at this zoom instead of a readable one (the whole-story view). */
     startScale: Float? = null,
+    /** A box ("<scene id>") or a lane ("chapter:<name>") was dragged this far, in layout units. */
+    onNudge: (String, Float, Float) -> Unit = { _, _, _ -> },
 ) {
-    val layout = remember(rows) { FlowLayout.layout(rows) }
+    // What is being dragged right now, and by how much: drawn live, saved on release.
+    var drag by remember { mutableStateOf<Pair<String, Offset>?>(null) }
+    val layout = remember(rows, drag) { FlowLayout.layout(rows, drag?.let { (k, d) -> mapOf(k to (d.x to d.y)) } ?: emptyMap()) }
+    val haptics = LocalHapticFeedback.current
+    // The gesture handler outlives each layout (a drag changes it every move), so it reads the latest.
+    val latest = androidx.compose.runtime.rememberUpdatedState(layout)
     val measurer = rememberTextMeasurer(cacheSize = 1024)
     val density = LocalDensity.current
     var scale by remember { mutableStateOf(0f) }
@@ -91,8 +103,27 @@ fun Flowchart(
                 else rows.story.rootNodeId?.let { centreOn(it, scale) } ?: run { offset = Offset(w / 2 - layout.minX * scale, 40f) }
             }
         }
+        /** Frame an area: as wide as the screen allows, never past readable, its top near the top. */
+        fun frame(x0: Float, y0: Float, x1: Float, y1: Float) {
+            val readable = (w * 0.62f / FlowLayout.W).coerceIn(0.4f, 4f)
+            val s = (w * 0.94f / (x1 - x0)).coerceIn(0.08f, readable)
+            scale = s
+            val tall = (y1 - y0) * s > h
+            offset = Offset(w / 2 - (x0 + x1) / 2 * s, if (tall) h * 0.06f - y0 * s else h / 2 - (y0 + y1) / 2 * s)
+        }
         LaunchedEffect(jumpTo) {
-            if (jumpTo != null && jumpTo != lastJump && scale > 0f) { lastJump = jumpTo; centreOn(jumpTo.substringBefore('#'), scale) }
+            if (jumpTo == null || jumpTo == lastJump || scale <= 0f) return@LaunchedEffect
+            lastJump = jumpTo
+            val target = jumpTo.substringBefore('#')
+            when {
+                target == "all" -> layout.boxes.values.takeIf { it.isNotEmpty() }?.let { bs ->
+                    frame(bs.minOf { it.x }, bs.minOf { it.y }, bs.maxOf { it.x + FlowLayout.W }, bs.maxOf { it.bottom })
+                }
+                target.startsWith("chapter:") -> layout.chapters.firstOrNull { it.name == target.removePrefix("chapter:") }?.let { c ->
+                    frame(c.x0 - 40f, c.y0 - 60f, c.x1 + 40f, c.y1)
+                }
+                else -> centreOn(target, scale)
+            }
         }
         if (scale == 0f) return@BoxWithConstraints
 
@@ -101,23 +132,16 @@ fun Flowchart(
         Canvas(
             Modifier.fillMaxSize()
                 .pointerInput(Unit) {
-                    detectTransformGestures { centroid, pan, zoom, _ ->
-                        val newScale = (scale * zoom).coerceIn(0.08f, 6f)
-                        val k = newScale / scale
-                        offset = Offset(centroid.x - (centroid.x - offset.x) * k, centroid.y - (centroid.y - offset.y) * k) + pan
-                        scale = newScale
-                    }
-                }
-                .pointerInput(layout) {
-                    detectTapGestures { p ->
+                    fun tap(p: Offset) {
+                        val layout = latest.value
                         val q = toLayout(p)
                         // Circles first: they sit on the box edge.
-                        layout.ports.firstOrNull { hypot(q.x - it.x, q.y - it.y) < 16f }?.let { return@detectTapGestures onChoice(it.choiceId) }
+                        layout.ports.firstOrNull { hypot(q.x - it.x, q.y - it.y) < 16f }?.let { return onChoice(it.choiceId) }
                         for (e in layout.edges) if (e is Edge.Loop) {
                             val (x, y) = e.from
-                            if (q.x in x - 90f..x + 90f && q.y in y + 22f..y + 46f) { focus(e.to); return@detectTapGestures }
+                            if (q.x in x - 90f..x + 90f && q.y in y + 22f..y + 46f) { focus(e.to); return }
                         }
-                        val b = layout.boxes.values.firstOrNull { q.x in it.x..(it.x + FlowLayout.W) && q.y in it.y..it.bottom } ?: return@detectTapGestures
+                        val b = layout.boxes.values.firstOrNull { q.x in it.x..(it.x + FlowLayout.W) && q.y in it.y..it.bottom } ?: return
                         val head = FlowLayout.headerH(b.titleLines.size)
                         val list = doors[b.id].orEmpty()
                         when {
@@ -131,6 +155,63 @@ fun Flowchart(
                                 list.getOrNull(i)?.let { onChoice(it.id) } ?: onScene(b.id)
                             }
                             else -> onScene(b.id)
+                        }
+                    }
+                    /** What a long press picks up: a box, or else the chapter lane it's inside (or its name). */
+                    fun grab(p: Offset): String? {
+                        val layout = latest.value
+                        val q = toLayout(p)
+                        layout.boxes.values.firstOrNull { q.x in it.x..(it.x + FlowLayout.W) && q.y in it.y..it.bottom }?.let { return it.id }
+                        val label = maxOf(24f, 18f / scale) * 1.3f
+                        return layout.chapters.firstOrNull { q.x in it.x0..it.x1 && q.y in (it.y0 - label)..it.y1 }?.let { "chapter:" + it.name }
+                    }
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        // Wait for the finger to lift, move, add a second finger — or stay put long enough to be a long press.
+                        val early: androidx.compose.ui.input.pointer.PointerEvent? = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
+                            var ev: androidx.compose.ui.input.pointer.PointerEvent
+                            do {
+                                ev = awaitPointerEvent()
+                                val c = ev.changes.first()
+                                val done = ev.changes.size > 1 || !c.pressed || (c.position - down.position).getDistance() > viewConfiguration.touchSlop
+                            } while (!done)
+                            ev
+                        }
+                        val target = if (early == null) grab(down.position) else null
+                        if (early == null && target != null) {
+                            // Long press: pick up a box or a lane and move it.
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            var moved = Offset.Zero
+                            drag = target to moved
+                            while (true) {
+                                val ev = awaitPointerEvent()
+                                val c = ev.changes.first()
+                                if (!c.pressed) break
+                                moved += (c.position - c.previousPosition) / scale
+                                c.consume()
+                                drag = target to moved
+                            }
+                            drag = null
+                            if (moved.getDistance() > 2f) onNudge(target, moved.x, moved.y)
+                            return@awaitEachGesture
+                        }
+                        // A long press on nothing just carries on as a pan.
+                        val first = early ?: awaitPointerEvent()
+                        if (first.changes.size == 1 && !first.changes.first().pressed) { tap(down.position); return@awaitEachGesture }
+                        // Pan and pinch.
+                        var ev = first
+                        while (true) {
+                            val zoom = ev.calculateZoom(); val pan = ev.calculatePan(); val centroid = ev.calculateCentroid(useCurrent = true)
+                            if (zoom != 1f || pan != Offset.Zero) {
+                                val newScale = (scale * zoom).coerceIn(0.08f, 6f)
+                                val k = newScale / scale
+                                val cpt = if (centroid == Offset.Unspecified) Offset(w / 2, h / 2) else centroid
+                                offset = Offset(cpt.x - (cpt.x - offset.x) * k, cpt.y - (cpt.y - offset.y) * k) + pan
+                                scale = newScale
+                            }
+                            ev.changes.forEach { it.consume() }
+                            if (ev.changes.none { it.pressed }) break
+                            ev = awaitPointerEvent()
                         }
                     }
                 },

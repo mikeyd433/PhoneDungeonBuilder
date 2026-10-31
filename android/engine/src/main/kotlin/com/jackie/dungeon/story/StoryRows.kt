@@ -59,6 +59,8 @@ data class StoryRow(
     val inventoryKey: String? = null,
     val inventoryIntroAudioPath: String? = null,
     val inventoryEmptyAudioPath: String? = null,
+    /** Phone-only: how far each chapter's lane was moved by hand on the flowchart, [dx, dy]. */
+    val laneNudges: Map<String, List<Float>> = emptyMap(),
 )
 
 @Serializable
@@ -78,6 +80,9 @@ data class NodeRow(
     val timeoutSeconds: Int = 5,
     /** Phone-only so far: the flowchart's chapter. Not a Supabase column yet. */
     val chapter: String? = null,
+    /** Phone-only: how far this box was moved by hand from where the layout put it. */
+    val nudgeX: Float = 0f,
+    val nudgeY: Float = 0f,
 )
 
 @Serializable

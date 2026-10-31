@@ -87,6 +87,10 @@ object FlowLayout {
         return out
     }
 
+    /**
+     * [nudges] are extra offsets on top of the ones stored in the rows (a box
+     * or a lane moved by hand) — the flowchart passes the one being dragged.
+     */
     fun layout(r: StoryRows, nudges: Map<String, Pair<Float, Float>> = emptyMap()): Layout {
         val ids = r.nodes.map { it.id }
         val known = ids.toSet()
@@ -127,15 +131,24 @@ object FlowLayout {
         // Lanes go left to right in the order the story first reaches them;
         // scenes in no chapter share an unnamed lane of their own.
         val lane = { u: String -> nodeById[u]?.chapter?.takeIf { it.isNotBlank() } ?: "" }
-        val laneOrder = layers.flatten().map(lane).distinct()
+        val inLanes = layers.filterNot { layer -> layer.all { lane(it).isEmpty() } }.flatten()
+        val laneOrder = inLanes.map(lane).distinct().ifEmpty { listOf("") }
         val lanes = laneOrder.size > 1 || laneOrder.firstOrNull()?.isNotEmpty() == true
-        val laneWidth = laneOrder.associateWith { l -> layers.maxOf { layer -> layer.count { lane(it) == l } }.coerceAtLeast(1).let { (it - 1) * GAP_X + W } }
+        val laneWidth = laneOrder.associateWith { l -> layers.filterNot { layer -> layer.all { lane(it).isEmpty() } }.maxOfOrNull { layer -> layer.count { lane(it) == l } }?.coerceAtLeast(1).let { ((it ?: 1) - 1) * GAP_X + W } }
         val laneLeft = HashMap<String, Float>()
         run { var x = 0f; for (l in laneOrder) { laneLeft[l] = x; x += laneWidth[l]!! + LANE_GAP } }
+        val totalWidth = laneOrder.sumOf { laneWidth[it]!!.toDouble() }.toFloat() + LANE_GAP * (laneOrder.size - 1).coerceAtLeast(0)
         var y = 0f
         for (layer in layers) {
             if (layer.isEmpty()) continue
-            if (!lanes) {
+            // A row with no chaptered scene in it — the entrance before the story
+            // splits, the scenes nothing leads to — spans every lane, centred,
+            // rather than sitting in a lane of its own off to one side.
+            val trunk = lanes && layer.all { lane(it).isEmpty() }
+            if (trunk) {
+                val sorted = layer.map { it to bary(it) }.sortedBy { it.second }
+                sorted.forEachIndexed { i, (u, _) -> pos[u] = (totalWidth / 2 + (i - (sorted.size - 1) / 2f) * GAP_X) to y }
+            } else if (!lanes) {
                 val sorted = layer.map { it to bary(it) }.sortedBy { it.second }
                 val centre = sorted.map { it.second }.average().toFloat()
                 sorted.forEachIndexed { i, (u, _) -> pos[u] = (centre + (i - (sorted.size - 1) / 2f) * GAP_X) to y }
@@ -144,13 +157,19 @@ object FlowLayout {
                 val centre = laneLeft[l]!! + laneWidth[l]!! / 2
                 sorted.forEachIndexed { i, (u, _) -> pos[u] = (centre + (i - (sorted.size - 1) / 2f) * GAP_X) to y }
             }
-            y += layer.maxOf { boxHeight(r, nodeById[it]!!) } + GAP_Y
+            // Room under a spanning row for the chapter names on the frames below it.
+            y += layer.maxOf { boxHeight(r, nodeById[it]!!) } + GAP_Y + (if (trunk) 90f else 0f)
         }
 
         val boxes = LinkedHashMap<String, Box>()
         for (n in r.nodes) {
             val (cx, top) = pos[n.id] ?: continue
-            val (dx, dy) = nudges[n.id] ?: (0f to 0f)
+            val (ex, ey) = nudges[n.id] ?: (0f to 0f)
+            val ch = n.chapter?.takeIf { it.isNotBlank() }
+            val laneNudge = ch?.let { r.story.laneNudges[it] }
+            val (lx, ly) = ch?.let { nudges["chapter:$it"] } ?: (0f to 0f)
+            val dx = n.nudgeX + ex + (laneNudge?.getOrNull(0) ?: 0f) + lx
+            val dy = n.nudgeY + ey + (laneNudge?.getOrNull(1) ?: 0f) + ly
             boxes[n.id] = Box(n.id, cx - W / 2 + dx, top + dy, boxHeight(r, n), titleLines(n.title.ifBlank { n.slug }))
         }
 

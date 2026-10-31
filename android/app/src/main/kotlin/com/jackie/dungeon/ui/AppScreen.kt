@@ -154,12 +154,16 @@ private fun StoryScreen() {
         val chapters = remember(r) { StoryEditor.chapters(r) }
         if (tab == "edit" && chapters.isNotEmpty()) {
             // Jump to a chapter's lane: its first scene, near the top of the screen.
+            // ALL fits the whole story; a chapter fits its lane, from the top.
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                for (ch in chapters) {
-                    Text(ch, style = mono(13, Phosphor.fg), modifier = Modifier.border(1.dp, Phosphor.line).clickable {
-                        r.nodes.firstOrNull { it.chapter == ch }?.let { first -> selected = first.id; jump = first.id + "#" + System.nanoTime() }
+                for ((key, label) in listOf("all" to "ALL") + chapters.map { "chapter:$it" to it }) {
+                    Text(label, style = mono(13, Phosphor.fg), modifier = Modifier.border(1.dp, Phosphor.line).clickable {
+                        jump = key + "#" + System.nanoTime()
                     }.padding(horizontal = 10.dp, vertical = 6.dp))
                 }
+                if (StoryEditor.hasNudges(r)) Text("RESET LAYOUT", style = mono(13, Phosphor.warn), modifier = Modifier.border(1.dp, Phosphor.line).clickable {
+                    Studio.edit("Reset layout") { StoryEditor.resetLayout(it) }
+                }.padding(horizontal = 10.dp, vertical = 6.dp))
             }
         }
         Box(Modifier.weight(1f)) {
@@ -174,6 +178,10 @@ private fun StoryScreen() {
                         Studio.editWith("Add choice") { StoryEditor.addChoice(it, id, newScene = true) }?.let { choice = it }
                     },
                     onPlayFrom = { id -> AppGraph.playFrom(Studio.packOf(r, startAt = id)); tab = "play" },
+                    onNudge = { target, dx, dy ->
+                        if (target.startsWith("chapter:")) Studio.edit("Move ${target.removePrefix("chapter:")}") { StoryEditor.nudgeChapter(it, target.removePrefix("chapter:"), dx, dy) }
+                        else Studio.edit("Move scene") { StoryEditor.nudgeScene(it, target, dx, dy) }
+                    },
                 )
                 Legend(Modifier.align(Alignment.BottomStart))
             } else PlayScreen()
@@ -196,7 +204,7 @@ private fun StoryScreen() {
 @Composable
 private fun Legend(modifier: Modifier) {
     Text(
-        "◇ needs an item  + gives  “ reply  ↺ loops  ? nowhere yet · pinch to zoom",
+        "◇ needs an item  + gives  “ reply  ↺ loops  ? nowhere yet · pinch to zoom · hold and drag to move a scene or a chapter",
         style = mono(10, Phosphor.dim),
         modifier = modifier.fillMaxWidth().background(Phosphor.bg.copy(alpha = 0.85f)).padding(horizontal = 10.dp, vertical = 6.dp),
     )

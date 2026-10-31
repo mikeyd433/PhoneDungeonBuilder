@@ -132,8 +132,12 @@ object StoryEditor {
     fun setChapter(r: StoryRows, ids: Set<String>, chapter: String?) =
         r.copy(nodes = r.nodes.map { if (it.id in ids) it.copy(chapter = chapter?.trim()?.takeIf { c -> c.isNotEmpty() }) else it })
 
-    fun renameChapter(r: StoryRows, from: String, to: String) =
-        r.copy(nodes = r.nodes.map { if (it.chapter == from) it.copy(chapter = to.trim().takeIf { c -> c.isNotEmpty() }) else it })
+    fun renameChapter(r: StoryRows, from: String, to: String): StoryRows {
+        val name = to.trim().takeIf { it.isNotEmpty() }
+        val nudge = r.story.laneNudges[from]
+        val lanes = r.story.laneNudges - from + (if (name != null && nudge != null) mapOf(name to nudge) else emptyMap())
+        return r.copy(story = r.story.copy(laneNudges = lanes), nodes = r.nodes.map { if (it.chapter == from) it.copy(chapter = name) else it })
+    }
 
     /**
      * A scene and everything that can ONLY be reached through it — its branch.
@@ -166,6 +170,29 @@ object StoryEditor {
         }
         return branch
     }
+
+    // ---- moving things on the flowchart -----------------------------------------
+
+    /**
+     * Move a box by hand. The layout still decides where everything goes; this
+     * is an offset from that, so a scene added later doesn't land on top of it
+     * and RESET LAYOUT can always take it back.
+     */
+    fun nudgeScene(r: StoryRows, id: String, dx: Float, dy: Float) =
+        r.copy(nodes = r.nodes.map { if (it.id == id) it.copy(nudgeX = it.nudgeX + dx, nudgeY = it.nudgeY + dy) else it })
+
+    /** Move a whole chapter's lane, every scene in it together. */
+    fun nudgeChapter(r: StoryRows, chapter: String, dx: Float, dy: Float): StoryRows {
+        val (x, y) = r.story.laneNudges[chapter]?.let { (it.getOrElse(0) { 0f }) to (it.getOrElse(1) { 0f }) } ?: (0f to 0f)
+        return r.copy(story = r.story.copy(laneNudges = r.story.laneNudges + (chapter to listOf(x + dx, y + dy))))
+    }
+
+    fun resetLayout(r: StoryRows) = r.copy(
+        story = r.story.copy(laneNudges = emptyMap()),
+        nodes = r.nodes.map { if (it.nudgeX == 0f && it.nudgeY == 0f) it else it.copy(nudgeX = 0f, nudgeY = 0f) },
+    )
+
+    fun hasNudges(r: StoryRows) = r.story.laneNudges.isNotEmpty() || r.nodes.any { it.nudgeX != 0f || it.nudgeY != 0f }
 
     /** Remove a scene and everything that hangs off it; nothing is left pointing at it. */
     fun deleteScene(r: StoryRows, id: String): StoryRows {

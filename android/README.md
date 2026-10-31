@@ -25,6 +25,12 @@ phone (LIGHT UP). All of it is `engine/.../car/` — pure, and tested in `CarEdi
 the call holds while the car is editing. The editor's text goes up to L; at XL only the
 terminal grows.
 
+**Moving things on the flowchart:** hold a scene, then drag it; hold empty space inside a
+chapter's frame (or its name) to drag the whole lane. The layout still decides where
+everything goes — a move is an offset on top of it (`nudge_x`/`nudge_y` on the scene,
+`lane_nudges` on the story, phone-only fields), so it undoes like any edit and
+RESET LAYOUT takes them all back. The chapter buttons frame their lane; ALL fits the story.
+
 Recording: tap ● REC on a scene, a speaker line, a reply or a refusal (or FILE… to
 bring one in). Every take is stored as 8 kHz mono WAV (`engine/.../audio/IvrWav.kt`),
 the shape Twilio's Play needs.
@@ -155,7 +161,6 @@ Same routine as the Brenda apps:
 
 - Takes for items (picked up / used up / readback) and the inventory key: not in the phone's editor yet.
 - Sync with Supabase; until then the phone's stories and the web app's drift apart.
-- Nudging boxes on the flowchart by hand. (Chapters do the grouping: each is its own lane.)
 
 - Not yet run on a real phone, the DHU or a car — everything here was built and
   unit-tested on a machine with no device. The car screen was previewed by running
