@@ -30,7 +30,9 @@ lane on the flowchart. A sub-chapter ("+ Sub-chapter in Mike…") is a lane insi
 chapter's lane, stored as a path (`Mike/Path A`): its scenes are still Mike's, move with
 Mike, and are framed by Mike's button as well as their own. A row where all of a
 chapter's scenes sit in the chapter itself (the intro before the split) spans its whole
-lane.
+lane. **CHAPTERS…** (beside the chapter buttons) renames a chapter, puts an existing one
+inside another as a sub-chapter or back out to the top, or removes it
+(`StoryEditor.moveChapter` / `renameChapter`: scenes, sub-chapters and moves go with it).
 
 **Moving things on the flowchart:** hold a scene, then drag it; hold empty space inside a
 chapter's frame (or its name) to drag the whole lane. The layout still decides where

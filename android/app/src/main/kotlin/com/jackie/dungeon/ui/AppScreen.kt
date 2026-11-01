@@ -187,6 +187,7 @@ private fun StoryScreen() {
     var jump by remember { mutableStateOf<String?>(null) }
     var renaming by remember { mutableStateOf(false) }
     var exporting by remember { mutableStateOf(false) }
+    var managing by remember { mutableStateOf(false) }
     val carPresent by CarEdit.present.collectAsStateWithLifecycle()
 
     // In step with the car: what it opens, this opens; what this opens, it goes to.
@@ -246,6 +247,7 @@ private fun StoryScreen() {
                 }
                 // The arrangement: save the one on screen as the default, go back to
                 // the default, or drop every move for the automatic layout.
+                if (chapters.isNotEmpty()) Text("CHAPTERS…", style = mono(13, Phosphor.cyan), modifier = Modifier.border(1.dp, Phosphor.cyan).clickable { managing = true }.padding(horizontal = 10.dp, vertical = 6.dp))
                 if (StoryEditor.layoutChanged(r)) {
                     Text("SAVE AS DEFAULT", style = mono(13, Phosphor.cyan), modifier = Modifier.border(1.dp, Phosphor.cyan).clickable {
                         Studio.edit("Save layout as default") { StoryEditor.saveLayoutAsDefault(it) }
@@ -290,6 +292,7 @@ private fun StoryScreen() {
         ChoiceSheet(r, id, onClose = { choice = null }, onGo = { sid -> choice = null; selected = sid; jump = sid })
     }
     if (exporting) ExportDialog(r) { exporting = false }
+    if (managing) ChaptersDialog(r) { managing = false }
     PlayHereDialog()
     if (renaming) AskText("Name this story", "Rename", r.story.title) { t -> renaming = false; if (t != null) Studio.edit("Rename story") { StoryEditor.setStoryTitle(it, t) } }
 }

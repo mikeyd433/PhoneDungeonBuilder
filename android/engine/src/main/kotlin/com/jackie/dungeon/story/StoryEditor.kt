@@ -131,6 +131,24 @@ object StoryEditor {
         (1..p.size).map { p.take(it).joinToString("/") }
     }.distinct().let { all -> all.filter { !it.contains('/') }.flatMap { top -> listOf(top) + all.filter { it.startsWith("$top/") } } }
 
+    /**
+     * Put a chapter inside another, as a sub-chapter — or, with a null
+     * [newParent], back out to the top level. Everything in it moves: its
+     * scenes, its own sub-chapters, where its lane was moved to. If the new
+     * place already has a chapter of that name, the two become one.
+     */
+    fun moveChapter(r: StoryRows, chapter: String, newParent: String?): StoryRows {
+        val from = FlowLayout.chapterPath(chapter).joinToString("/")
+        val parent = newParent?.let { FlowLayout.chapterPath(it).joinToString("/") }?.takeIf { it.isNotEmpty() }
+        require(parent != from && parent?.startsWith("$from/") != true) { "A chapter can't go inside itself." }
+        val name = from.substringAfterLast('/')
+        return renameChapter(r, from, if (parent == null) name else "$parent/$name")
+    }
+
+    /** Where [chapter] could be moved into: every chapter except itself and its own sub-chapters. */
+    fun chapterHomes(r: StoryRows, chapter: String): List<String> =
+        chapters(r).filter { it != chapter && !it.startsWith("$chapter/") && it != chapter.substringBeforeLast('/', "") }
+
     /** Is this scene in [chapter], directly or in one of its sub-chapters? */
     fun inChapter(n: NodeRow, chapter: String): Boolean {
         val p = FlowLayout.chapterPath(n.chapter).joinToString("/")

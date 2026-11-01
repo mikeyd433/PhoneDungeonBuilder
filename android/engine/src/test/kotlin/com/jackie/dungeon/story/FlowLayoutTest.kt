@@ -2,6 +2,7 @@ package com.jackie.dungeon.story
 
 import com.jackie.dungeon.story.FlowLayout.Edge
 import kotlin.test.Test
+import kotlin.test.assertFailsWith
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
@@ -148,6 +149,23 @@ class FlowLayoutTest {
         // Renaming Mike carries his paths along.
         val renamed = StoryEditor.renameChapter(r, "Mike", "Michael")
         assertTrue(renamed.nodes.any { it.chapter == "Michael/Path A" } && renamed.nodes.none { it.chapter?.startsWith("Mike") == true })
+    }
+
+    @Test
+    fun `an existing chapter can be moved inside another, and back out`() {
+        var r = chaptered()
+        val carterScenes = r.nodes.filter { it.chapter == "Carter" }.map { it.id }.toSet()
+        r = StoryEditor.nudgeChapter(r, "Carter", 50f, 0f)
+        r = StoryEditor.moveChapter(r, "Carter", "Mike")
+        assertTrue(r.nodes.filter { it.id in carterScenes }.all { it.chapter == "Mike/Carter" })
+        assertEquals(listOf(50f, 0f), r.story.laneNudges["Mike/Carter"], "its hand-made move comes with it")
+        val l = FlowLayout.layout(r)
+        val mike = l.chapters.first { it.name == "Mike" }; val inner = l.chapters.first { it.name == "Mike/Carter" }
+        assertTrue(inner.x0 > mike.x0 && inner.x1 < mike.x1)
+        assertTrue(StoryEditor.chapterHomes(r, "Mike").isEmpty(), "Mike can't go inside its own sub-chapter")
+        assertFailsWith<IllegalArgumentException> { StoryEditor.moveChapter(r, "Mike", "Mike/Carter") }
+        r = StoryEditor.moveChapter(r, "Mike/Carter", null)
+        assertTrue(r.nodes.filter { it.id in carterScenes }.all { it.chapter == "Carter" })
     }
 
     @Test

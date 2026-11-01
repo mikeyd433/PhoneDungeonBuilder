@@ -370,6 +370,71 @@ private fun ChapterPicker(rows: StoryRows, id: String, beforeEdit: () -> Unit) {
     }
 }
 
+/**
+ * Every chapter in the story, and what can be done to one: rename it, put it
+ * inside another as a sub-chapter (or bring it back out to the top), or
+ * remove it — its scenes then belong to the chapter it was in, or to none.
+ */
+@Composable
+fun ChaptersDialog(rows: StoryRows, onDone: () -> Unit) {
+    var picked by remember { mutableStateOf<String?>(null) }
+    var moving by remember { mutableStateOf(false) }
+    var renaming by remember { mutableStateOf(false) }
+    val all = StoryEditor.chapters(rows)
+    val ch = picked?.takeIf { it in all }
+    Dialog(onDismissRequest = onDone) {
+        Column(Modifier.border(1.dp, Phosphor.fg).background(Phosphor.bg).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (ch == null) {
+                Text("CHAPTERS", style = body(17, Phosphor.hi))
+                Text("Tap one to rename it, move it inside another, or remove it.", style = body(12, Phosphor.dim))
+                LazyColumn(Modifier.heightIn(max = 380.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    items(all, key = { it }) { c ->
+                        val depth = c.count { it == '/' }
+                        val scenes = rows.nodes.count { StoryEditor.inChapter(it, c) }
+                        PickRow("    ".repeat(depth) + (if (depth > 0) "› " else "") + c.substringAfterLast('/') + "  ·  $scenes scenes", if (depth > 0) Phosphor.cyan else Phosphor.fg) { picked = c; moving = false }
+                    }
+                }
+                Box(Modifier.fillMaxWidth()) { Chip("DONE", true, onClick = onDone) }
+            } else {
+                val parent = ch.substringBeforeLast('/', "")
+                Text(StoryEditor.chapterLabel(ch).uppercase(), style = body(17, Phosphor.hi))
+                if (!moving) {
+                    PickRow("Rename…", Phosphor.fg) { renaming = true }
+                    val homes = StoryEditor.chapterHomes(rows, ch)
+                    if (homes.isNotEmpty()) PickRow("Put it inside another chapter…", Phosphor.fg) { moving = true }
+                    if (parent.isNotEmpty()) PickRow("Make it a main chapter (out of ${StoryEditor.chapterLabel(parent)})", Phosphor.fg) {
+                        Studio.edit("Move ${ch.substringAfterLast('/')} out") { StoryEditor.moveChapter(it, ch, null) }; picked = null
+                    }
+                    PickRow(if (parent.isEmpty()) "Remove the chapter (its scenes keep their place, in no chapter)" else "Remove it (its scenes stay in ${StoryEditor.chapterLabel(parent)})", Phosphor.alert) {
+                        Studio.edit("Remove chapter") { StoryEditor.renameChapter(it, ch, parent) }; picked = null
+                    }
+                } else {
+                    Text("Put ${ch.substringAfterLast('/')} inside:", style = body(13, Phosphor.dim))
+                    LazyColumn(Modifier.heightIn(max = 320.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        items(StoryEditor.chapterHomes(rows, ch), key = { it }) { home ->
+                            PickRow(StoryEditor.chapterLabel(home), Phosphor.fg) {
+                                Studio.edit("Move ${ch.substringAfterLast('/')} into ${home.substringAfterLast('/')}") { StoryEditor.moveChapter(it, ch, home) }
+                                picked = null; moving = false
+                            }
+                        }
+                    }
+                }
+                Box(Modifier.fillMaxWidth()) { Chip("‹ BACK", false) { if (moving) moving = false else picked = null } }
+            }
+        }
+    }
+    if (renaming && ch != null) AskText("Rename ${ch.substringAfterLast('/')}", "Rename", ch.substringAfterLast('/')) { t ->
+        renaming = false
+        val name = t?.replace('/', '-')?.trim()
+        if (!name.isNullOrBlank()) {
+            val parent = ch.substringBeforeLast('/', "")
+            val to = if (parent.isEmpty()) name else "$parent/$name"
+            Studio.edit("Rename chapter") { StoryEditor.renameChapter(it, ch, to) }
+            picked = to
+        }
+    }
+}
+
 @Composable
 fun ScenePicker(rows: StoryRows, title: String, allowNew: Boolean, onDismiss: () -> Unit, onPick: (String?) -> Unit) {
     var query by remember { mutableStateOf("") }
