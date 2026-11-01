@@ -65,6 +65,8 @@ fun Flowchart(
     startScale: Float? = null,
     /** A box ("<scene id>") or a lane ("chapter:<name>") was dragged this far, in layout units. */
     onNudge: (String, Float, Float) -> Unit = { _, _, _ -> },
+    /** What is on screen, in layout units (centre x, centre y, width, height) — for the car to mirror. */
+    onView: (Float, Float, Float, Float) -> Unit = { _, _, _, _ -> },
 ) {
     // What is being dragged right now, and by how much: drawn live, saved on release.
     var drag by remember { mutableStateOf<Pair<String, Offset>?>(null) }
@@ -126,6 +128,7 @@ fun Flowchart(
             }
         }
         if (scale == 0f) return@BoxWithConstraints
+        LaunchedEffect(scale, offset, w, h) { onView((w / 2 - offset.x) / scale, (h / 2 - offset.y) / scale, w / scale, h / scale) }
 
         fun toLayout(p: Offset) = Offset((p.x - offset.x) / scale, (p.y - offset.y) / scale)
 

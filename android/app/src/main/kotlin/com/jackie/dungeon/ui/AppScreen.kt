@@ -273,6 +273,7 @@ private fun StoryScreen() {
                         Studio.editWith("Add choice") { StoryEditor.addChoice(it, id, newScene = true) }?.let { choice = it }
                     },
                     onPlayFrom = { id -> AppGraph.playFrom(Studio.packOf(r, startAt = id)); tab = "play" },
+                    onView = { cx, cy, vw, vh -> CarEdit.phoneView(com.jackie.dungeon.car.PhoneView(cx, cy, vw, vh)) },
                     onNudge = { target, dx, dy ->
                         if (target.startsWith("chapter:")) Studio.edit("Move ${target.removePrefix("chapter:")}") { StoryEditor.nudgeChapter(it, target.removePrefix("chapter:"), dx, dy) }
                         else Studio.edit("Move scene") { StoryEditor.nudgeScene(it, target, dx, dy) }

@@ -124,6 +124,12 @@ object CarEdit {
         _state.value = CarEditor.followChoice(_state.value, base, layoutOf(base), id, viewport)
     }
 
+    /** The phone's flowchart moved: the car's map follows it while mirroring. */
+    fun phoneView(v: com.jackie.dungeon.car.PhoneView) {
+        val s = _state.value
+        if (s.phone != v) _state.value = s.copy(phone = v)
+    }
+
     fun draft(key: String, text: String) { _drafts.value = _drafts.value + (key to text) }
     fun clearDrafts() { if (_drafts.value.isNotEmpty()) _drafts.value = emptyMap() }
 

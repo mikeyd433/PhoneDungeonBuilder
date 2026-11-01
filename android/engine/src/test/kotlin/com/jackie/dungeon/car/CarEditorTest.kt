@@ -10,6 +10,7 @@ import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -186,6 +187,31 @@ class CarEditorTest {
         assertTrue(marks.values.any { Highlight.UNRECORDED in it })
         assertTrue(b.says("UNRECORDED "))
         dump("map-highlights", b)
+    }
+
+    @Test
+    fun `the car's map mirrors the phone's flowchart until the car's own map is moved`() {
+        val b = Bench(william, v)
+        val box = b.layout().boxes.values.last()
+        // The phone shows a 400x900 area around a scene near the bottom.
+        b.s = b.s.copy(phone = PhoneView(box.cx, box.y, 400f, 900f))
+        val cam = CarEditor.camera(b.s, b.layout(), william, v)
+        assertEquals(box.cx, cam.cx)
+        val mapH = v.h - CarView.toolbarBottom(v)
+        assertTrue(400f * cam.zoom <= v.w + 0.5f && 900f * cam.zoom <= mapH + 0.5f, "all of the phone's view fits on the car")
+        // The phone moves: so does the car.
+        b.s = b.s.copy(phone = PhoneView(box.cx + 300f, box.y, 400f, 900f))
+        assertEquals(box.cx + 300f, CarEditor.camera(b.s, b.layout(), william, v).cx)
+        // Dragging the car's map stops it following, and says how to resume.
+        b.go(Action.Pan(30f, 0f))
+        assertFalse(b.s.mirror)
+        assertTrue(b.says("FOLLOW PHONE"))
+        b.s = b.s.copy(phone = PhoneView(0f, 0f, 400f, 900f))
+        assertNotEquals(0f, CarEditor.camera(b.s, b.layout(), william, v).cx)
+        b.tap("FOLLOW PHONE")
+        assertTrue(b.s.mirror)
+        assertEquals(0f, CarEditor.camera(b.s, b.layout(), william, v).cx)
+        dump("map-mirror", b)
     }
 
     @Test

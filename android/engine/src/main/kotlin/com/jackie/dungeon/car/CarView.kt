@@ -211,6 +211,8 @@ object CarView {
             add(Button("VIEW ▾", Action.Menu(listOf("VIEW")), menu = "VIEW", on = s.menu.firstOrNull() == "VIEW", short = "VIEW▾"))
             add(Button("SCENE ▾", Action.Menu(listOf("SCENE")), menu = "SCENE", on = s.menu.firstOrNull() == "SCENE", enabled = s.selected != null, short = "SCENE▾"))
             add(Button("UNDO", Action.Undo, enabled = canUndo))
+            // Moved away from the phone's view: one tap to follow it again.
+            if (!s.mirror && s.phone != null) add(Button("FOLLOW PHONE", Action.Mirror(true), on = true, short = "PHONE"))
         }, title = r.story.title.ifBlank { "Untitled story" }.uppercase())
     }
 
@@ -454,6 +456,7 @@ object CarView {
         when (path.first()) {
             "VIEW" -> when (path.getOrNull(1)) {
                 null -> {
+                    if (s.phone != null) out += Entry("FOLLOW THE PHONE'S MAP", Action.Mirror(!s.mirror), on = s.mirror)
                     out += Entry("FIT WHOLE STORY", Action.Fit)
                     out += Entry("GO TO START", Action.GoStart)
                     out += Entry("ZOOM IN", Action.ZoomBy(1.5f))

@@ -32,6 +32,9 @@ sealed interface Focus {
 /** Where the map is looking: a point in layout units, and source pixels per unit. */
 data class Camera(val cx: Float, val cy: Float, val zoom: Float)
 
+/** What the phone's flowchart has on screen, in layout units: its centre and how much it shows. */
+data class PhoneView(val cx: Float, val cy: Float, val w: Float, val h: Float)
+
 /** The car screen's size in its own (internal) pixels, and one character cell. */
 data class Viewport(val w: Float, val h: Float, val cw: Float, val ch: Float)
 
@@ -60,6 +63,10 @@ data class CarState(
     val menu: List<String> = emptyList(),
     val popup: Popup? = null,
     val highlights: Set<Highlight> = emptySet(),
+    /** The car's map shows what the phone's flowchart shows, until the car's own map is moved. */
+    val mirror: Boolean = true,
+    /** The phone's flowchart view, as last reported. */
+    val phone: PhoneView? = null,
     /** First script row shown on a scene page. */
     val scriptScroll: Int = 0,
     /** First choice tile shown on a scene page. */
@@ -85,6 +92,8 @@ sealed interface Action {
 
     // the map
     data object Fit : Action
+    /** Follow the phone's flowchart again (or stop). */
+    data class Mirror(val on: Boolean) : Action
     data object GoStart : Action
     data class ZoomBy(val factor: Float, val fx: Float? = null, val fy: Float? = null) : Action
     data class Pan(val dx: Float, val dy: Float) : Action
@@ -146,8 +155,24 @@ object CarEditor {
     fun readableZoom(v: Viewport) = READABLE_COLS * v.cw / FlowLayout.W
 
     /** Where the map is looking when nobody has moved it: on the selected scene or the start. */
-    fun camera(s: CarState, layout: FlowLayout.Layout, rows: StoryRows, v: Viewport): Camera =
-        s.camera ?: centred(layout, s.selected ?: rows.story.rootNodeId, readableZoom(v))
+    fun camera(s: CarState, layout: FlowLayout.Layout, rows: StoryRows, v: Viewport): Camera {
+        if (s.mirror && s.phone != null) return mirrored(s.phone, v)
+        return s.camera ?: centred(layout, s.selected ?: rows.story.rootNodeId, readableZoom(v))
+    }
+
+    /**
+     * The phone's view on the car: the same centre, zoomed so that everything
+     * the phone shows fits on the car's map. The shapes differ — a phone is
+     * tall, a car screen wide — so the car shows the same middle with more
+     * around it at the sides.
+     */
+    fun mirrored(p: PhoneView, v: Viewport): Camera {
+        val top = CarView.toolbarBottom(v)
+        val mapH = v.h - top
+        val z = minOf(v.w / p.w.coerceAtLeast(1f), mapH / p.h.coerceAtLeast(1f)).coerceIn(MIN_ZOOM, MAX_ZOOM)
+        // The map's middle is below the toolbar, not the screen's middle.
+        return Camera(p.cx, p.cy - (top / 2) / z, z)
+    }
 
     private fun centred(layout: FlowLayout.Layout, id: String?, zoom: Float): Camera {
         val b = layout.boxes[id] ?: layout.boxes.values.firstOrNull() ?: return Camera(0f, 0f, zoom)
@@ -174,6 +199,8 @@ object CarEditor {
             if (s.scene == sceneId) return s
             return s.copy(scene = sceneId, back = s.back + s.scene, choice = null, scriptScroll = 0, tileScroll = 0, menu = emptyList())
         }
+        // Following the phone's map: the phone moves to it, and the car with the phone.
+        if (s.mirror && s.phone != null) return s.copy(selected = sceneId)
         val zoom = s.camera?.zoom ?: v?.let(::readableZoom) ?: 1f
         return s.copy(selected = sceneId, camera = if (v == null) null else centred(layout, sceneId, zoom))
     }
@@ -214,23 +241,25 @@ object CarEditor {
             is Action.EditOnPhone -> Outcome(closed.copy(popup = Popup.Notice("${a.what}: TYPE IT ON YOUR PHONE")), listOf(Effect.FocusPhone(a.focus)))
             is Action.PlayTake -> Outcome(closed, listOf(Effect.PlayTake(a.path)))
 
-            Action.Fit -> Outcome(closed.copy(camera = fit(layout, v)))
-            Action.GoStart -> Outcome(closed.copy(selected = rows.story.rootNodeId, camera = centred(layout, rows.story.rootNodeId, camera(s, layout, rows, v).zoom)))
+            // Moving the car's own map stops it following the phone's (FOLLOW PHONE brings it back).
+            is Action.Mirror -> Outcome(closed.copy(mirror = a.on, camera = if (a.on) s.camera else camera(s, layout, rows, v)))
+            Action.Fit -> Outcome(closed.copy(camera = fit(layout, v), mirror = false))
+            Action.GoStart -> Outcome(closed.copy(selected = rows.story.rootNodeId, camera = centred(layout, rows.story.rootNodeId, camera(s, layout, rows, v).zoom), mirror = false))
             is Action.ZoomBy -> {
                 val c = camera(s, layout, rows, v)
                 val z = (c.zoom * a.factor).coerceIn(MIN_ZOOM, MAX_ZOOM)
                 // Keep the point under the fingers where it is.
                 val fx = a.fx ?: (v.w / 2); val fy = a.fy ?: (v.h / 2)
                 val wx = c.cx + (fx - v.w / 2) / c.zoom; val wy = c.cy + (fy - v.h / 2) / c.zoom
-                Outcome(closed.copy(camera = Camera(wx - (fx - v.w / 2) / z, wy - (fy - v.h / 2) / z, z)))
+                Outcome(closed.copy(camera = Camera(wx - (fx - v.w / 2) / z, wy - (fy - v.h / 2) / z, z), mirror = false))
             }
             is Action.Pan -> {
                 val c = camera(s, layout, rows, v)
-                Outcome(s.copy(camera = c.copy(cx = c.cx - a.dx / c.zoom, cy = c.cy - a.dy / c.zoom)))
+                Outcome(s.copy(camera = c.copy(cx = c.cx - a.dx / c.zoom, cy = c.cy - a.dy / c.zoom), mirror = false))
             }
             is Action.GoChapter -> {
                 val first = rows.nodes.firstOrNull { StoryEditor.inChapter(it, a.name) }?.id
-                Outcome(closed.copy(selected = first ?: s.selected, camera = first?.let { centred(layout, it, camera(s, layout, rows, v).zoom) } ?: s.camera))
+                Outcome(closed.copy(selected = first ?: s.selected, camera = first?.let { centred(layout, it, camera(s, layout, rows, v).zoom) } ?: s.camera, mirror = false))
             }
             is Action.Toggle -> Outcome(s.copy(highlights = if (a.h in s.highlights) s.highlights - a.h else s.highlights + a.h))
 
