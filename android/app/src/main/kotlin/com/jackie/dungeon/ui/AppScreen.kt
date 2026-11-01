@@ -190,6 +190,17 @@ private fun StoryScreen() {
     var managing by remember { mutableStateOf(false) }
     val carPresent by CarEdit.present.collectAsStateWithLifecycle()
 
+    // The car's mode mirrors the tab: EDIT shows the map, PLAY the terminal. And the
+    // other way: switching on the car (its EDIT tab, PLAY MODE) switches the phone.
+    LaunchedEffect(tab) { CarEdit.setMode(if (tab == "play") com.jackie.dungeon.car.Mode.PLAY else com.jackie.dungeon.car.Mode.EDIT) }
+    val carMode = CarEdit.state.collectAsStateWithLifecycle().value.mode
+    var seenMode by remember { mutableStateOf<com.jackie.dungeon.car.Mode?>(null) }
+    LaunchedEffect(carMode) {
+        // Only a CHANGE on the car moves the tab; the first value is the car catching up with the phone.
+        if (seenMode != null && seenMode != carMode) tab = if (carMode == com.jackie.dungeon.car.Mode.PLAY) "play" else "edit"
+        seenMode = carMode
+    }
+
     // In step with the car: what it opens, this opens; what this opens, it goes to.
     val focus by CarEdit.focus.collectAsStateWithLifecycle()
     var handled by rememberSaveable { mutableStateOf(CarEdit.focus.value?.second ?: 0L) }
@@ -225,7 +236,8 @@ private fun StoryScreen() {
                 }
             }
         }
-        if (carPresent) CarControls(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp))
+        // The phone's EDIT / PLAY tabs are the car's modes too, so only the highlights need a switch here.
+        if (carPresent && tab == "edit") CarControls(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), showMode = false)
         val sync by CloudSync.status.collectAsStateWithLifecycle()
         Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             if (undo.isNotEmpty() && tab == "edit") Text("Undo: ${undo.last().first}", style = mono(11, Phosphor.dim), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))

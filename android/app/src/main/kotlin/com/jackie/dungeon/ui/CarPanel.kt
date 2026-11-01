@@ -43,10 +43,10 @@ private val HIGHLIGHT_COLOR = mapOf(Highlight.EMPTY to Phosphor.warn, Highlight.
  * because they're set once and looked at for a while.
  */
 @Composable
-fun CarControls(modifier: Modifier = Modifier) {
+fun CarControls(modifier: Modifier = Modifier, showMode: Boolean = true) {
     val s by CarEdit.state.collectAsStateWithLifecycle()
     Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (showMode) Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("CAR SCREEN", style = style(18, Phosphor.dim))
             for (m in Mode.entries) {
                 val on = s.mode == m

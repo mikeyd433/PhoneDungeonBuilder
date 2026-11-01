@@ -9,8 +9,9 @@ terminal, with the phone as the keypad. Built the Brenda way — an Android Auto
 *parked app*, not Car App Library templates.
 
 **Editing on the car screen**, while parked: the car has two modes, **PLAY** (the
-terminal) and **EDIT**, switched from a corner tab on the terminal, PLAY MODE on the
-editor's toolbar, or CAR SCREEN PLAY | EDIT on the phone. EDIT is a map of the whole
+terminal) and **EDIT**, and they follow the phone's EDIT / PLAY tabs — switch either
+screen and the other switches with it (the car's corner EDIT tab and PLAY MODE button
+move the phone's tab too; the car preview has its own switch). EDIT is a map of the whole
 story (drag, pinch, or VIEW ▾ to fit, zoom, jump to the start or a chapter) and a
 full-screen page per scene: the script with a ▶ on every recorded part, what the scene
 gives and what is still silent, and the choices as tiles along the bottom (tap the key
