@@ -197,8 +197,10 @@ class CarEditorTest {
         b.s = b.s.copy(phone = PhoneView(box.cx, box.y, 400f, 900f))
         val cam = CarEditor.camera(b.s, b.layout(), william, v)
         assertEquals(box.cx, cam.cx)
-        val mapH = v.h - CarView.toolbarBottom(v)
-        assertTrue(400f * cam.zoom <= v.w + 0.5f && 900f * cam.zoom <= mapH + 0.5f, "all of the phone's view fits on the car")
+        assertEquals(v.w, 400f * cam.zoom, 0.5f, "what spans the phone spans the car")
+        // A scene zoomed in to fill the phone's width fills the car's.
+        val close = CarEditor.mirrored(PhoneView(box.cx, box.y, FlowLayout.W * 1.1f, FlowLayout.W * 2.4f), v)
+        assertTrue(FlowLayout.W * close.zoom > v.w * 0.85f, "the box is ${FlowLayout.W * close.zoom} of ${v.w}")
         // The phone moves: so does the car.
         b.s = b.s.copy(phone = PhoneView(box.cx + 300f, box.y, 400f, 900f))
         assertEquals(box.cx + 300f, CarEditor.camera(b.s, b.layout(), william, v).cx)

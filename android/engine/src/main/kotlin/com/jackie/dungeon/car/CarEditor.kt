@@ -161,28 +161,29 @@ object CarEditor {
     }
 
     /**
-     * The phone's view on the car: the same centre, zoomed so that everything
-     * the phone shows fits on the car's map. The shapes differ — a phone is
-     * tall, a car screen wide — so the car shows the same middle with more
-     * around it at the sides.
+     * The phone's view on the car: the same centre, and the same WIDTH — what
+     * spans the phone spans the car, so a scene zoomed in to fill the phone
+     * fills the car too. The car screen is short and wide, so it shows a band
+     * across the middle of what the phone shows rather than all of its height.
+     * (Fitting the phone's whole height made a phone-filling box a small one
+     * in the middle of the car.)
      */
     fun mirrored(p: PhoneView, v: Viewport): Camera {
         val top = CarView.toolbarBottom(v)
-        val mapH = v.h - top
-        val z = minOf(v.w / p.w.coerceAtLeast(1f), mapH / p.h.coerceAtLeast(1f)).coerceIn(MIN_ZOOM, MAX_ZOOM)
+        val z = (v.w / p.w.coerceAtLeast(1f)).coerceIn(MIN_ZOOM, MAX_ZOOM)
         // The map's middle is below the toolbar, not the screen's middle.
         return Camera(p.cx, p.cy - (top / 2) / z, z)
     }
 
     private fun centred(layout: FlowLayout.Layout, id: String?, zoom: Float): Camera {
         val b = layout.boxes[id] ?: layout.boxes.values.firstOrNull() ?: return Camera(0f, 0f, zoom)
-        return Camera(b.cx, b.y + BOX_H / 2 + 60f, zoom)
+        return Camera(b.cx, b.y + b.h / 2 + 60f, zoom)
     }
 
     private fun fit(layout: FlowLayout.Layout, v: Viewport): Camera {
         if (layout.boxes.isEmpty()) return Camera(0f, 0f, readableZoom(v))
         val x0 = layout.boxes.values.minOf { it.x }; val x1 = layout.boxes.values.maxOf { it.x + FlowLayout.W }
-        val y0 = layout.boxes.values.minOf { it.y }; val y1 = layout.boxes.values.maxOf { it.y + BOX_H }
+        val y0 = layout.boxes.values.minOf { it.y }; val y1 = layout.boxes.values.maxOf { it.bottom }
         val mapH = v.h - CarView.toolbarBottom(v) - v.ch
         val z = minOf((v.w - 2 * v.cw) / (x1 - x0 + 60f), mapH / (y1 - y0 + 80f))
         val cy = (y0 + y1) / 2 - (CarView.toolbarBottom(v) / 2) / z

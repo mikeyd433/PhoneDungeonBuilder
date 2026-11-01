@@ -109,8 +109,8 @@ object CarView {
             b.text(x0 + v.cw * 0.5f, y0 + 2f, fit(c.label.uppercase(), ((x1 - x0) / v.cw - 1).toInt()), Ink.DIM)
         }
 
-        val boxH = CarEditor.BOX_H * z
-        fun bottomOf(choiceId: String) = info.fromOf[choiceId]?.let { layout.boxes[it] }?.let { sy(it.y) + boxH }
+        // Boxes are the phone flowchart's own size, so the car's map lines up with the phone's.
+        fun bottomOf(choiceId: String) = info.fromOf[choiceId]?.let { layout.boxes[it] }?.let { sy(it.bottom) }
         fun route(x0: Float, y0: Float, to: String?, ink: Ink) {
             val t = to?.let { layout.boxes[it] } ?: return
             val tx = sx(t.cx); val ty = sy(t.y)
@@ -152,7 +152,7 @@ object CarView {
         val root = r.story.rootNodeId
         for (n in r.nodes) {
             val box = layout.boxes[n.id] ?: continue
-            val x = sx(box.x); val y = sy(box.y); val w = FlowLayout.W * z; val h = boxH
+            val x = sx(box.x); val y = sy(box.y); val w = FlowLayout.W * z; val h = box.h * z
             if (!inView(x - 8, y - 8, x + w + 8, y + h + 8)) continue
             info.marks[n.id]?.forEachIndexed { i, m ->
                 val g = 2f + i * 2.5f
