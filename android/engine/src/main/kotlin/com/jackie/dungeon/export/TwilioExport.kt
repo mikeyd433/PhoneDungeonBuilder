@@ -65,15 +65,7 @@ object TwilioExport {
             }
             else -> supabaseBase.trimEnd('/') + "/" + path
         }
-        val r = rows.copy(
-            story = rows.story.copy(inventoryIntroAudioPath = url(rows.story.inventoryIntroAudioPath), inventoryEmptyAudioPath = url(rows.story.inventoryEmptyAudioPath)),
-            nodes = rows.nodes.map { it.copy(audioPath = url(it.audioPath)) },
-            choices = rows.choices.map { it.copy(audioPath = url(it.audioPath)) },
-            gates = rows.gates.map { it.copy(failAudioPath = url(it.failAudioPath)) },
-            dialogueLines = rows.dialogueLines.map { it.copy(audioPath = url(it.audioPath)) },
-            stateVars = rows.stateVars.map { it.copy(audioPath = url(it.audioPath), gainAudioPath = url(it.gainAudioPath), spendAudioPath = url(it.spendAudioPath)) },
-            fightRounds = rows.fightRounds.map { it.copy(audioPath = url(it.audioPath)) },
-        )
+        val r = rows.mapAudio { url(it) }
         return Prepared(r, files)
     }
 

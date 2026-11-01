@@ -42,6 +42,13 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.jackie.dungeon.AppGraph
+import com.jackie.dungeon.Backups
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import com.jackie.dungeon.CarEdit
 import com.jackie.dungeon.car.Focus
 import com.jackie.dungeon.Studio
@@ -76,6 +83,30 @@ private fun StoriesScreen() {
     val stories by Studio.stories.collectAsStateWithLifecycle()
     var naming by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var busy by remember { mutableStateOf<String?>(null) }
+    var opened by remember { mutableStateOf<Backups.Opened?>(null) }
+    var stamp by remember { mutableStateOf(0) } // re-reads the "backed up" lines after a backup
+    fun backUp(ids: List<String>) {
+        busy = if (ids.size == 1) "Backing up…" else "Backing up ${ids.size} stories…"
+        scope.launch {
+            val files = withContext(Dispatchers.IO) {
+                runCatching { ids.mapNotNull { Studio.load(it) }.map { Backups.make(context, it) } }
+            }
+            busy = null; stamp++
+            files.onSuccess { if (it.isNotEmpty()) Backups.share(context, it) }.onFailure { Studio.reportError("The backup failed: ${it.message}") }
+        }
+    }
+    val pick = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        busy = "Reading the backup…"
+        scope.launch {
+            val r = withContext(Dispatchers.IO) { runCatching { Backups.open(context, uri) } }
+            busy = null
+            r.onSuccess { opened = it }.onFailure { Studio.reportError(it.message ?: "That file couldn't be read.") }
+        }
+    }
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("JACKIE DUNGEON", style = style(32, Phosphor.hi))
         Text("Your stories, on this phone.", style = mono(13, Phosphor.dim))
@@ -85,17 +116,60 @@ private fun StoriesScreen() {
                     Column(Modifier.weight(1f)) {
                         Text(s.title.ifBlank { "Untitled story" }, style = style(24, Phosphor.fg), maxLines = 2, overflow = TextOverflow.Ellipsis)
                         Text("${s.scenes} scenes", style = mono(12, Phosphor.dim))
+                        val last = remember(s.id, stamp) { Backups.lastBackup(context, s.id) }
+                        Text(if (last == 0L) "never backed up" else "backed up " + android.text.format.DateUtils.getRelativeTimeSpanString(last),
+                            style = mono(12, if (last == 0L || System.currentTimeMillis() - last > 7L * 86_400_000) Phosphor.warn else Phosphor.dim))
                     }
+                    Text("back up", style = mono(12, Phosphor.cyan), modifier = Modifier.clickable { backUp(listOf(s.id)) }.padding(8.dp))
                     Text("delete", style = mono(12, Phosphor.dim), modifier = Modifier.clickable { deleting = s.id }.padding(8.dp))
                 }
             }
         }
+        busy?.let { Text(it, style = mono(13, Phosphor.cyan)) }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button("BACK UP ALL", Modifier.weight(1f)) { backUp(stories.map { it.id }) }
+            Button("RESTORE…", Modifier.weight(1f)) { pick.launch(arrayOf("application/zip", "application/octet-stream", "application/x-zip-compressed", "*/*")) }
+        }
         Button("+ NEW STORY", Modifier.fillMaxWidth(), primary = true) { naming = true }
     }
+    opened?.let { o -> RestoreDialog(o, onDone = { opened = null }) }
     if (naming) AskText("Name the new story", "Create") { t -> naming = false; if (t != null) Studio.create(t) }
     deleting?.let { id ->
         val title = stories.firstOrNull { it.id == id }?.title ?: ""
         Confirm("Delete \"$title\" from this phone? This can't be undone.", "Delete") { yes -> deleting = null; if (yes) Studio.deleteStory(id) }
+    }
+}
+
+/** What's in the backup, and — when this phone has the same story — replace it or keep both. */
+@Composable
+private fun RestoreDialog(o: Backups.Opened, onDone: () -> Unit) {
+    val context = LocalContext.current
+    val m = o.manifest
+    val here = remember(o) { Studio.exists(o.rows.story.id) }
+    val scope = rememberCoroutineScope()
+    fun go(asCopy: Boolean) {
+        scope.launch {
+            // Copying the takes is file work: off the main thread, then open the story.
+            withContext(Dispatchers.IO) { runCatching { Backups.restore(context, o, asCopy) } }
+                .onSuccess { Studio.install(it) }.onFailure { Studio.reportError("The restore failed: ${it.message}") }
+            onDone()
+        }
+    }
+    Dialog(onDismissRequest = onDone) {
+        Column(Modifier.border(1.dp, Phosphor.fg).background(Phosphor.bg).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("RESTORE “${m.title.ifBlank { "Untitled story" }.uppercase()}”", style = style(22, Phosphor.hi))
+            Text("${m.scenes} scenes · ${m.takes} recordings · saved ${m.savedAt}", style = mono(13, Phosphor.dim))
+            if (m.missingTakes > 0) Text("${m.missingTakes} recordings were already missing when it was backed up.", style = mono(12, Phosphor.warn))
+            if (here) {
+                Text("This phone already has this story. Replace it with the backup, or keep both?", style = mono(14, Phosphor.fg))
+                Button("REPLACE THE ONE HERE", Modifier.fillMaxWidth()) { go(asCopy = false) }
+                Button("KEEP BOTH", Modifier.fillMaxWidth(), primary = true) { go(asCopy = true) }
+                Button("CANCEL", Modifier.fillMaxWidth()) { onDone() }
+            } else Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button("CANCEL", Modifier.weight(1f)) { onDone() }
+                Button("RESTORE", Modifier.weight(1f), primary = true) { go(asCopy = false) }
+            }
+        }
     }
 }
 

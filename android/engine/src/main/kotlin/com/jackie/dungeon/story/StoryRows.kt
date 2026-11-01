@@ -47,6 +47,27 @@ data class StoryRows(
     }
 
     fun encode(): String = json.encodeToString(serializer(), this)
+
+    /**
+     * Every take in the story, in one place: [f] maps each audio path (and
+     * only non-empty ones). The Twilio export and the backup both walk this,
+     * so a new kind of take only needs adding here.
+     */
+    fun mapAudio(f: (String) -> String?): StoryRows {
+        fun m(p: String?) = if (p.isNullOrEmpty()) p else f(p)
+        return copy(
+            story = story.copy(inventoryIntroAudioPath = m(story.inventoryIntroAudioPath), inventoryEmptyAudioPath = m(story.inventoryEmptyAudioPath)),
+            nodes = nodes.map { it.copy(audioPath = m(it.audioPath)) },
+            choices = choices.map { it.copy(audioPath = m(it.audioPath)) },
+            gates = gates.map { it.copy(failAudioPath = m(it.failAudioPath)) },
+            dialogueLines = dialogueLines.map { it.copy(audioPath = m(it.audioPath)) },
+            stateVars = stateVars.map { it.copy(audioPath = m(it.audioPath), gainAudioPath = m(it.gainAudioPath), spendAudioPath = m(it.spendAudioPath)) },
+            fightRounds = fightRounds.map { it.copy(audioPath = m(it.audioPath)) },
+        )
+    }
+
+    /** Every audio path in the story, in the order [mapAudio] visits them. */
+    fun audioPaths(): List<String> { val out = ArrayList<String>(); mapAudio { out += it; it }; return out }
 }
 
 @Serializable

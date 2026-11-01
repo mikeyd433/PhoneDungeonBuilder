@@ -79,6 +79,17 @@ undo stack, saves, and hands the player a fresh pack built by `PackBuilder`.
 build exactly the pack `buildStoryPack` built, and split every script exactly as
 `splitNarration` did.
 
+## Backing up
+
+Stories live on the phone, so the stories list backs them up: **back up** on a story
+(or **BACK UP ALL**) makes one `.jdbackup.zip` per story — `backup.json`, `rows.json`
+and every take recorded on the phone under `takes/` — and hands it to the share sheet
+(Drive, email, Files). **RESTORE…** picks one back up on any phone; if that phone
+already has the story, replace it or keep both. Takes from the Supabase bucket stay as
+links. Each story says when it was last backed up, in amber after a week. The format
+is `engine/.../story/Backup.kt` (`BackupTest`), the zipping `app/.../Backups.kt`
+(`BackupsTest`, Robolectric). This is a stopgap until Supabase sync.
+
 ## How a story gets here
 
 The app ships with **William Son of Joel** (what it opens with), the **JCFC Hotline**

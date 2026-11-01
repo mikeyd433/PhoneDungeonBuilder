@@ -96,6 +96,21 @@ object Studio {
         open(rows.story.id)
     }
 
+    fun exists(id: String) = file(id).exists()
+
+    /** The saved rows of a story on this phone (not just the open one), for backing up. */
+    fun load(id: String): StoryRows? = runCatching { StoryRows.parse(file(id).readText()) }.getOrNull()
+
+    /** A restored story: saved into the library (replacing one with the same id) and opened. */
+    fun install(rows: StoryRows) {
+        file(rows.story.id).writeText(rows.encode())
+        if (_rows.value?.story?.id == rows.story.id) _rows.value = null
+        refreshList()
+        open(rows.story.id)
+    }
+
+    fun reportError(message: String) { _error.value = message }
+
     fun deleteStory(id: String) {
         file(id).delete()
         if (_rows.value?.story?.id == id) _rows.value = null
