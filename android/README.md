@@ -198,6 +198,16 @@ Needs JDK 17+ and the Android SDK (`local.properties` → `sdk.dir=…`, git-ign
   builds, turn on Android Auto's developer settings and enable **Unknown sources**,
   or the app won't appear on the car screen.
 
+## Renderer performance
+
+The car screen redraws its offscreen terminal (pass 1) only when what it shows changes —
+a new line typed, the cursor blinking, an edit — keyed on the screen state; otherwise a
+frame is just the CRT pass over the texture already there. Vertices are written into a
+plain float array and handed to GL in one copy; uniform locations are looked up once.
+The rolling bar and the flicker are worked out on the CPU in double precision and
+passed in as small numbers: computed in the shader from a seconds-since-start clock,
+mediump precision made the bar move in visible steps.
+
 ## Release
 
 Same routine as the Brenda apps:

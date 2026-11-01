@@ -193,7 +193,7 @@ private fun StoryScreen() {
     // The car's mode mirrors the tab: EDIT shows the map, PLAY the terminal. And the
     // other way: switching on the car (its EDIT tab, PLAY MODE) switches the phone.
     LaunchedEffect(tab) { CarEdit.setMode(if (tab == "play") com.jackie.dungeon.car.Mode.PLAY else com.jackie.dungeon.car.Mode.EDIT) }
-    val carMode = CarEdit.state.collectAsStateWithLifecycle().value.mode
+    val carMode = CarEdit.mode.collectAsStateWithLifecycle().value
     var seenMode by remember { mutableStateOf<com.jackie.dungeon.car.Mode?>(null) }
     LaunchedEffect(carMode) {
         // Only a CHANGE on the car moves the tab; the first value is the car catching up with the phone.

@@ -22,8 +22,8 @@ android {
         applicationId = "com.jackie.dungeon"
         minSdk = 26
         targetSdk = 36
-        versionCode = 21
-        versionName = "0.21.0"
+        versionCode = 22
+        versionName = "0.22.0"
     }
 
     signingConfigs {

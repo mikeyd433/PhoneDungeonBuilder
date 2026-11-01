@@ -44,12 +44,13 @@ private val HIGHLIGHT_COLOR = mapOf(Highlight.EMPTY to Phosphor.warn, Highlight.
  */
 @Composable
 fun CarControls(modifier: Modifier = Modifier, showMode: Boolean = true) {
-    val s by CarEdit.state.collectAsStateWithLifecycle()
+    val mode by CarEdit.mode.collectAsStateWithLifecycle()
+    val lit by CarEdit.highlights.collectAsStateWithLifecycle()
     Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         if (showMode) Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("CAR SCREEN", style = style(18, Phosphor.dim))
             for (m in Mode.entries) {
-                val on = s.mode == m
+                val on = mode == m
                 Box(
                     Modifier.weight(1f).border(1.dp, if (on) Phosphor.fg else Phosphor.line).background(if (on) Phosphor.fg else Phosphor.panel)
                         .clickable { CarEdit.setMode(m) }.semantics { contentDescription = "Car screen ${m.name.lowercase()}" }.padding(vertical = 6.dp),
@@ -57,10 +58,10 @@ fun CarControls(modifier: Modifier = Modifier, showMode: Boolean = true) {
                 ) { Text(m.name, style = style(20, if (on) Phosphor.bg else Phosphor.fg)) }
             }
         }
-        if (s.mode == Mode.EDIT) Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (mode == Mode.EDIT) Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("LIGHT UP", style = mono(11, Phosphor.dim))
             for (h in Highlight.entries) {
-                val on = h in s.highlights
+                val on = h in lit
                 Row(Modifier.clickable { CarEdit.toggle(h) }.semantics { contentDescription = "Highlight ${h.label.lowercase()}" }.padding(vertical = 4.dp),
                     horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(if (on) "▣" else "□", style = mono(16, HIGHLIGHT_COLOR.getValue(h)))
@@ -77,9 +78,9 @@ fun CarControls(modifier: Modifier = Modifier, showMode: Boolean = true) {
  */
 @Composable
 fun PlayHereDialog() {
-    val s by CarEdit.state.collectAsStateWithLifecycle()
+    val popup by CarEdit.popup.collectAsStateWithLifecycle()
     val rows by Studio.rows.collectAsStateWithLifecycle()
-    val p = s.popup as? Popup.PlayHere ?: return
+    val p = popup as? Popup.PlayHere ?: return
     val r = rows ?: return
     Dialog(onDismissRequest = { CarEdit.dispatch(Action.Dismiss) }) {
         Column(Modifier.border(1.dp, Phosphor.fg).background(Phosphor.bg).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {

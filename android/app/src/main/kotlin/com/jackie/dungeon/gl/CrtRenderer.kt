@@ -61,13 +61,29 @@ class CrtRenderer(private val context: Context, private val fps: Int = 30, priva
     private var outH = 1
     private lateinit var atlas: GlyphAtlas
     private var verts: FloatBuffer = alloc(4096)
+    /** This frame's vertices, written as plain floats and handed to GL in one copy. */
+    private var stage = FloatArray(4096)
+    private var sp = 0
     private val uv = FloatArray(4)
+    // Uniform locations, looked up once per surface rather than every frame.
+    private var uRes = -1; private var uAtlas = -1
+    private var uTex = -1; private var uSrc = -1; private var uBar = -1; private var uFlick = -1
+    /**
+     * What the offscreen terminal last drew. Pass 1 is only redone when this
+     * changes — while nothing is typing, blinking or being edited, a frame is
+     * just the CRT pass over the texture already there.
+     */
+    private var drawnKey: Any? = null
     private val startNs = System.nanoTime()
     private var lastFrameNs = 0L
 
     override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
         textProgram = program(TEXT_VS, TEXT_FS)
         crtProgram = program(CRT_VS, CRT_FS)
+        uRes = glGetUniformLocation(textProgram, "uRes"); uAtlas = glGetUniformLocation(textProgram, "uAtlas")
+        uTex = glGetUniformLocation(crtProgram, "uTex"); uSrc = glGetUniformLocation(crtProgram, "uSrc")
+        uBar = glGetUniformLocation(crtProgram, "uBar"); uFlick = glGetUniformLocation(crtProgram, "uFlick")
+        drawnKey = null
         atlasTex = 0
         buildAtlas(AppGraph.carTextSize)
 
@@ -95,6 +111,7 @@ class CrtRenderer(private val context: Context, private val fps: Int = 30, priva
         glBindFramebuffer(GL_FRAMEBUFFER, fbo)
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, fboTex, 0)
         glBindFramebuffer(GL_FRAMEBUFFER, 0)
+        drawnKey = null // a new texture is empty
     }
 
     /** The text size the atlas was drawn at; rebuilt when the phone changes it. */
@@ -123,11 +140,44 @@ class CrtRenderer(private val context: Context, private val fps: Int = 30, priva
         val editing = CarEdit.state.value.mode == Mode.EDIT && Studio.rows.value != null
         // The editor tops out at L: at XL its toolbar and tiles leave the script one row.
         val size = if (editing) minOf(AppGraph.carTextSize, 2) else AppGraph.carTextSize
-        if (size != builtSize) buildAtlas(size)
-        val time = ((System.nanoTime() - startNs) / 1e9f) % 1000f
-        val count = if (editing) buildEdit() else buildText(AppGraph.screen, time)
+        if (size != builtSize) { buildAtlas(size); drawnKey = null }
+        // Seconds since start in a double: as a float it loses its fractions within
+        // minutes, and anything driven by it starts to move in steps.
+        val seconds = (System.nanoTime() - startNs) / 1e9
+        val time = (seconds % 1000.0).toFloat()
+        val key: Any = if (editing) EditKey(CarEdit.state.value, Studio.rows.value, CarEdit.drafts.value, Studio.undo.value.isEmpty(), srcW, srcH, builtSize)
+        else TextKey(AppGraph.screen, ((seconds * 2).toLong() % 2).toInt(), Studio.rows.value != null, srcW, srcH, builtSize)
+        if (key != drawnKey) {
+            val count = if (editing) buildEdit() else buildText(AppGraph.screen, time)
+            drawText(count)
+            drawnKey = key
+        }
 
-        // Pass 1: the terminal, small.
+        // Pass 2: through the glass. The rolling bar's position and the flicker are
+        // worked out here in double precision and handed over as small numbers —
+        // computed on the GPU from the clock they stepped visibly at mediump precision.
+        glBindFramebuffer(GL_FRAMEBUFFER, 0)
+        glViewport(0, 0, outW, outH)
+        glClearColor(0f, 0f, 0f, 1f)
+        glClear(GL_COLOR_BUFFER_BIT)
+        glUseProgram(crtProgram)
+        glActiveTexture(GL_TEXTURE0)
+        glBindTexture(GL_TEXTURE_2D, fboTex)
+        glUniform1i(uTex, 0)
+        glUniform2f(uSrc, srcW.toFloat(), srcH.toFloat())
+        val bar = 1.0 - ((seconds * 0.06) % 1.0)
+        glUniform1f(uBar, bar.toFloat())
+        glUniform1f(uFlick, (0.975 + 0.025 * kotlin.math.sin((seconds * 57.0) % (2 * Math.PI))).toFloat())
+        glBindBuffer(GL_ARRAY_BUFFER, 0)
+        glDisableVertexAttribArray(0)
+        glDrawArrays(GL_TRIANGLES, 0, 3)
+    }
+
+    private data class TextKey(val screen: Screen, val blink: Int, val tab: Boolean, val w: Int, val h: Int, val size: Int)
+    private data class EditKey(val state: Any, val rows: Any?, val drafts: Any, val noUndo: Boolean, val w: Int, val h: Int, val size: Int)
+
+    /** Pass 1: the terminal (or the editor), small, into the offscreen texture. */
+    private fun drawText(count: Int) {
         glBindFramebuffer(GL_FRAMEBUFFER, fbo)
         glViewport(0, 0, srcW, srcH)
         glClearColor(0.012f, 0.035f, 0.016f, 1f)
@@ -135,12 +185,13 @@ class CrtRenderer(private val context: Context, private val fps: Int = 30, priva
         glEnable(GL_BLEND)
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
         glUseProgram(textProgram)
-        glUniform2f(glGetUniformLocation(textProgram, "uRes"), srcW.toFloat(), srcH.toFloat())
+        glUniform2f(uRes, srcW.toFloat(), srcH.toFloat())
         glActiveTexture(GL_TEXTURE0)
         glBindTexture(GL_TEXTURE_2D, atlasTex)
-        glUniform1i(glGetUniformLocation(textProgram, "uAtlas"), 0)
+        glUniform1i(uAtlas, 0)
         glBindBuffer(GL_ARRAY_BUFFER, vbo)
-        verts.position(0)
+        if (verts.capacity() < sp) verts = alloc(maxOf(sp, verts.capacity() * 2))
+        verts.clear(); verts.put(stage, 0, sp); verts.position(0)
         glBufferData(GL_ARRAY_BUFFER, count * STRIDE * 4, verts, GL_STREAM_DRAW)
         glEnableVertexAttribArray(0); glVertexAttribPointer(0, 2, GL_FLOAT, false, STRIDE * 4, 0)
         glEnableVertexAttribArray(1); glVertexAttribPointer(1, 2, GL_FLOAT, false, STRIDE * 4, 2 * 4)
@@ -148,20 +199,6 @@ class CrtRenderer(private val context: Context, private val fps: Int = 30, priva
         if (count > 0) glDrawArrays(GL_TRIANGLES, 0, count)
         glDisableVertexAttribArray(1); glDisableVertexAttribArray(2)
         glDisable(GL_BLEND)
-
-        // Pass 2: through the glass.
-        glBindFramebuffer(GL_FRAMEBUFFER, 0)
-        glViewport(0, 0, outW, outH)
-        glClearColor(0f, 0f, 0f, 1f)
-        glClear(GL_COLOR_BUFFER_BIT)
-        glUseProgram(crtProgram)
-        glBindTexture(GL_TEXTURE_2D, fboTex)
-        glUniform1i(glGetUniformLocation(crtProgram, "uTex"), 0)
-        glUniform2f(glGetUniformLocation(crtProgram, "uSrc"), srcW.toFloat(), srcH.toFloat())
-        glUniform1f(glGetUniformLocation(crtProgram, "uTime"), time)
-        glBindBuffer(GL_ARRAY_BUFFER, 0)
-        glDisableVertexAttribArray(0)
-        glDrawArrays(GL_TRIANGLES, 0, 3)
     }
 
     // ---- the terminal, as quads ------------------------------------------------
@@ -171,7 +208,7 @@ class CrtRenderer(private val context: Context, private val fps: Int = 30, priva
     /** Fills [verts] with this frame's characters; returns the vertex count. */
     private fun buildText(s: Screen, time: Float): Int {
         n = 0
-        verts.clear()
+        sp = 0
         val cw = atlas.cellW; val ch = atlas.cellH
         val cols = (srcW / cw - 2).coerceAtLeast(10)
         // The corner tab back to EDIT, when there's a story to edit.
@@ -252,7 +289,7 @@ class CrtRenderer(private val context: Context, private val fps: Int = 30, priva
 
     private fun buildEdit(): Int {
         n = 0
-        verts.clear()
+        sp = 0
         CarEdit.render(viewport())?.let(::draw)
         return n
     }
@@ -269,9 +306,20 @@ class CrtRenderer(private val context: Context, private val fps: Int = 30, priva
 
     private fun fill(x: Float, y: Float, w: Float, h: Float, rgb: FloatArray) {
         atlas.solid(uv)
-        if (verts.remaining() < 6 * STRIDE) grow()
-        fun v(px: Float, py: Float) { verts.put(px).put(py).put(uv[0]).put(uv[1]).put(rgb[0]).put(rgb[1]).put(rgb[2]).put(1f) }
-        v(x, y); v(x + w, y); v(x, y + h); v(x + w, y); v(x + w, y + h); v(x, y + h)
+        quad(x, y, w, h, uv[0], uv[1], uv[0], uv[1], rgb[0], rgb[1], rgb[2])
+    }
+
+    /** Two triangles into [stage]: no buffer calls per float, no allocation once it has grown. */
+    private fun quad(x: Float, y: Float, w: Float, h: Float, u0: Float, v0: Float, u1: Float, v1: Float, r: Float, g: Float, b: Float) {
+        if (sp + 6 * STRIDE > stage.size) stage = stage.copyOf(stage.size * 2)
+        val a = stage
+        var i = sp
+        fun v(px: Float, py: Float, u: Float, vv: Float) {
+            a[i] = px; a[i + 1] = py; a[i + 2] = u; a[i + 3] = vv; a[i + 4] = r; a[i + 5] = g; a[i + 6] = b; a[i + 7] = 1f; i += STRIDE
+        }
+        v(x, y, u0, v0); v(x + w, y, u1, v0); v(x, y + h, u0, v1)
+        v(x + w, y, u1, v0); v(x + w, y + h, u1, v1); v(x, y + h, u0, v1)
+        sp = i
         n += 6
     }
 
@@ -304,17 +352,7 @@ class CrtRenderer(private val context: Context, private val fps: Int = 30, priva
 
     private fun glyph(c: Char, x: Float, y: Float, w: Float, h: Float, rgb: FloatArray, k: Float) {
         atlas.uv(c, uv)
-        if (verts.remaining() < 6 * STRIDE) grow()
-        val r = rgb[0] * k; val g = rgb[1] * k; val b = rgb[2] * k
-        fun v(px: Float, py: Float, u: Float, vv: Float) { verts.put(px).put(py).put(u).put(vv).put(r).put(g).put(b).put(1f) }
-        v(x, y, uv[0], uv[1]); v(x + w, y, uv[2], uv[1]); v(x, y + h, uv[0], uv[3])
-        v(x + w, y, uv[2], uv[1]); v(x + w, y + h, uv[2], uv[3]); v(x, y + h, uv[0], uv[3])
-        n += 6
-    }
-
-    private fun grow() {
-        val bigger = alloc(verts.capacity() * 2)
-        verts.flip(); bigger.put(verts); verts = bigger
+        quad(x, y, w, h, uv[0], uv[1], uv[2], uv[3], rgb[0] * k, rgb[1] * k, rgb[2] * k)
     }
 
     private fun colour(kind: Kind, voice: Int): FloatArray = when (kind) {
@@ -412,7 +450,8 @@ precision mediump float;
 in vec2 vUv;
 uniform sampler2D uTex;
 uniform vec2 uSrc;
-uniform float uTime;
+uniform float uBar;    // where the rolling band is, 0..1, worked out on the CPU
+uniform float uFlick;  // this frame's brightness, 0.95..1
 out vec4 o;
 
 vec2 bulge(vec2 uv) {
@@ -448,9 +487,9 @@ void main() {
     c *= e.x * e.y;
 
     // A slow bright band rolling down, and the faintest flicker.
-    float bar = 1.0 - smoothstep(0.0, 0.07, abs(fract(1.0 - uTime * 0.06) - uv.y));
+    float bar = 1.0 - smoothstep(0.0, 0.07, abs(uBar - uv.y));
     c += vec3(0.015, 0.05, 0.025) * bar;
-    c *= 0.975 + 0.025 * sin(uTime * 57.0);
+    c *= uFlick;
 
     o = vec4(c, 1.0);
 }"""

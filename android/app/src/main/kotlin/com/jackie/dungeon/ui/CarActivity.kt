@@ -83,7 +83,7 @@ class CarActivity : ComponentActivity() {
         // The call runs only while this screen shows it: in PLAY, not while editing.
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.RESUMED) {
-                CarEdit.state.map { it.mode }.distinctUntilChanged().collect { m -> AppGraph.setShowing(screenKey, m == Mode.PLAY) }
+                CarEdit.mode.collect { m -> AppGraph.setShowing(screenKey, m == Mode.PLAY) }
             }
         }
         if (!preview) {
@@ -139,12 +139,12 @@ class CarActivity : ComponentActivity() {
  */
 @androidx.compose.runtime.Composable
 private fun PreviewPanel() {
-    val s by CarEdit.state.collectAsStateWithLifecycle()
+    val mode by CarEdit.mode.collectAsStateWithLifecycle()
     val rows by Studio.rows.collectAsStateWithLifecycle()
     val focus by CarEdit.focus.collectAsStateWithLifecycle()
     androidx.compose.foundation.layout.Column(Modifier.width(320.dp).fillMaxHeight().padding(12.dp)) {
         CarControls()
-        if (s.mode == Mode.PLAY || rows == null) {
+        if (mode == Mode.PLAY || rows == null) {
             Keypad(Modifier.weight(1f).padding(top = 8.dp), compact = true)
             CarTextSize(Modifier.padding(top = 8.dp))
         } else Box(Modifier.weight(1f).padding(top = 8.dp)) {

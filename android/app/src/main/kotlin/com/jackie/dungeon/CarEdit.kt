@@ -16,8 +16,15 @@ import com.jackie.dungeon.car.Popup
 import com.jackie.dungeon.car.Viewport
 import com.jackie.dungeon.story.FlowLayout
 import com.jackie.dungeon.story.StoryRows
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 
 /**
  * The car screen's editor, shared by the car, the phone and the preview —
@@ -36,6 +43,16 @@ object CarEdit {
 
     private val _state = MutableStateFlow(CarState())
     val state: StateFlow<CarState> = _state
+
+    // Narrow views of the state, for the phone's screens. The full state changes on
+    // every frame of a flowchart pan (the car mirrors it); a screen that only needs
+    // the mode, the highlights or the popup shouldn't recompose for that.
+    private val scope = CoroutineScope(Dispatchers.Main.immediate + SupervisorJob())
+    private fun <T> slice(f: (CarState) -> T): StateFlow<T> =
+        _state.map { f(it) }.distinctUntilChanged().stateIn(scope, SharingStarted.Eagerly, f(_state.value))
+    val mode: StateFlow<Mode> by lazy { slice { it.mode } }
+    val highlights: StateFlow<Set<Highlight>> by lazy { slice { it.highlights } }
+    val popup: StateFlow<Popup?> by lazy { slice { it.popup } }
 
     /** What the phone should open now, with a counter so the same thing twice still counts. */
     private val _focus = MutableStateFlow<Pair<Focus, Long>?>(null)
