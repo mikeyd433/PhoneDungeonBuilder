@@ -33,6 +33,10 @@ SAVE AS DEFAULT makes the arrangement on screen the one BACK TO DEFAULT returns 
 (`stories.layout_home`); AUTO LAYOUT drops every move and the default. The chapter
 buttons frame their lane; ALL fits the story.
 
+**Deleting a scene joins up its neighbours:** the choices that led into it lead on to
+where it went (`StoryEditor.deleteScene`). One way on joins by itself; with several,
+DELETE asks which, or leaves them leading nowhere yet. Undo brings it all back.
+
 **Choices that need items:** NEEDS takes one item or several, and with several,
 "any one of these" or "all of these" (an `or` / `and` of `has` — the same gate the web
 app writes). If the caller doesn't have it: refuse and stay, or go to another scene —

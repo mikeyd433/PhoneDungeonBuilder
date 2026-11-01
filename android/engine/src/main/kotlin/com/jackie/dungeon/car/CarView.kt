@@ -483,7 +483,19 @@ object CarView {
                         val kind = if (n.nodeType == "ending") n.endingKind ?: "death" else "room"
                         for ((k, t) in listOf("room" to "NOT AN ENDING", "death" to "ENDS: DEATH", "win" to "ENDS: WIN")) out += Entry(t, Action.SetEnding(n.id, k), on = kind == k)
                     }
-                    "DELETE" -> out += Entry("YES, DELETE “${fit(n.title.ifBlank { n.slug }.uppercase(), 20)}”", Action.DeleteScene(n.id))
+                    "DELETE" -> {
+                        // What led into it can lead on to where it went: one way on joins up
+                        // by itself; with several, the author picks which.
+                        val on = StoryEditor.onward(r, n.id)
+                        val inCount = StoryEditor.into(r, n.id).size
+                        when {
+                            inCount == 0 || on.isEmpty() -> out += Entry("YES, DELETE “${fit(n.title.ifBlank { n.slug }.uppercase(), 20)}”", Action.DeleteScene(n.id))
+                            else -> {
+                                on.forEach { t -> out += Entry("DELETE, JOIN TO ${fit(sceneName(r, t).uppercase(), 20)}", Action.DeleteScene(n.id, t)) }
+                                if (on.size > 1) out += Entry("DELETE, LEAVE UNJOINED", Action.DeleteScene(n.id))
+                            }
+                        }
+                    }
                 }
             }
             "CHOICE" -> {

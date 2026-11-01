@@ -175,9 +175,10 @@ fun SceneSheet(rows: StoryRows, id: String, onClose: () -> Unit, onChoice: (Stri
             SheetButtons("▶ PLAY FROM HERE" to { save(); onPlay(id) }, "DONE" to { save(); onClose() })
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (id != rows.story.rootNodeId) Chip("MAKE THIS THE START", false) { Studio.edit("Change start") { StoryEditor.setEntrance(it, id) } }
-                if (id != rows.story.rootNodeId) Chip(if (confirmDelete) "TAP AGAIN TO DELETE" else "DELETE SCENE", confirmDelete) {
-                    if (!confirmDelete) confirmDelete = true else { Studio.edit("Delete scene") { StoryEditor.deleteScene(it, id) }; onClose() }
-                }
+                if (id != rows.story.rootNodeId && !confirmDelete) Chip("DELETE SCENE", false) { confirmDelete = true }
+            }
+            if (confirmDelete) DeleteScene(rows, id, onCancel = { confirmDelete = false }) { joinTo ->
+                Studio.edit("Delete scene") { StoryEditor.deleteScene(it, id, joinTo) }; onClose()
             }
         }
     }
@@ -296,6 +297,36 @@ fun ChoiceSheet(rows: StoryRows, id: String, onClose: () -> Unit, onGo: (String)
 }
 
 const val NEW = "\u0000new"
+
+/**
+ * Deleting a scene in the middle of a path joins the scenes either side: the
+ * choices that led into it lead on to where it went. One way on joins up by
+ * itself; with several, pick which (or leave them leading nowhere yet).
+ */
+@Composable
+private fun DeleteScene(rows: StoryRows, id: String, onCancel: () -> Unit, onDelete: (String?) -> Unit) {
+    val into = StoryEditor.into(rows, id)
+    val on = StoryEditor.onward(rows, id)
+    val n = into.size
+    val choices = if (n == 1) "The choice into it" else "The $n choices into it"
+    Column(Modifier.fillMaxWidth().border(1.dp, Phosphor.alert).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("DELETE “${sceneName(rows, id).uppercase()}”?", style = body(15, Phosphor.alert))
+        when {
+            n == 0 -> Text("Nothing leads into it.", style = body(13, Phosphor.dim))
+            on.isEmpty() -> Text("$choices will lead nowhere yet: it has no way on to join them to.", style = body(13, Phosphor.dim))
+            on.size == 1 -> Text("$choices will lead to ${sceneName(rows, on[0])} instead.", style = body(13, Phosphor.fg))
+            else -> Text("It leads on to ${on.size} scenes. Where should ${choices.replaceFirstChar { it.lowercase() }} go?", style = body(13, Phosphor.fg))
+        }
+        if (n > 0 && on.size > 1) {
+            for (t in on) Chip("JOIN TO ${sceneName(rows, t).uppercase()}", false) { onDelete(t) }
+            Chip("LEAVE THEM UNJOINED", false) { onDelete(null) }
+            Chip("CANCEL", false, onClick = onCancel)
+        } else Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Chip(if (n > 0 && on.size == 1) "DELETE AND JOIN UP" else "DELETE", true) { onDelete(on.singleOrNull()?.takeIf { n > 0 }) }
+            Chip("CANCEL", false, onClick = onCancel)
+        }
+    }
+}
 
 /**
  * Which chapter a scene is in. Chapters lay out as separate lanes on the

@@ -222,8 +222,32 @@ object StoryEditor {
     fun hasNudges(r: StoryRows) = currentLayout(r).isNotEmpty()
 
     /** Remove a scene and everything that hangs off it; nothing is left pointing at it. */
-    fun deleteScene(r: StoryRows, id: String): StoryRows {
+    /** Where a scene's choices lead (forks included), not counting back to itself: where its callers would go next. */
+    fun onward(r: StoryRows, id: String): List<String> {
+        val known = r.nodes.map { it.id }.toSet()
+        return FlowLayout.doorsOf(r, id)
+            .flatMap { c -> listOfNotNull(c.toNodeId, r.gates.firstOrNull { it.choiceId == c.id && it.failBehavior == "divert" }?.failNodeId) }
+            .filter { it != id && it in known }.distinct()
+    }
+
+    /** The choices (and forks) from OTHER scenes that lead into this one. */
+    fun into(r: StoryRows, id: String): List<ChoiceRow> {
+        val viaFork = r.gates.filter { it.failNodeId == id }.map { it.choiceId }.toSet()
+        return r.choices.filter { (it.toNodeId == id || it.id in viaFork) && it.fromNodeId != id }
+    }
+
+    /**
+     * Delete a scene, joining the scenes either side: everything that led INTO
+     * it now leads to [joinTo] instead — by default the one place it led on
+     * to, when there is exactly one. With several ways on, the author picks
+     * (or passes null, and the doors in are left leading nowhere yet).
+     * A door from [joinTo] itself is left unwired rather than made to loop
+     * back to the scene it's in.
+     */
+    fun deleteScene(r: StoryRows, id: String, joinTo: String? = onward(r, id).singleOrNull()): StoryRows {
         require(id != r.story.rootNodeId) { "The entrance can't be deleted. Make another scene the entrance first." }
+        val to = joinTo?.takeIf { it != id && r.nodes.any { n -> n.id == it } }
+        if (to != null) return deleteScene(joinUp(r, id, to), id, null)
         val doors = r.choices.filter { it.fromNodeId == id }.map { it.id }.toSet()
         val fights = r.fights.filter { it.nodeId == id }.map { it.id }.toSet()
         return r.copy(
@@ -244,6 +268,25 @@ object StoryEditor {
             fightRounds = r.fightRounds.filter { it.fightId !in fights },
             fightRoundOutcomes = r.fightRoundOutcomes.filter { it.fightId !in fights }
                 .map { if (it.toNodeId == id) it.copy(toNodeId = null) else it },
+        )
+    }
+
+    /** Point everything that leads to [from] at [to] instead. */
+    private fun joinUp(r: StoryRows, from: String, to: String): StoryRows {
+        val fromOf = r.choices.associate { it.id to it.fromNodeId }
+        return r.copy(
+            choices = r.choices.map { if (it.toNodeId == from && it.fromNodeId != to) it.copy(toNodeId = to) else it },
+            gates = r.gates.map { if (it.failNodeId == from && fromOf[it.choiceId] != to) it.copy(failNodeId = to) else it },
+            nodes = r.nodes.map {
+                if (it.id == to) it else it.copy(
+                    timeoutTargetId = if (it.timeoutTargetId == from) to else it.timeoutTargetId,
+                    invalidTargetId = if (it.invalidTargetId == from) to else it.invalidTargetId,
+                )
+            },
+            fights = r.fights.map { f ->
+                f.copy(winNodeId = if (f.winNodeId == from) to else f.winNodeId, loseNodeId = if (f.loseNodeId == from) to else f.loseNodeId)
+            },
+            fightRoundOutcomes = r.fightRoundOutcomes.map { if (it.toNodeId == from) it.copy(toNodeId = to) else it },
         )
     }
 

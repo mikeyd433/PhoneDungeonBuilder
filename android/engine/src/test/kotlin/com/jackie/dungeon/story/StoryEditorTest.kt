@@ -47,6 +47,27 @@ class StoryEditorTest {
     }
 
     @Test
+    fun `deleting a scene in the middle joins the scenes either side`() {
+        var r = StoryEditor.newStory("Test")
+        val a = r.story.rootNodeId!!
+        val (r1, door) = StoryEditor.addChoice(r, a, "Go on", newScene = true); r = r1
+        val b = r.choices.first { it.id == door }.toNodeId!!
+        val (r2, onward) = StoryEditor.addChoice(r, b, "Keep going", newScene = true); r = r2
+        val c = r.choices.first { it.id == onward }.toNodeId!!
+        assertEquals(listOf(c), StoryEditor.onward(r, b))
+        val joined = StoryEditor.deleteScene(r, b)
+        assertEquals(c, joined.choices.first { it.id == door }.toNodeId, "A's door now leads to C")
+        assertEquals("Go on", joined.choices.first { it.id == door }.label, "and keeps its own name")
+
+        // Two ways on: nothing is guessed unless the author says which.
+        val (r3, other) = StoryEditor.addChoice(r, b, "Turn back", newScene = true)
+        val d = r3.choices.first { it.id == other }.toNodeId!!
+        assertEquals(listOf(c, d), StoryEditor.onward(r3, b))
+        assertNull(StoryEditor.deleteScene(r3, b).choices.first { it.id == door }.toNodeId)
+        assertEquals(d, StoryEditor.deleteScene(r3, b, joinTo = d).choices.first { it.id == door }.toNodeId)
+    }
+
+    @Test
     fun `the entrance can't be deleted`() {
         assertFailsWith<IllegalArgumentException> { StoryEditor.deleteScene(william, william.story.rootNodeId!!) }
     }

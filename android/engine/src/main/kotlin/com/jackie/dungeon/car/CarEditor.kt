@@ -104,7 +104,8 @@ sealed interface Action {
     data class SetEnding(val nodeId: String, val kind: String) : Action
     data class AddChoice(val nodeId: String) : Action
     data class MakeStart(val nodeId: String) : Action
-    data class DeleteScene(val nodeId: String) : Action
+    /** Delete a scene; whatever led into it now leads to [joinTo] (null: nowhere yet). */
+    data class DeleteScene(val nodeId: String, val joinTo: String? = null) : Action
     data class SetKey(val choiceId: String, val digit: String) : Action
     data class WireNew(val choiceId: String) : Action
     data class Unwire(val choiceId: String) : Action
@@ -260,7 +261,7 @@ object CarEditor {
             is Action.DeleteScene -> edit("Delete scene", after = { r ->
                 val prev = s.back.lastOrNull { id -> r.nodes.any { it.id == id } }
                 closed.copy(scene = prev, back = if (prev == null) emptyList() else s.back.dropLastWhile { it != prev }.dropLast(1), choice = null, selected = prev)
-            }) { StoryEditor.deleteScene(it, a.nodeId) }
+            }) { StoryEditor.deleteScene(it, a.nodeId, a.joinTo) }
             is Action.SetKey -> edit("Change key") { StoryEditor.updateChoice(it, a.choiceId, digit = a.digit) }
             is Action.WireNew -> edit("Wire to new scene") { r ->
                 val c = r.choices.first { it.id == a.choiceId }
