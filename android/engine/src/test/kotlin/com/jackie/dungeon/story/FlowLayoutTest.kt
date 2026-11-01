@@ -112,6 +112,45 @@ class FlowLayoutTest {
     }
 
     @Test
+    fun `a sub-chapter is a lane inside its chapter, and moving the chapter moves it too`() {
+        var r = chaptered()
+        // Mike's story splits: the first fork after his intro starts two paths.
+        val mikeNodes = r.nodes.filter { it.chapter == "Mike" }.map { it.id }.toSet()
+        val split = mikeNodes.first { id -> StoryEditor.onward(r, id).count { it in mikeNodes } >= 2 }
+        val (a, b) = StoryEditor.onward(r, split).filter { it in mikeNodes }.take(2)
+        val pathA = StoryEditor.branchOf(r, a); val pathB = StoryEditor.branchOf(r, b)
+        assertTrue(pathA.isNotEmpty() && pathB.isNotEmpty() && pathA.intersect(pathB).isEmpty())
+        r = StoryEditor.setChapter(r, pathA, "Mike/Path A")
+        r = StoryEditor.setChapter(r, pathB, "Mike/Path B")
+        val cs = StoryEditor.chapters(r)
+        assertEquals(setOf("Mike", "Mike/Path A", "Mike/Path B", "Carter"), cs.toSet())
+        assertEquals(cs.indexOf("Mike") + 1, minOf(cs.indexOf("Mike/Path A"), cs.indexOf("Mike/Path B")), "sub-chapters follow their chapter: $cs")
+        val l = FlowLayout.layout(r)
+        val mike = l.chapters.first { it.name == "Mike" }
+        val fa = l.chapters.first { it.name == "Mike/Path A" }; val fb = l.chapters.first { it.name == "Mike/Path B" }
+        val carter = l.chapters.first { it.name == "Carter" }
+        // The paths sit side by side, inside Mike's frame, and Mike's is still apart from Carter's.
+        assertTrue(fa.x1 <= fb.x0 || fb.x1 <= fa.x0, "the two paths share a column: $fa / $fb")
+        for (f in listOf(fa, fb)) assertTrue(f.x0 > mike.x0 && f.x1 < mike.x1 && f.y0 > mike.y0 && f.y1 < mike.y1, "$f is not inside $mike")
+        assertTrue(mike.x1 <= carter.x0 || carter.x1 <= mike.x0)
+        assertEquals("Path A", fa.label)
+        assertTrue(StoryEditor.inChapter(r.nodes.first { it.id == pathA.first() }, "Mike"), "a Path A scene is still Mike's")
+        // Mike's intro spans both paths rather than taking a lane of its own.
+        val intro = l.boxes[split]!!
+        assertTrue(intro.cx > minOf(fa.x0, fb.x0) && intro.cx < maxOf(fa.x1, fb.x1))
+
+        val moved = FlowLayout.layout(StoryEditor.nudgeChapter(r, "Mike", 100f, 0f))
+        assertEquals(l.boxes[pathA.first()]!!.x + 100f, moved.boxes[pathA.first()]!!.x)
+        val sub = FlowLayout.layout(StoryEditor.nudgeChapter(r, "Mike/Path A", 40f, 0f))
+        assertEquals(l.boxes[pathA.first()]!!.x + 40f, sub.boxes[pathA.first()]!!.x)
+        assertEquals(l.boxes[pathB.first()]!!.x, sub.boxes[pathB.first()]!!.x)
+
+        // Renaming Mike carries his paths along.
+        val renamed = StoryEditor.renameChapter(r, "Mike", "Michael")
+        assertTrue(renamed.nodes.any { it.chapter == "Michael/Path A" } && renamed.nodes.none { it.chapter?.startsWith("Mike") == true })
+    }
+
+    @Test
     fun `a branch stops where another path joins it`() {
         val r = rows("william")
         val swamp = r.nodes.first { it.slug == "PRESS_1_TO_BUY" }.id

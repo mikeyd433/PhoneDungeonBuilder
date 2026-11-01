@@ -229,7 +229,7 @@ object CarEditor {
                 Outcome(s.copy(camera = c.copy(cx = c.cx - a.dx / c.zoom, cy = c.cy - a.dy / c.zoom)))
             }
             is Action.GoChapter -> {
-                val first = rows.nodes.firstOrNull { it.chapter == a.name }?.id
+                val first = rows.nodes.firstOrNull { StoryEditor.inChapter(it, a.name) }?.id
                 Outcome(closed.copy(selected = first ?: s.selected, camera = first?.let { centred(layout, it, camera(s, layout, rows, v).zoom) } ?: s.camera))
             }
             is Action.Toggle -> Outcome(s.copy(highlights = if (a.h in s.highlights) s.highlights - a.h else s.highlights + a.h))

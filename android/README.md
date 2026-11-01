@@ -25,6 +25,13 @@ phone (LIGHT UP). All of it is `engine/.../car/` — pure, and tested in `CarEdi
 the call holds while the car is editing. The editor's text goes up to L; at XL only the
 terminal grows.
 
+**Chapters and sub-chapters:** a scene's chapter (scene sheet → CHAPTER) makes its own
+lane on the flowchart. A sub-chapter ("+ Sub-chapter in Mike…") is a lane inside its
+chapter's lane, stored as a path (`Mike/Path A`): its scenes are still Mike's, move with
+Mike, and are framed by Mike's button as well as their own. A row where all of a
+chapter's scenes sit in the chapter itself (the intro before the split) spans its whole
+lane.
+
 **Moving things on the flowchart:** hold a scene, then drag it; hold empty space inside a
 chapter's frame (or its name) to drag the whole lane. The layout still decides where
 everything goes — a move is an offset on top of it (`nudge_x`/`nudge_y` on the scene,

@@ -239,7 +239,7 @@ private fun StoryScreen() {
             // Jump to a chapter's lane: its first scene, near the top of the screen.
             // ALL fits the whole story; a chapter fits its lane, from the top.
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                for ((key, label) in listOf("all" to "ALL") + chapters.map { "chapter:$it" to it }) {
+                for ((key, label) in listOf("all" to "ALL") + chapters.map { "chapter:$it" to (if ('/' in it) "› " + it.substringAfterLast('/') else it) }) {
                     Text(label, style = mono(13, Phosphor.fg), modifier = Modifier.border(1.dp, Phosphor.line).clickable {
                         jump = key + "#" + System.nanoTime()
                     }.padding(horizontal = 10.dp, vertical = 6.dp))

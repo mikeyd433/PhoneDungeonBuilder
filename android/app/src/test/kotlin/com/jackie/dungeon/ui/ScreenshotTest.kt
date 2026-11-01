@@ -104,4 +104,22 @@ class ScreenshotTest {
         compose.waitForIdle()
         shoot("chapters-lanes")
     }
+
+    @Test fun subChapters() {
+        var r = william
+        r = StoryEditor.setChapter(r, StoryEditor.branchOf(r, r.nodes.first { it.slug == "GNOME_RUNS_BY_AND" }.id), "Mike")
+        r = StoryEditor.setChapter(r, StoryEditor.branchOf(r, r.nodes.first { it.slug == "CARTER_INTRO_0" }.id), "Carter")
+        val mike = r.nodes.filter { it.chapter == "Mike" }.map { it.id }.toSet()
+        val split = mike.first { id -> StoryEditor.onward(r, id).count { it in mike } >= 2 }
+        val (a, b) = StoryEditor.onward(r, split).filter { it in mike }.take(2)
+        r = StoryEditor.setChapter(r, StoryEditor.branchOf(r, a), "Mike/Path A")
+        r = StoryEditor.setChapter(r, StoryEditor.branchOf(r, b), "Mike/Path B")
+        compose.setContent {
+            Box(Modifier.fillMaxSize().background(Phosphor.bg)) {
+                Flowchart(r, selected = null, focus = {}, onScene = {}, onChoice = {}, onAddChoice = {}, onPlayFrom = {}, startScale = 0.14f)
+            }
+        }
+        compose.waitForIdle()
+        shoot("sub-chapters")
+    }
 }

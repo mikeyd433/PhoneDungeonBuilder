@@ -339,7 +339,8 @@ private fun ChapterPicker(rows: StoryRows, id: String, beforeEdit: () -> Unit) {
     val n = rows.nodes.firstOrNull { it.id == id } ?: return
     val branch = remember(rows, id) { StoryEditor.branchOf(rows, id) }
     var wholeBranch by remember(id) { mutableStateOf(branch.size > 1) }
-    var naming by remember(id) { mutableStateOf(false) }
+    var naming by remember(id) { mutableStateOf<String?>(null) } // "top", or the chapter to add a sub-chapter to
+    val here = com.jackie.dungeon.story.FlowLayout.chapterPath(n.chapter).joinToString("/")
     val apply = { ch: String? ->
         beforeEdit()
         val ids = if (wholeBranch) branch else setOf(id)
@@ -348,16 +349,25 @@ private fun ChapterPicker(rows: StoryRows, id: String, beforeEdit: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text("CHAPTER · ITS OWN LANE ON THE FLOWCHART", style = label())
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Chip("None", n.chapter.isNullOrBlank()) { apply(null) }
-            for (ch in StoryEditor.chapters(rows)) Chip(ch, n.chapter == ch) { apply(ch) }
-            Chip("+ New…", false) { naming = true }
+            Chip("None", here.isEmpty()) { apply(null) }
+            for (ch in StoryEditor.chapters(rows)) Chip(StoryEditor.chapterLabel(ch), here == ch) { apply(ch) }
+            Chip("+ New chapter…", false) { naming = "top" }
+            if (here.isNotEmpty()) Chip("+ Sub-chapter in ${StoryEditor.chapterLabel(here)}…", false) { naming = here }
         }
+        if (here.contains('/')) Text("A sub-chapter is still part of ${StoryEditor.chapterLabel(here.substringBeforeLast('/'))}: its own lane, inside that one.", style = body(12, Phosphor.dim))
         if (branch.size > 1) Row(Modifier.clickable { wholeBranch = !wholeBranch }, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(if (wholeBranch) "▣" else "□", style = body(15, Phosphor.fg))
             Text("Its whole branch: this scene and the ${branch.size - 1} only reachable through it", style = body(13, Phosphor.fg))
         }
     }
-    if (naming) AskText("Name the chapter", "Create") { t -> naming = false; if (!t.isNullOrBlank()) apply(t) }
+    naming?.let { parent ->
+        AskText(if (parent == "top") "Name the chapter" else "Name the sub-chapter in ${StoryEditor.chapterLabel(parent)}", "Create") { t ->
+            naming = null
+            // "/" is what nests chapters, so it can't be part of a name.
+            val name = t?.replace('/', '-')?.trim()
+            if (!name.isNullOrBlank()) apply(if (parent == "top") name else "$parent/$name")
+        }
+    }
 }
 
 @Composable

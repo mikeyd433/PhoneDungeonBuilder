@@ -163,7 +163,8 @@ fun Flowchart(
                         val q = toLayout(p)
                         layout.boxes.values.firstOrNull { q.x in it.x..(it.x + FlowLayout.W) && q.y in it.y..it.bottom }?.let { return it.id }
                         val label = maxOf(24f, 18f / scale) * 1.3f
-                        return layout.chapters.firstOrNull { q.x in it.x0..it.x1 && q.y in (it.y0 - label)..it.y1 }?.let { "chapter:" + it.name }
+                        // The innermost: holding inside "Path A" moves Path A; holding Mike's own margin moves all of Mike.
+                        return layout.chapters.filter { q.x in it.x0..it.x1 && q.y in (it.y0 - label)..it.y1 }.maxByOrNull { it.depth }?.let { "chapter:" + it.name }
                     }
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
@@ -234,7 +235,7 @@ fun Flowchart(
                 for (ch in layout.chapters) {
                     drawRoundRect(Phosphor.dim, Offset(ch.x0, ch.y0), Size(ch.x1 - ch.x0, ch.y1 - ch.y0), CornerRadius(14f),
                         style = Stroke(maxOf(2f, 1.5f / scale), pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f / minOf(scale, 1f), 10f / minOf(scale, 1f)))))
-                    text(ch.name.uppercase(), ch.x0 + 14f, ch.y0 - labelSize * 1.1f, style(labelSize, Phosphor.fg, family = Phosphor.font))
+                    text(ch.label.uppercase(), ch.x0 + 14f, ch.y0 - labelSize * 1.1f, style(if (ch.depth > 1) labelSize * 0.8f else labelSize, if (ch.depth > 1) Phosphor.cyan else Phosphor.fg, family = Phosphor.font))
                 }
                 // ---- edges ----
                 fun curve(a: Offset, b: Offset, color: Color, dashed: Boolean = false) {

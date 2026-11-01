@@ -106,7 +106,7 @@ object CarView {
             val x0 = sx(c.x0); val y0 = sy(c.y0); val x1 = sx(c.x1); val y1 = sy(c.y1)
             if (!inView(x0, y0, x1, y1)) continue
             b.outline(x0, y0, x1 - x0, y1 - y0, Ink.RULE)
-            b.text(x0 + v.cw * 0.5f, y0 + 2f, fit(c.name.uppercase(), ((x1 - x0) / v.cw - 1).toInt()), Ink.DIM)
+            b.text(x0 + v.cw * 0.5f, y0 + 2f, fit(c.label.uppercase(), ((x1 - x0) / v.cw - 1).toInt()), Ink.DIM)
         }
 
         val boxH = CarEditor.BOX_H * z
@@ -461,7 +461,7 @@ object CarView {
                     if (StoryEditor.chapters(r).isNotEmpty()) out += Entry("CHAPTER ▸", sub("CHAPTER"))
                     out += Entry("HIGHLIGHTS: ON YOUR PHONE", null, enabled = false)
                 }
-                "CHAPTER" -> StoryEditor.chapters(r).forEach { out += Entry(it.uppercase(), Action.GoChapter(it)) }
+                "CHAPTER" -> StoryEditor.chapters(r).forEach { out += Entry((if ('/' in it) "  " else "") + StoryEditor.chapterLabel(it).uppercase(), Action.GoChapter(it)) }
             }
             "SCENE" -> {
                 if (n == null) return out + Entry("TAP A SCENE FIRST", null, enabled = false)

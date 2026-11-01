@@ -126,19 +126,38 @@ object StoryEditor {
     // ---- chapters ---------------------------------------------------------------
 
     /** Every chapter in the story, in the order scenes were made. */
-    fun chapters(r: StoryRows): List<String> = r.nodes.mapNotNull { it.chapter?.takeIf { c -> c.isNotBlank() } }.distinct()
+    fun chapters(r: StoryRows): List<String> = r.nodes.flatMap { n ->
+        val p = FlowLayout.chapterPath(n.chapter)
+        (1..p.size).map { p.take(it).joinToString("/") }
+    }.distinct().let { all -> all.filter { !it.contains('/') }.flatMap { top -> listOf(top) + all.filter { it.startsWith("$top/") } } }
+
+    /** Is this scene in [chapter], directly or in one of its sub-chapters? */
+    fun inChapter(n: NodeRow, chapter: String): Boolean {
+        val p = FlowLayout.chapterPath(n.chapter).joinToString("/")
+        return p == chapter || p.startsWith("$chapter/")
+    }
+
+    /** How a chapter path reads: "Mike › Path A". */
+    fun chapterLabel(chapter: String) = FlowLayout.chapterPath(chapter).joinToString(" › ")
 
     /** Put scenes in a chapter (blank takes them out of any). */
     fun setChapter(r: StoryRows, ids: Set<String>, chapter: String?) =
         r.copy(nodes = r.nodes.map { if (it.id in ids) it.copy(chapter = chapter?.trim()?.takeIf { c -> c.isNotEmpty() }) else it })
 
+    /** Rename a chapter, or move it (its sub-chapters, scenes and hand-made moves go with it). Blank removes it. */
     fun renameChapter(r: StoryRows, from: String, to: String): StoryRows {
-        val name = to.trim().takeIf { it.isNotEmpty() }
-        val nudge = r.story.laneNudges[from]
-        val lanes = r.story.laneNudges - from + (if (name != null && nudge != null) mapOf(name to nudge) else emptyMap())
-        val homeNudge = r.story.layoutHome["chapter:$from"]
-        val home = r.story.layoutHome - "chapter:$from" + (if (name != null && homeNudge != null) mapOf("chapter:$name" to homeNudge) else emptyMap())
-        return r.copy(story = r.story.copy(laneNudges = lanes, layoutHome = home), nodes = r.nodes.map { if (it.chapter == from) it.copy(chapter = name) else it })
+        val name = FlowLayout.chapterPath(to).joinToString("/").takeIf { it.isNotEmpty() }
+        fun re(k: String): String? = when {
+            k == from -> name
+            k.startsWith("$from/") -> name?.let { it + k.removePrefix(from) } ?: k.removePrefix("$from/")
+            else -> k
+        }
+        val lanes = r.story.laneNudges.entries.mapNotNull { (k, v) -> re(k)?.let { it to v } }.toMap()
+        val home = r.story.layoutHome.entries.mapNotNull { (k, v) -> if (!k.startsWith("chapter:")) k to v else re(k.removePrefix("chapter:"))?.let { "chapter:$it" to v } }.toMap()
+        return r.copy(story = r.story.copy(laneNudges = lanes, layoutHome = home), nodes = r.nodes.map { n ->
+            val p = FlowLayout.chapterPath(n.chapter).joinToString("/")
+            if (p == from || p.startsWith("$from/")) n.copy(chapter = re(p)) else n
+        })
     }
 
     /**
