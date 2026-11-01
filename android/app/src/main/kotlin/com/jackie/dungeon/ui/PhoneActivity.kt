@@ -62,6 +62,18 @@ class PhoneActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent { AppScreen() }
+        signInLink(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        signInLink(intent)
+    }
+
+    /** Opened by the sign-in email's link: finish signing in. */
+    private fun signInLink(intent: Intent?) {
+        val data = intent?.data ?: return
+        if (data.scheme == "jackiedungeon" && data.host == "login") com.jackie.dungeon.CloudSync.openedByLink(data.toString())
     }
 
     override fun onStart() { super.onStart(); AppGraph.activityStarted() }

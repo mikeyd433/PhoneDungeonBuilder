@@ -17,8 +17,8 @@ fun interface Http {
     fun send(r: Request): Response
 }
 
-data class Request(val method: String, val url: String, val headers: Map<String, String>, val body: ByteArray? = null)
-data class Response(val code: Int, val body: String)
+data class Request(val method: String, val url: String, val headers: Map<String, String>, val body: ByteArray? = null, val followRedirects: Boolean = true)
+data class Response(val code: Int, val body: String, val headers: Map<String, String> = emptyMap())
 
 /** Something went wrong talking to Supabase, in words the author can act on. */
 class SyncError(message: String, val code: Int = 0) : Exception(message)
@@ -54,10 +54,49 @@ class Supabase(
 
     // ---- signing in -----------------------------------------------------------
 
-    /** Email a 6-digit code. Only for an account that already exists (the web app's). */
-    fun sendCode(email: String) {
+    /**
+     * Email a sign-in link (and, if the project's email template carries
+     * `{{ .Token }}`, a code). Only for an account that already exists — the
+     * web app's. The link comes back to [redirectTo] when that address is on
+     * the project's Redirect URLs list; otherwise it goes to the web app, and
+     * the link can be pasted into the phone instead ([signInWithLink]).
+     */
+    fun sendCode(email: String, redirectTo: String? = null) {
         val body = buildJsonObject { put("email", email.trim()); put("create_user", false) }
-        call("POST", "/auth/v1/otp", body.toString(), auth = false)
+        val q = redirectTo?.let { "?redirect_to=" + URLEncoder.encode(it, "UTF-8") } ?: ""
+        call("POST", "/auth/v1/otp$q", body.toString(), auth = false)
+    }
+
+    /**
+     * Signed in by the link in the email: [url] is either where the link landed
+     * (`jackiedungeon://login#access_token=…`), or the emailed link itself
+     * (`https://…supabase.co/auth/v1/verify?token=…`), which is followed one
+     * step to read where it would have sent the browser.
+     */
+    fun signInWithLink(url: String): Session {
+        var landing = url.trim()
+        if ("/auth/v1/verify" in landing) {
+            val r = http.send(Request("GET", landing, mapOf("apikey" to key), followRedirects = false))
+            landing = r.headers.entries.firstOrNull { it.key.equals("location", true) }?.value
+                ?: throw SyncError(if (r.code in 200..299) "That link didn't sign in." else explain(r), r.code)
+        }
+        val params = (landing.substringAfter('#', "") + "&" + landing.substringAfter('?', "").substringBefore('#'))
+            .split('&').filter { '=' in it }.associate { it.substringBefore('=') to java.net.URLDecoder.decode(it.substringAfter('='), "UTF-8") }
+        params["error_description"]?.let { throw SyncError(it.replace('+', ' ') + " Send a new link and use that one.") }
+        val access = params["access_token"] ?: throw SyncError("That isn't a sign-in link.")
+        val r = http.send(Request("GET", "$base/auth/v1/user", mapOf("apikey" to key, "Authorization" to "Bearer $access")))
+        if (r.code !in 200..299) throw SyncError(explain(r), r.code)
+        val user = json.parseToJsonElement(r.body).jsonObject
+        val s = Session(
+            accessToken = access,
+            refreshToken = params["refresh_token"] ?: "",
+            expiresAt = params["expires_at"]?.toLongOrNull() ?: (now() + (params["expires_in"]?.toLongOrNull() ?: 3600)),
+            userId = user.str("id") ?: "",
+            email = user.str("email") ?: "",
+        )
+        session = s
+        onSession(s)
+        return s
     }
 
     /** Swap the emailed code for a session. */

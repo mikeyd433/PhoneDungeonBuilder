@@ -22,10 +22,18 @@
             android:name=".ui.PhoneActivity"
             android:exported="true"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|density|uiMode|keyboardHidden"
+            android:launchMode="singleTask"
             android:theme="@style/Theme.App.Phone">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- The Supabase sign-in email's link comes back here (CloudSync.REDIRECT). -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="jackiedungeon" android:host="login" />
             </intent-filter>
         </activity>
 

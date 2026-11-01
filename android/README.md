@@ -88,8 +88,8 @@ build exactly the pack `buildStoryPack` built, and split every script exactly as
 
 ## Syncing with Supabase
 
-Signed in (stories list → ☁ CLOUD → SIGN IN, with the web app's email and a code sent
-by email), the phone keeps its stories in step with the cloud: a few seconds after each
+Signed in (stories list → ☁ CLOUD → SIGN IN, with the web app's email; Supabase emails a
+sign-in link, which opens the app signed in — or can be copied and pasted in), the phone keeps its stories in step with the cloud: a few seconds after each
 edit, when the app opens and when the connection returns. Whole stories at a time:
 changed on one side, it moves to the other; changed on both, the newer edit wins; a
 story deleted on the phone is deleted in the cloud. Takes recorded on the phone are
@@ -102,9 +102,10 @@ same PostgREST calls, unique slugs, foreign keys and `edited_at` bump as the rea
 The cloud side is migration `0022_phone_sync.sql`: the phone-only columns, and
 `stories.edited_at`, bumped by triggers on every story table so deletes count too.
 
-**One-time setup in the Supabase dashboard:** Authentication → Emails → Templates →
-Magic Link: add `Your code: {{ .Token }}` to the body. Without it the email only has a
-link, and the phone needs the code.
+**One-time setup in the Supabase dashboard:** Authentication → URL Configuration →
+Redirect URLs → add `jackiedungeon://login`, so the email's link opens the app. (Email
+templates can only be edited with custom SMTP, so the link is used rather than a code.)
+Without it the link opens the web app instead; pasting the link into the phone still works.
 
 ## Backing up
 

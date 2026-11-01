@@ -48,12 +48,20 @@ class FakeSupabase(var clock: Instant = Instant.parse("2026-11-01T12:00:00Z")) :
         }
         return when (path) {
             "/auth/v1/otp" -> Response(200, "{}")
-            "/auth/v1/verify" -> {
+            "/auth/v1/verify" -> if (r.method == "GET") {
+                check(!r.followRedirects) { "the link must not be followed into a browser page" }
+                lastToken = "token-link"
+                if ("token=good" in r.url) Response(303, "", mapOf("Location" to "https://dabingabongo.com/delve#access_token=token-link&expires_at=${clock.epochSecond + 3600}&expires_in=3600&refresh_token=r-link&token_type=bearer&type=magiclink"))
+                else Response(303, "", mapOf("Location" to "https://dabingabongo.com/delve#error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid+or+has+expired"))
+            } else {
                 val o = json.parseToJsonElement(body!!).jsonObject
                 if (o.s("token") != "123456") Response(403, """{"msg":"Token has expired or is invalid"}""")
                 else Response(200, session("first"))
             }
             "/auth/v1/token" -> Response(200, session("refreshed"))
+            // The emailed link: a redirect carrying the session in the fragment.
+            "/auth/v1/verify" + "-link" -> Response(500, "")
+            "/auth/v1/user" -> if (r.headers["Authorization"] == "Bearer $lastToken") Response(200, """{"id":"$user","email":"me@example.com"}""") else Response(401, """{"msg":"invalid JWT"}""")
             else -> rest(r.method, path.removePrefix("/rest/v1/"), query, body, r.headers)
         }
     }

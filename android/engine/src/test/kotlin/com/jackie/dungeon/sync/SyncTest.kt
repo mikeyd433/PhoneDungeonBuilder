@@ -74,6 +74,23 @@ class SyncTest {
     }
 
     @Test
+    fun `signing in with the emailed link, opened in the app or pasted in`() {
+        // Opened on the phone: the app gets the landing address.
+        db.sendCode("me@example.com", redirectTo = "jackiedungeon://login")
+        val opened = db.signInWithLink("jackiedungeon://login#access_token=token-first&expires_at=${fake.clock.epochSecond + 3600}&refresh_token=r-first&token_type=bearer&type=magiclink".also { fake.send(Request("POST", "https://x.supabase.co/auth/v1/verify", emptyMap(), """{"token":"123456"}""".toByteArray())) })
+        assertEquals(fake.user, opened.userId)
+        assertEquals("me@example.com", opened.email)
+        // Pasted: the app follows the link one step and reads the session off the redirect.
+        db.signOut()
+        val pasted = db.signInWithLink("https://x.supabase.co/auth/v1/verify?token=good&type=magiclink&redirect_to=https://dabingabongo.com/delve")
+        assertEquals("token-link", pasted.accessToken)
+        db.select("stories", "select=id") // and it works
+        val used = assertFailsWith<SyncError> { db.signInWithLink("https://x.supabase.co/auth/v1/verify?token=used&type=magiclink") }
+        assertTrue("expired" in used.message!!, used.message)
+        assertFailsWith<SyncError> { db.signInWithLink("hello") }
+    }
+
+    @Test
     fun `the first sync replaces the cloud's William in place with the phone's`() {
         val cloud = seedCloud(rows("william"))
         signIn()

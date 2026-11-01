@@ -97,13 +97,28 @@ object CloudSync {
 
     // ---- signing in -------------------------------------------------------------
 
-    /** Off the main thread. Throws [SyncError] with a readable message. */
-    fun sendCode(email: String) = db.sendCode(email)
+    /** Where the emailed link brings the phone back to (on the project's Redirect URLs list). */
+    const val REDIRECT = "jackiedungeon://login"
 
-    fun verify(email: String, code: String) {
-        val s = db.verify(email, code)
+    /** Off the main thread. Throws [SyncError] with a readable message. */
+    fun sendLink(email: String) = db.sendCode(email, REDIRECT)
+
+    /** A code, if the project's email carries one. */
+    fun verify(email: String, code: String) = signedIn(db.verify(email, code))
+
+    /** The emailed link: where it landed (it opened this app), or the link itself, pasted. */
+    fun signInWithLink(url: String) = signedIn(db.signInWithLink(url))
+
+    private fun signedIn(s: Session) {
         _status.value = _status.value.copy(state = State.IDLE, email = s.email, message = null)
         soon(0)
+    }
+
+    /** The app was opened by the sign-in link. */
+    fun openedByLink(url: String) = worker.execute {
+        runCatching { signInWithLink(url) }.onFailure { e ->
+            _status.value = _status.value.copy(state = if (db.session == null) State.SIGNED_OUT else _status.value.state, message = "Sign-in link: ${e.message}")
+        }
     }
 
     fun signOut() {
@@ -213,12 +228,16 @@ object CloudSync {
     private fun saveGone() = write(goneFile, json.encodeToString(SetSerializer(String.serializer()), gone))
     private fun write(f: File, text: String) { val tmp = File(f.path + ".tmp"); tmp.writeText(text); tmp.renameTo(f) }
 
+    private val noRedirects by lazy { client.newBuilder().followRedirects(false).followSslRedirects(false).build() }
+
     private fun send(r: Request): Response {
         val body = r.body?.toRequestBody(r.headers["Content-Type"]?.toMediaTypeOrNull())
             ?: if (r.method in setOf("POST", "PATCH", "PUT")) ByteArray(0).toRequestBody(null) else null
         val req = okhttp3.Request.Builder().url(r.url).method(r.method, body).apply { r.headers.forEach { (k, v) -> header(k, v) } }.build()
         return try {
-            client.newCall(req).execute().use { Response(it.code, it.body?.string().orEmpty()) }
+            (if (r.followRedirects) client else noRedirects).newCall(req).execute().use { res ->
+                Response(res.code, res.body?.string().orEmpty(), res.headers.toMultimap().mapValues { it.value.joinToString(",") })
+            }
         } catch (e: IOException) {
             throw SyncError("No connection.", 0)
         }
