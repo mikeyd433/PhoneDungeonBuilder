@@ -102,9 +102,21 @@ build exactly the pack `buildStoryPack` built, and split every script exactly as
 
 Signed in (stories list → ☁ CLOUD → SIGN IN, with the web app's email; Supabase emails a
 sign-in link, which opens the app signed in — or can be copied and pasted in), the phone keeps its stories in step with the cloud: a few seconds after each
-edit, when the app opens and when the connection returns. Whole stories at a time:
-changed on one side, it moves to the other; changed on both, the newer edit wins; a
-story deleted on the phone is deleted in the cloud. Takes recorded on the phone are
+edit, when the app opens and when the connection returns — and, **while the app is
+open, every few seconds** it asks the cloud when each story last changed, so another
+person's edits arrive within seconds. Changes are **merged, not overwritten**
+(`sync/Merge.kt`): each phone keeps the story as of its last sync (`files/sync/base/`)
+and only what changed since moves, row by row and field by field, so two people editing
+different scenes (or different fields of one) both keep their work; the newer edit wins
+only where both changed the same field, and a deleted row stays deleted. Open sheets
+follow incoming edits until you type in them. A story deleted on the phone is deleted
+in the cloud if you own it; otherwise you leave it.
+
+**Sharing:** SHARE on a story invites people by email, as "can edit" (writer) or "can
+view" (viewer, whose phone only receives). Someone without an account gets an invite
+that becomes access the first time they sign in with that email (`0023_sharing.sql`:
+`invite_to_story`, `accept_story_invites`, `story_members`, `remove_story_member`,
+`leave_story`). No email is sent — tell them. Takes recorded on the phone are
 uploaded to `story-audio/<story id>/phone/` and the cloud points there, while the phone
 keeps playing its own files. The first sync of a story that came from the cloud with
 short ids (William, JCFC) finds the cloud copy by title, takes its ids and replaces it.

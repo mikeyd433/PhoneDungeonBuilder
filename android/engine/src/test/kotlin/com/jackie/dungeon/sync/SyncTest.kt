@@ -35,6 +35,9 @@ class SyncTest {
         override fun deleted() = tombstones.toSet()
         override fun forget(storyId: String) { tombstones -= storyId }
         override fun readTake(path: String) = takes[path]
+        val bases = HashMap<String, StoryRows>()
+        override fun base(storyId: String) = bases[storyId]
+        override fun setBase(storyId: String, rows: StoryRows?) { if (rows == null) bases.remove(storyId) else bases[storyId] = rows }
         /** An edit on the phone, as Studio records it. */
         fun edit(id: String, at: Long, f: (StoryRows) -> StoryRows) {
             stories[id] = f(stories[id]!!)
@@ -53,6 +56,7 @@ class SyncTest {
         val full = r.mapIds { id -> if (Sync.isUuid(id)) id else id.padEnd(8, '0').take(8) + "-0000-4000-8000-" + "%012x".format(id.hashCode().toLong() and 0xffffffffffffL) }
             .let { it.copy(story = it.story.copy(id = "d7fcec45-067d-47c1-81d9-09ea78820ea6")) }
         fake.t("stories") += JsonObjectOf(CloudRows.storyRow(full, fake.user, true), "edited_at" to edited)
+        fake.t("memberships") += FakeSupabase.obj("story_id" to full.story.id, "user_id" to fake.user, "role" to "owner")
         for ((t, rs) in CloudRows.rows(full, Instant.parse("2026-08-01T00:00:00Z"))) fake.t(t) += rs
         return full
     }

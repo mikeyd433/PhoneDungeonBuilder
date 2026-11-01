@@ -56,13 +56,14 @@ class Supabase(
 
     /**
      * Email a sign-in link (and, if the project's email template carries
-     * `{{ .Token }}`, a code). Only for an account that already exists — the
-     * web app's. The link comes back to [redirectTo] when that address is on
+     * `{{ .Token }}`, a code). Signing in with a new email makes an account
+     * (an invited friend's first sign-in), if the project allows sign-ups. The link comes back to [redirectTo] when that address is on
      * the project's Redirect URLs list; otherwise it goes to the web app, and
      * the link can be pasted into the phone instead ([signInWithLink]).
      */
     fun sendCode(email: String, redirectTo: String? = null) {
-        val body = buildJsonObject { put("email", email.trim()); put("create_user", false) }
+        // A friend invited to a story may not have an account yet: signing in makes one.
+        val body = buildJsonObject { put("email", email.trim()); put("create_user", true) }
         val q = redirectTo?.let { "?redirect_to=" + URLEncoder.encode(it, "UTF-8") } ?: ""
         call("POST", "/auth/v1/otp$q", body.toString(), auth = false)
     }
@@ -145,6 +146,12 @@ class Supabase(
         if (rows.isEmpty()) return
         for (chunk in rows.chunked(200))
             call("POST", "/rest/v1/$table?on_conflict=id", JsonArray(chunk).toString(), prefer = "resolution=merge-duplicates,return=minimal")
+    }
+
+    /** Call a database function: `POST /rest/v1/rpc/<name>`. */
+    fun rpc(name: String, args: Map<String, String?> = emptyMap()): String {
+        val body = JsonObject(args.mapValues { (_, v) -> if (v == null) kotlinx.serialization.json.JsonNull else kotlinx.serialization.json.JsonPrimitive(v) })
+        return call("POST", "/rest/v1/rpc/$name", body.toString())
     }
 
     /** A plain insert (a new story: the upsert path would need to read a row the new owner can't see yet). */

@@ -70,6 +70,12 @@ object CloudSync {
     private val sessionFile get() = File(dir, "session.json")
 
     private val metas = HashMap<String, Sync.SyncMeta>()
+    /** The story as of the last sync, per story: what a merge compares both sides against. */
+    private fun baseFile(id: String) = File(File(dir, "base").apply { mkdirs() }, "$id.rows.json")
+
+    /** This account's role on each story in the cloud: owner, writer, voice or viewer. */
+    private val _roles = MutableStateFlow<Map<String, String>>(emptyMap())
+    val roles: StateFlow<Map<String, String>> = _roles
     private val gone = HashSet<String>()
 
     private val client = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS).build()
@@ -151,6 +157,59 @@ object CloudSync {
 
     fun syncNow() = soon(0)
 
+    // ---- live: while the app is open, notice changes made elsewhere -------------------
+
+    private const val WATCH_MS = 4_000L
+    private var watcher: ScheduledFuture<*>? = null
+
+    /**
+     * The app is on screen (true) or not. While it is, every few seconds one tiny
+     * request asks the cloud when each story last changed; anything new — a
+     * friend's edit, a story just shared — starts a sync, which merges it in.
+     */
+    @Synchronized fun foreground(on: Boolean) {
+        if (!::db.isInitialized) return
+        if (on && watcher == null) watcher = worker.scheduleWithFixedDelay(::look, WATCH_MS, WATCH_MS, TimeUnit.MILLISECONDS)
+        if (!on) { watcher?.cancel(false); watcher = null }
+    }
+
+    private fun look() {
+        if (db.session == null || _status.value.state == State.SYNCING) return
+        runCatching {
+            val cloud = Sync.cloudStories(db)
+            val seen = synchronized(this) { metas.mapValues { it.value.cloudSeen } }
+            val news = cloud.any { (id, v) ->
+                val was = seen[id] ?: return@any true
+                runCatching { java.time.Instant.parse(Sync.normal(v.second)).isAfter(java.time.Instant.parse(Sync.normal(was))) }.getOrDefault(true)
+            }
+            if (news) runOnce()
+        }.onFailure { e -> if (e is SyncError && e.code == 0) _status.value = _status.value.copy(state = State.OFFLINE) }
+    }
+
+    // ---- sharing ------------------------------------------------------------------------
+
+    data class Member(val userId: String?, val email: String, val role: String, val pending: Boolean)
+
+    /** Who is on a story. Off the main thread. */
+    fun members(storyId: String): List<Member> {
+        val text = db.rpc("story_members", mapOf("p_story" to storyId))
+        return Json.parseToJsonElement(text).let { it as kotlinx.serialization.json.JsonArray }.map { e ->
+            val o = e as kotlinx.serialization.json.JsonObject
+            fun s(k: String) = (o[k] as? kotlinx.serialization.json.JsonPrimitive)?.takeIf { it.isString }?.content
+            Member(s("user_id"), s("email") ?: "", s("role") ?: "", (o["pending"] as? kotlinx.serialization.json.JsonPrimitive)?.content == "true")
+        }
+    }
+
+    /** "added" (they have an account) or "invited" (waiting for them to sign in). Off the main thread. */
+    fun invite(storyId: String, email: String, role: String): String =
+        db.rpc("invite_to_story", mapOf("p_story" to storyId, "p_email" to email.trim(), "p_role" to role)).trim('"', ' ', '\n')
+
+    fun removeMember(storyId: String, userId: String) { db.rpc("remove_story_member", mapOf("p_story" to storyId, "p_user" to userId)) }
+    fun cancelInvite(storyId: String, email: String) { db.rpc("cancel_story_invite", mapOf("p_story" to storyId, "p_email" to email)) }
+
+    /** Has this story reached the cloud yet (so it can be shared)? */
+    fun inCloud(storyId: String) = synchronized(this) { metas[storyId]?.cloudSeen != null }
+
     // ---- running it ------------------------------------------------------------------
 
     @Synchronized private fun soon(delayMs: Long) {
@@ -179,6 +238,7 @@ object CloudSync {
                 }.joinToString(" · ")
             }
             _status.value = _status.value.copy(state = if (report.errors.isEmpty()) State.IDLE else State.ERROR, lastSynced = at, message = msg)
+            db.session?.userId?.let { uid -> runCatching { _roles.value = Sync.roles(db, uid) } }
         } catch (e: SyncError) {
             Log.w(TAG, "sync", e)
             when {
@@ -211,8 +271,10 @@ object CloudSync {
             onMain { Studio.replaceFromSync(rows, oldId) }
         }
         override fun deleted(): Set<String> = synchronized(this@CloudSync) { gone.toSet() }
-        override fun forget(storyId: String) = synchronized(this@CloudSync) { gone -= storyId; saveGone() }
+        override fun forget(storyId: String) = synchronized(this@CloudSync) { gone -= storyId; saveGone(); baseFile(storyId).delete(); Unit }
         override fun readTake(path: String): ByteArray? = File(path).takeIf { it.exists() }?.readBytes()
+        override fun base(storyId: String): StoryRows? = runCatching { StoryRows.parse(baseFile(storyId).readText()) }.getOrNull()
+        override fun setBase(storyId: String, rows: StoryRows?) { if (rows == null) baseFile(storyId).delete() else write(baseFile(storyId), rows.encode()) }
     }
 
     private fun <T> onMain(f: () -> T): T {

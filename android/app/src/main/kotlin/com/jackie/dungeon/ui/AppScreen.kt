@@ -138,7 +138,13 @@ private fun StoriesScreen() {
     if (naming) AskText("Name the new story", "Create") { t -> naming = false; if (t != null) Studio.create(t) }
     deleting?.let { id ->
         val title = stories.firstOrNull { it.id == id }?.title ?: ""
-        Confirm("Delete \"$title\" from this phone? This can't be undone.", "Delete") { yes -> deleting = null; if (yes) Studio.deleteStory(id) }
+        val role = CloudSync.roles.collectAsStateWithLifecycle().value[id]
+        val question = when {
+            !CloudSync.inCloud(id) -> "Delete \"$title\" from this phone? This can't be undone."
+            role == null || role == "owner" -> "Delete \"$title\"? It's deleted in the cloud too, for everyone it's shared with. This can't be undone."
+            else -> "Leave \"$title\"? It's removed from this phone and you're taken off the shared story; it stays for everyone else."
+        }
+        Confirm(question, if (role == null || role == "owner") "Delete" else "Leave") { yes -> deleting = null; if (yes) Studio.deleteStory(id) }
     }
 }
 
@@ -188,6 +194,8 @@ private fun StoryScreen() {
     var renaming by remember { mutableStateOf(false) }
     var exporting by remember { mutableStateOf(false) }
     var managing by remember { mutableStateOf(false) }
+    var sharing by remember { mutableStateOf(false) }
+    val roles by CloudSync.roles.collectAsStateWithLifecycle()
     val carPresent by CarEdit.present.collectAsStateWithLifecycle()
 
     // The car's mode mirrors the tab: EDIT shows the map, PLAY the terminal. And the
@@ -233,6 +241,8 @@ private fun StoryScreen() {
             Text("◄", style = style(26, Phosphor.fg), modifier = Modifier.clickable { Studio.close() }.padding(6.dp))
             Text(r.story.title.ifBlank { "Untitled story" }, style = style(24, Phosphor.hi), maxLines = 1, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f).clickable { renaming = true })
+            Text("SHARE", style = style(20, Phosphor.fg),
+                modifier = Modifier.border(1.dp, Phosphor.line).clickable { sharing = true }.padding(horizontal = 10.dp, vertical = 4.dp))
             Text("EXPORT", style = style(20, Phosphor.fg),
                 modifier = Modifier.border(1.dp, Phosphor.line).clickable { exporting = true }.padding(horizontal = 10.dp, vertical = 4.dp))
             Text("UNDO", style = style(20, if (undo.isEmpty()) Phosphor.line else Phosphor.fg),
@@ -245,6 +255,8 @@ private fun StoryScreen() {
                 }
             }
         }
+        if (roles[r.story.id] == "viewer") Text("VIEW ONLY · shared with you to look at: changes made here aren't saved to the cloud, and the next sync puts the shared version back.",
+            style = mono(12, Phosphor.warn), modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp))
         // The phone's EDIT / PLAY tabs are the car's modes too, so only the highlights need a switch here.
         if (carPresent && tab == "edit") CarControls(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), showMode = false)
         val sync by CloudSync.status.collectAsStateWithLifecycle()
@@ -315,6 +327,7 @@ private fun StoryScreen() {
     }
     if (exporting) ExportDialog(r) { exporting = false }
     if (managing) ChaptersDialog(r) { managing = false }
+    if (sharing) ShareDialog(r.story.id, r.story.title.ifBlank { "Untitled story" }) { sharing = false }
     PlayHereDialog()
     if (renaming) AskText("Name this story", "Rename", r.story.title) { t -> renaming = false; if (t != null) Studio.edit("Rename story") { StoryEditor.setStoryTitle(it, t) } }
 }

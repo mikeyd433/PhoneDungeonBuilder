@@ -23,6 +23,11 @@ class FakeSupabase(var clock: Instant = Instant.parse("2026-11-01T12:00:00Z")) :
     val tables = HashMap<String, MutableList<JsonObject>>()
     val files = HashMap<String, ByteArray>()
     val user = "11111111-1111-4111-8111-111111111111"
+    val friend = "22222222-2222-4222-8222-222222222222"
+    /** Accounts that exist: email -> id. */
+    val accounts = mutableMapOf("me@example.com" to user, "friend@example.com" to friend)
+    /** Live tokens -> the account they belong to. */
+    val tokens = HashMap<String, Pair<String, String>>()
     var calls = 0
     private val json = Json
 
@@ -50,30 +55,44 @@ class FakeSupabase(var clock: Instant = Instant.parse("2026-11-01T12:00:00Z")) :
             "/auth/v1/otp" -> Response(200, "{}")
             "/auth/v1/verify" -> if (r.method == "GET") {
                 check(!r.followRedirects) { "the link must not be followed into a browser page" }
-                lastToken = "token-link"
+                lastToken = "token-link"; tokens["token-link"] = user to "me@example.com"
                 if ("token=good" in r.url) Response(303, "", mapOf("Location" to "https://dabingabongo.com/delve#access_token=token-link&expires_at=${clock.epochSecond + 3600}&expires_in=3600&refresh_token=r-link&token_type=bearer&type=magiclink"))
                 else Response(303, "", mapOf("Location" to "https://dabingabongo.com/delve#error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid+or+has+expired"))
             } else {
                 val o = json.parseToJsonElement(body!!).jsonObject
+                val email = o.s("email") ?: "me@example.com"
                 if (o.s("token") != "123456") Response(403, """{"msg":"Token has expired or is invalid"}""")
-                else Response(200, session("first"))
+                else if (email == "me@example.com") Response(200, session("first"))
+                else Response(200, session("as-$email", email))
             }
             "/auth/v1/token" -> Response(200, session("refreshed"))
             // The emailed link: a redirect carrying the session in the fragment.
             "/auth/v1/verify" + "-link" -> Response(500, "")
-            "/auth/v1/user" -> if (r.headers["Authorization"] == "Bearer $lastToken") Response(200, """{"id":"$user","email":"me@example.com"}""") else Response(401, """{"msg":"invalid JWT"}""")
+            "/auth/v1/user" -> tokens[r.headers["Authorization"]?.removePrefix("Bearer ")]?.let { (id, email) -> Response(200, """{"id":"$id","email":"$email"}""") } ?: Response(401, """{"msg":"invalid JWT"}""")
             else -> rest(r.method, path.removePrefix("/rest/v1/"), query, body, r.headers)
         }
     }
 
     var lastToken = ""
-    private fun session(tag: String): String {
-        lastToken = "token-$tag"
-        return """{"access_token":"token-$tag","refresh_token":"r-$tag","expires_in":3600,"expires_at":${clock.epochSecond + 3600},"user":{"id":"$user","email":"me@example.com"}}"""
+    private fun session(tag: String, email: String = "me@example.com"): String {
+        val id = accounts.getOrPut(email) { java.util.UUID.nameUUIDFromBytes(email.toByteArray()).toString() }
+        if (email == "me@example.com") lastToken = "token-$tag"
+        tokens["token-$tag"] = id to email
+        return """{"access_token":"token-$tag","refresh_token":"r-$tag","expires_in":3600,"expires_at":${clock.epochSecond + 3600},"user":{"id":"$id","email":"$email"}}"""
     }
 
+    fun role(story: String?, who: String): String? = t("memberships").firstOrNull { it.s("story_id") == story && it.s("user_id") == who }?.s("role")
+
     private fun rest(method: String, table: String, query: String, body: String?, headers: Map<String, String>): Response {
-        if (headers["Authorization"] != "Bearer $lastToken") return Response(401, """{"message":"JWT expired"}""")
+        val (me, myEmail) = tokens[headers["Authorization"]?.removePrefix("Bearer ")] ?: return Response(401, """{"message":"JWT expired"}""")
+        if (table.startsWith("rpc/")) return rpc(table.removePrefix("rpc/"), json.parseToJsonElement(body ?: "{}").jsonObject, me, myEmail)
+        // Row Level Security, roughly: you see a story's rows if you're on it; viewers can't write.
+        fun visible(o: JsonObject) = table == "memberships" || role(if (table == "stories") o.s("id") else o.s("story_id"), me) != null
+        if (method != "GET" && table != "stories" && table != "memberships") {
+            val sid = (if (body != null && body.trimStart().startsWith("[")) (json.parseToJsonElement(body) as JsonArray).firstOrNull()?.jsonObject?.s("story_id") else null)
+                ?: t(table).firstOrNull { o -> query.contains(o.s("id") ?: "-") }?.s("story_id")
+            if (sid != null && role(sid, me) == "viewer") return Response(403, """{"message":"new row violates row-level security policy"}""")
+        }
         val params = query.split('&').filter { it.isNotEmpty() }.associate { it.substringBefore('=') to URLDecoder.decode(it.substringAfter('='), "UTF-8") }
         fun match(o: JsonObject) = params.all { (k, v) ->
             when {
@@ -88,7 +107,7 @@ class FakeSupabase(var clock: Instant = Instant.parse("2026-11-01T12:00:00Z")) :
             "GET" -> {
                 val cols = params["select"]?.takeIf { it != "*" }?.split(',')
                 // Ordered as timestamps, as Postgres does — not as strings.
-                val found = rows.filter(::match).sortedWith(compareBy({ it.s("created_at")?.let(Instant::parse) }, { it.s("id") }))
+                val found = rows.filter(::match).filter(::visible).sortedWith(compareBy({ it.s("created_at")?.let(Instant::parse) }, { it.s("id") }))
                 Response(200, JsonArray(found.map { o -> if (cols == null) o else JsonObject(o.filterKeys { it in cols }) }).toString())
             }
             "POST" -> {
@@ -99,7 +118,8 @@ class FakeSupabase(var clock: Instant = Instant.parse("2026-11-01T12:00:00Z")) :
                     check(table, o)?.let { return it }
                     val i = rows.indexOfFirst { it.s("id") == o.s("id") }
                     if (i >= 0 && !merge) return Response(409, """{"message":"duplicate key value violates unique constraint \"${table}_pkey\""}""")
-                    if (table == "stories" && i < 0 && o.s("owner_id") != user) return Response(403, """{"message":"new row violates row-level security policy"}""")
+                    if (table == "stories" && i < 0 && o.s("owner_id") != me) return Response(403, """{"message":"new row violates row-level security policy"}""")
+                    if (table == "stories" && i < 0) t("memberships") += obj("story_id" to o.s("id"), "user_id" to me, "role" to "owner")
                     val withDefaults = if (i < 0) JsonObject(defaults(table) + o) else JsonObject(rows[i] + o)
                     if (i >= 0) rows[i] = withDefaults else rows += withDefaults
                     unique(table, withDefaults)?.let { return it }
@@ -123,6 +143,34 @@ class FakeSupabase(var clock: Instant = Instant.parse("2026-11-01T12:00:00Z")) :
                 Response(204, "")
             }
             else -> Response(405, "")
+        }
+    }
+
+    val invites = ArrayList<Triple<String, String, String>>() // story, email, role
+
+    private fun rpc(name: String, a: JsonObject, me: String, myEmail: String): Response {
+        fun ok(v: String) = Response(200, v)
+        val story = a.s("p_story")
+        return when (name) {
+            "accept_story_invites" -> {
+                val mine = invites.filter { it.second == myEmail }
+                for ((st, _, role) in mine) if (role(st, me) == null) t("memberships") += obj("story_id" to st, "user_id" to me, "role" to role)
+                invites.removeAll(mine.toSet()); ok("${mine.size}")
+            }
+            "invite_to_story" -> {
+                if (role(story, me) != "owner") return Response(400, """{"message":"Only the story's owner can share it."}""")
+                val email = a.s("p_email")!!.trim().lowercase(); val r = a.s("p_role") ?: "writer"
+                val id = accounts[email]
+                if (id != null) { t("memberships").removeAll { it.s("story_id") == story && it.s("user_id") == id }; t("memberships") += obj("story_id" to story, "user_id" to id, "role" to r); ok("\"added\"") }
+                else { invites.removeAll { it.first == story && it.second == email }; invites += Triple(story!!, email, r); ok("\"invited\"") }
+            }
+            "story_members" -> ok(JsonArray(t("memberships").filter { it.s("story_id") == story }.map { m ->
+                obj("user_id" to m.s("user_id"), "email" to accounts.entries.first { it.value == m.s("user_id") }.key, "role" to m.s("role"), "pending" to false)
+            } + invites.filter { it.first == story }.map { obj("user_id" to null, "email" to it.second, "role" to it.third, "pending" to true) }).toString())
+            "remove_story_member" -> { t("memberships").removeAll { it.s("story_id") == story && it.s("user_id") == a.s("p_user") && it.s("role") != "owner" }; ok("") }
+            "cancel_story_invite" -> { invites.removeAll { it.first == story && it.second == a.s("p_email") }; ok("") }
+            "leave_story" -> { t("memberships").removeAll { it.s("story_id") == story && it.s("user_id") == me }; ok("") }
+            else -> Response(404, """{"message":"function not found"}""")
         }
     }
 

@@ -21,6 +21,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.getValue
@@ -100,6 +101,25 @@ private fun SheetFrame(inSheet: Boolean, onDismiss: () -> Unit, content: @Compos
     else Box(Modifier.background(Phosphor.panel)) { content() }
 }
 
+/**
+ * A text field's words while its sheet is open. Until you type in it, it
+ * follows the story — so an edit that arrives from someone else (live sync)
+ * shows up, and closing the sheet doesn't write the old words back over it.
+ * Once you type, your words are kept and saved.
+ */
+private class Draft(start: String) {
+    var text by mutableStateOf(start)
+    var touched = false
+    fun type(t: String) { text = t; touched = true }
+}
+
+@Composable
+private fun rememberDraft(id: String, current: String): Draft {
+    val d = remember(id) { Draft(current) }
+    LaunchedEffect(current) { if (!d.touched) d.text = current }
+    return d
+}
+
 fun sceneName(rows: StoryRows, id: String?): String =
     rows.nodes.firstOrNull { it.id == id }?.let { it.title.ifBlank { it.slug } } ?: "nowhere yet"
 
@@ -109,13 +129,13 @@ fun sceneName(rows: StoryRows, id: String?): String =
 @Composable
 fun SceneSheet(rows: StoryRows, id: String, onClose: () -> Unit, onChoice: (String) -> Unit, onPlay: (String) -> Unit, onGo: (String) -> Unit, inSheet: Boolean = true) {
     val n = rows.nodes.firstOrNull { it.id == id } ?: return onClose()
-    var title by remember(id) { mutableStateOf(n.title) }
-    var script by remember(id) { mutableStateOf(n.narration) }
+    val titleD = rememberDraft(id, n.title); val title = titleD.text
+    val scriptD = rememberDraft(id, n.narration); val script = scriptD.text
     var confirmDelete by remember(id) { mutableStateOf(false) }
     val kind = if (n.nodeType == "ending") (n.endingKind ?: "death") else "room"
     val save = {
-        if (title != n.title) Studio.edit("Rename scene") { StoryEditor.updateScene(it, id, title = title) }
-        if (script != n.narration) Studio.edit("Edit script") { StoryEditor.setScript(it, id, script) }
+        if (titleD.touched && title != n.title) Studio.edit("Rename scene") { StoryEditor.updateScene(it, id, title = title) }
+        if (scriptD.touched && script != n.narration) Studio.edit("Edit script") { StoryEditor.setScript(it, id, script) }
     }
     // The car can open something else while this is open: keep what was typed.
     val latestSave by rememberUpdatedState(save)
@@ -123,7 +143,7 @@ fun SceneSheet(rows: StoryRows, id: String, onClose: () -> Unit, onChoice: (Stri
     SheetFrame(inSheet, onDismiss = { save(); onClose() }) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Text(if (id == rows.story.rootNodeId) "START SCENE" else "SCENE", style = label())
-            Field("Name", title, { title = it; CarEdit.draft("title:$id", it) }, hint = "Name this scene")
+            Field("Name", title, { titleD.type(it); CarEdit.draft("title:$id", it) }, hint = "Name this scene")
             ChapterPicker(rows, id) { save() }
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("ENDS THE CALL?", style = label())
@@ -131,7 +151,7 @@ fun SceneSheet(rows: StoryRows, id: String, onClose: () -> Unit, onChoice: (Stri
                     for ((k, t) in listOf("room" to "No", "death" to "Death", "win" to "Win")) Chip(t, kind == k) { Studio.edit("Change ending") { StoryEditor.updateScene(it, id, kind = k) } }
                 }
             }
-            Field("Script · \"Name: line\" for a speaker", script, { script = it; CarEdit.draft("script:$id", it) }, lines = 5, hint = "What the caller hears in this scene")
+            Field("Script · \"Name: line\" for a speaker", script, { scriptD.type(it); CarEdit.draft("script:$id", it) }, lines = 5, hint = "What the caller hears in this scene")
             val lines = rows.dialogueLines.filter { it.nodeId == id }.sortedBy { it.sortOrder }
             if (lines.isNotEmpty()) Text("Split into ${lines.size} speaker lines. They follow the script when you edit it.", style = body(12, Phosphor.dim))
             else if (script.contains(':')) Text("Split by speaker", style = body(13, Phosphor.cyan), modifier = Modifier.clickable { save(); Studio.edit("Split by speaker") { StoryEditor.splitIntoLines(it, nodeId = id) } })
@@ -190,18 +210,18 @@ fun SceneSheet(rows: StoryRows, id: String, onClose: () -> Unit, onChoice: (Stri
 @Composable
 fun ChoiceSheet(rows: StoryRows, id: String, onClose: () -> Unit, onGo: (String) -> Unit, inSheet: Boolean = true) {
     val c = rows.choices.firstOrNull { it.id == id } ?: return onClose()
-    var words by remember(id) { mutableStateOf(c.label) }
-    var reply by remember(id) { mutableStateOf(c.reactionNarration ?: "") }
+    val wordsD = rememberDraft(id, c.label); val words = wordsD.text
+    val replyD = rememberDraft(id, c.reactionNarration ?: ""); val reply = replyD.text
     val gate = rows.gates.firstOrNull { it.choiceId == id }
-    var failLine by remember(id) { mutableStateOf(gate?.failNarration ?: "") }
+    val failD = rememberDraft(id, gate?.failNarration ?: ""); val failLine = failD.text
     var picking by remember(id) { mutableStateOf<String?>(null) } // "to", "fork", "gives", "needs"
     var confirmDelete by remember(id) { mutableStateOf(false) }
     val taken = rows.choices.filter { it.fromNodeId == c.fromNodeId && it.id != id }.map { it.digit }.toSet()
     val need = StoryEditor.need(rows, id)
     val save = {
-        if (words != c.label) Studio.edit("Rename choice") { StoryEditor.updateChoice(it, id, label = words) }
-        if (reply != (c.reactionNarration ?: "")) Studio.edit("Edit reply") { StoryEditor.setReply(it, id, reply) }
-        if (gate != null && gate.failBehavior == "refuse" && need != null && failLine != (gate.failNarration ?: ""))
+        if (wordsD.touched && words != c.label) Studio.edit("Rename choice") { StoryEditor.updateChoice(it, id, label = words) }
+        if (replyD.touched && reply != (c.reactionNarration ?: "")) Studio.edit("Edit reply") { StoryEditor.setReply(it, id, reply) }
+        if (gate != null && gate.failBehavior == "refuse" && need != null && failD.touched && failLine != (gate.failNarration ?: ""))
             Studio.edit("Edit refusal") { StoryEditor.setNeed(it, id, need, "refuse", failLine = failLine) }
     }
     val latestSave by rememberUpdatedState(save)
@@ -216,11 +236,11 @@ fun ChoiceSheet(rows: StoryRows, id: String, onClose: () -> Unit, onGo: (String)
                     for (k in StoryEditor.KEYS) Box(Modifier.weight(1f)) { Chip(k, k == c.digit, enabled = k !in taken) { Studio.edit("Change key") { StoryEditor.updateChoice(it, id, digit = k) } } }
                 }
             }
-            Field("Choice name", words, { words = it; CarEdit.draft("label:$id", it) }, hint = "Give Moobert the helmet")
+            Field("Choice name", words, { wordsD.type(it); CarEdit.draft("label:$id", it) }, hint = "Give Moobert the helmet")
             Text("What this choice is called: on the flowchart, the keypad and the car screen.", style = body(12, Phosphor.dim))
             val forks = gate != null && gate.failBehavior == "divert" && need != null
             LinkRow(if (forks) "If they have it, leads to" else "Leads to", sceneName(rows, c.toNodeId), if (c.toNodeId == null) Phosphor.alert else Phosphor.fg) { save(); picking = "to" }
-            Field("Reply · heard before the next scene", reply, { reply = it; CarEdit.draft("reply:$id", it) }, lines = 2, hint = "Carter: Careful. The stairs are wet.")
+            Field("Reply · heard before the next scene", reply, { replyD.type(it); CarEdit.draft("reply:$id", it) }, lines = 2, hint = "Carter: Careful. The stairs are wet.")
             val from = rows.nodes.firstOrNull { it.id == c.fromNodeId }?.slug ?: "CHOICE"
             if (reply.isNotBlank()) TakeRow("Reply take", c.audioPath, c.audioDurationMs, "${from}_reply_${c.digit}") { path, ms ->
                 save(); Studio.edit(if (path == null) "Clear reply take" else "Record reply") { StoryEditor.setReplyTake(it, id, path, ms) }
@@ -243,7 +263,7 @@ fun ChoiceSheet(rows: StoryRows, id: String, onClose: () -> Unit, onGo: (String)
                         Chip("Go to another scene", gate.failBehavior == "divert") { save(); picking = "fork" }
                     }
                     if (gate.failBehavior == "refuse") {
-                        Field("What a refused caller hears", failLine, { failLine = it; CarEdit.draft("refuse:$id", it) }, lines = 2, hint = "You need something to haul on.")
+                        Field("What a refused caller hears", failLine, { failD.type(it); CarEdit.draft("refuse:$id", it) }, lines = 2, hint = "You need something to haul on.")
                         TakeRow("Refusal take", gate.failAudioPath, null, "${from}_refused_${c.digit}") { path, _ ->
                             save(); Studio.edit(if (path == null) "Clear refusal take" else "Record refusal") { StoryEditor.setRefusalTake(it, id, path) }
                         }

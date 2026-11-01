@@ -11,13 +11,18 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * Keeps the phone's stories and the cloud's in step, a whole story at a time.
+ * Keeps the phone's stories and the cloud's in step — for one person on two
+ * devices, or two people on one story at the same time.
  *
  * The rules, as the author chose them:
- *   - changed only on the phone: the phone's version goes up;
- *   - changed only in the cloud (the web app, another phone): it comes down;
- *   - changed on both since the last sync: the newer edit wins;
+ *   - changes are MERGED, not overwritten ([Merge]): each phone keeps the story
+ *     as it was at its last sync, and only what changed since moves, row by row
+ *     and field by field. Two people editing different scenes never collide;
+ *     the newer edit wins only where both changed the same field;
  *   - a story only on one side is copied to the other;
+ *   - a VIEWER's phone only ever receives;
+ *   - deleting a story on the phone deletes it in the cloud if you own it, and
+ *     takes you off it if you don't;
  *   - the FIRST sync of a story that came from the cloud (William, JCFC)
  *     always sends the phone's version up — the cloud copies were older.
  *
@@ -39,6 +44,8 @@ object Sync {
         val cloudSeen: String? = null,
         /** Local take path -> its path in the bucket. */
         val audio: Map<String, String> = emptyMap(),
+        /** Gone from the cloud (deleted there, or no longer shared): kept on this phone, not synced. */
+        val detached: Boolean = false,
     )
 
     /** The phone's side, as the sync sees it. */
@@ -54,6 +61,9 @@ object Sync {
         fun readTake(path: String): ByteArray?
         /** Where a take downloaded for [bucketPath] would live, if it has been; null to stream it. */
         fun localTake(bucketPath: String): String? = null
+        /** The story as it was at the last sync, in cloud form (takes as bucket paths): what a merge compares against. */
+        fun base(storyId: String): StoryRows?
+        fun setBase(storyId: String, rows: StoryRows?)
     }
 
     data class Report(val pushed: List<String> = emptyList(), val pulled: List<String> = emptyList(), val deleted: List<String> = emptyList(), val errors: List<String> = emptyList()) {
@@ -70,15 +80,27 @@ object Sync {
             o.s("id")!! to (o.s("title").orEmpty() to o.s("edited_at").orEmpty())
         }
 
+    /** This account's role on each story it can see: story id -> owner / writer / voice / viewer. */
+    fun roles(db: Supabase, userId: String): Map<String, String> =
+        db.select("memberships", "user_id=eq.$userId&select=story_id,role").associate { e ->
+            val o = e.jsonObject; o.s("story_id")!! to (o.s("role") ?: "viewer")
+        }
+
     fun run(db: Supabase, lib: Library, now: () -> Long = { System.currentTimeMillis() }): Report {
         val pushed = ArrayList<String>(); val pulled = ArrayList<String>(); val removed = ArrayList<String>(); val errors = ArrayList<String>()
         val userId = db.session?.userId ?: throw SyncError("Not signed in.", 401)
 
-        // Deleted on the phone: delete in the cloud too.
+        // Invites waiting for this email become memberships (before 0023 there's no such function: fine).
+        runCatching { db.rpc("accept_story_invites") }
         var cloud = cloudStories(db)
+        val roles = runCatching { roles(db, userId) }.getOrDefault(emptyMap())
+
+        // Deleted on the phone: deleted in the cloud if it's yours; otherwise you leave it.
         for (id in lib.deleted()) {
-            runCatching { if (id in cloud) db.delete("stories", listOf(id)); lib.forget(id); removed += id }
-                .onFailure { errors += "Deleting a story in the cloud: ${it.message}" }
+            runCatching {
+                if (id in cloud) { if (roles[id] == "owner" || roles[id] == null) db.delete("stories", listOf(id)) else db.rpc("leave_story", mapOf("p_story" to id)) }
+                lib.forget(id); removed += id
+            }.onFailure { errors += "Deleting a story in the cloud: ${it.message}" }
         }
         cloud = cloud - removed.toSet()
 
@@ -87,6 +109,7 @@ object Sync {
             val title = local.story.title.ifBlank { "Untitled story" }
             try {
                 val meta = lib.meta(local.story.id) ?: SyncMeta()
+                if (meta.detached) { claimed += local.story.id; continue }
                 if (!isUuid(local.story.id) || meta.cloudSeen == null && local.story.id !in cloud) {
                     // Never synced. A story that came from the cloud under short ids
                     // finds its cloud copy by title, takes its ids, and replaces it.
@@ -95,24 +118,28 @@ object Sync {
                     if (linked.story.id != local.story.id) lib.save(linked, local.story.id)
                     val m = lib.meta(linked.story.id) ?: meta
                     claimed += linked.story.id
-                    push(db, lib, linked, m, userId, now)
+                    lib.setBase(linked.story.id, push(db, lib, linked, m, userId, now))
                     pushed += title
                     continue
                 }
                 claimed += local.story.id
                 val c = cloud[local.story.id]
-                val localChanged = meta.localEditedAt > meta.syncedLocalAt
                 if (c == null) {
-                    // Gone from the cloud (deleted on the web, or never made it): send it up again.
-                    push(db, lib, local, meta, userId, now); pushed += title; continue
+                    // Synced before, gone now: deleted in the cloud or no longer shared with
+                    // this account. Kept here; recreating it could make a stranger's copy.
+                    lib.setMeta(local.story.id, meta.copy(detached = true))
+                    errors += "$title is no longer in the cloud for this account (deleted there, or not shared any more). It stays on this phone but won't sync."
+                    continue
                 }
+                val localChanged = meta.localEditedAt > meta.syncedLocalAt
                 val cloudChanged = meta.cloudSeen == null || Instant.parse(normal(c.second)).isAfter(Instant.parse(normal(meta.cloudSeen)))
-                when {
-                    localChanged && cloudChanged ->
-                        if (meta.localEditedAt >= Instant.parse(normal(c.second)).toEpochMilli()) { push(db, lib, local, meta, userId, now); pushed += title }
-                        else { pull(db, lib, local.story.id, meta); pulled += title }
-                    localChanged -> { push(db, lib, local, meta, userId, now); pushed += title }
-                    cloudChanged -> { pull(db, lib, local.story.id, meta); pulled += title }
+                val base = lib.base(local.story.id)
+                if (!localChanged && !cloudChanged && base != null) continue
+                when (mergeOne(db, lib, local, meta, base, c.second, roles[local.story.id] ?: "owner", now)) {
+                    Moved.UP -> pushed += title
+                    Moved.DOWN -> pulled += title
+                    Moved.BOTH -> { pushed += title; pulled += title }
+                    Moved.NONE -> Unit
                 }
             } catch (e: Exception) {
                 errors += "$title: ${e.message}"
@@ -121,9 +148,89 @@ object Sync {
         // In the cloud and not on the phone: bring it down.
         for ((id, v) in cloud) {
             if (id in claimed) continue
-            try { pull(db, lib, id, SyncMeta()); pulled += v.first } catch (e: Exception) { errors += "${v.first}: ${e.message}" }
+            try { lib.setBase(id, pull(db, lib, id, SyncMeta())); pulled += v.first } catch (e: Exception) { errors += "${v.first}: ${e.message}" }
         }
         return Report(pushed, pulled, removed, errors)
+    }
+
+    enum class Moved { NONE, UP, DOWN, BOTH }
+
+    /**
+     * One story, both sides possibly changed: merge against the base, send the
+     * cloud only what differs from what it has, keep the merged copy here.
+     */
+    fun mergeOne(db: Supabase, lib: Library, local: StoryRows, meta: SyncMeta, base0: StoryRows?, cloudEdited: String, role: String, now: () -> Long): Moved {
+        val id = local.story.id
+        val startedAt = meta.localEditedAt
+        val viewer = role == "viewer"
+        // Takes recorded here, uploaded once; the merge works on bucket paths.
+        val audio = if (viewer) meta.audio else uploadTakes(db, lib, local, meta.audio)
+        val localCloud = local.mapAudio { p -> if (p.startsWith("/")) audio[p] ?: p else p }
+        val remote = fetch(db, id)
+        // No base on this phone yet (it synced before the merge existed): the cloud as it is now.
+        val base = base0 ?: remote
+        val merged = if (viewer) remote else {
+            val localWins = meta.localEditedAt >= Instant.parse(normal(cloudEdited)).toEpochMilli()
+            Merge.merge(base, localCloud, remote, localWins).rows
+        }
+        val d = Merge.diff(remote, merged)
+        var seen = cloudEdited
+        if (!d.empty && !viewer) {
+            apply(db, id, remote, merged, d, now)
+            seen = cloudStories(db)[id]?.second ?: cloudEdited
+        }
+        // Back to this phone's own files where it has them.
+        val back = audio.entries.associate { (l, b) -> b to l }
+        val mergedLocal = merged.mapAudio { p -> back[p] ?: lib.localTake(p) ?: p }
+        val changedHere = mergedLocal != local
+        if (changedHere) lib.save(mergedLocal, id)
+        lib.setBase(id, merged)
+        lib.setMeta(id, meta.copy(syncedLocalAt = startedAt, cloudSeen = seen, audio = audio))
+        return when {
+            !d.empty && !viewer && changedHere -> Moved.BOTH
+            !d.empty && !viewer -> Moved.UP
+            changedHere -> Moved.DOWN
+            else -> Moved.NONE
+        }
+    }
+
+    private fun uploadTakes(db: Supabase, lib: Library, local: StoryRows, known: Map<String, String>): Map<String, String> {
+        val audio = known.toMutableMap()
+        for (path in local.audioPaths().filter { it.startsWith("/") }.distinct()) {
+            if (audio[path] != null) continue
+            val bytes = lib.readTake(path) ?: continue
+            val name = path.substringAfterLast('/').replace(Regex("[^A-Za-z0-9._-]+"), "_")
+            val target = "${local.story.id}/phone/$name"
+            db.upload(target, bytes)
+            audio[path] = target
+        }
+        return audio
+    }
+
+    /** Send [d]: deletes children first, then upserts parents first, then the story row. */
+    private fun apply(db: Supabase, id: String, remote: StoryRows, merged: StoryRows, d: Merge.Diff, now: () -> Long) {
+        for (t in CloudRows.TABLES.reversed()) d.deletes[t]?.takeIf { it.isNotEmpty() }?.let { db.delete(t, it) }
+        val rows = CloudRows.rows(merged, Instant.ofEpochMilli(now() - 60_000L))
+        val have = remote.idsByTable()
+        // A changed slug that another row still holds would collide mid-upsert: step aside first.
+        val oldSlugs = mapOf("nodes" to remote.nodes.associate { it.id to it.slug }, "state_vars" to remote.stateVars.associate { it.id to it.slug },
+            "characters" to remote.characters.associate { it.id to it.slug })
+        for (t in SLUGGED) for (r in rows[t].orEmpty()) {
+            val rid = r.s("id") ?: continue
+            if (rid !in d.upserts[t].orEmpty()) continue
+            val before = oldSlugs[t]?.get(rid) ?: continue
+            if (before != r.s("slug")) db.patch(t, "id=eq.$rid", JsonObject(mapOf("slug" to JsonPrimitive("ZSYNC_" + rid.replace("-", "").take(12).uppercase()))))
+        }
+        for (t in CloudRows.TABLES) {
+            val want = d.upserts[t].orEmpty().toSet()
+            if (want.isEmpty()) continue
+            val pick = rows[t].orEmpty().filter { it.s("id") in want }
+            // New rows carry their place in the story's order; rows the cloud has keep theirs.
+            val (fresh, known) = pick.partition { it.s("id") !in have[t].orEmpty() }
+            db.upsert(t, fresh)
+            db.upsert(t, known.map { JsonObject(it - "created_at") })
+        }
+        if (d.storyChanged) db.patch("stories", "id=eq.$id", CloudRows.storyRow(merged, null, withRoot = true))
     }
 
     /**
@@ -161,7 +268,7 @@ object Sync {
      * cloud has and the phone doesn't deleted (children first), every row
      * upserted (parents first), and only then the entrance set.
      */
-    fun push(db: Supabase, lib: Library, local: StoryRows, meta: SyncMeta, userId: String, now: () -> Long) {
+    fun push(db: Supabase, lib: Library, local: StoryRows, meta: SyncMeta, userId: String, now: () -> Long): StoryRows {
         val id = local.story.id
         val startedAt = meta.localEditedAt
         // 1. Takes recorded on the phone, each uploaded once.
@@ -206,10 +313,11 @@ object Sync {
         val after = db.patch("stories", "id=eq.$id", CloudRows.storyRow(up, null, withRoot = true)).firstOrNull()?.jsonObject
         val seen = after?.s("edited_at") ?: cloudStories(db)[id]?.second
         lib.setMeta(id, meta.copy(syncedLocalAt = startedAt, cloudSeen = seen, audio = audio))
+        return up
     }
 
     /** Make the phone's copy the cloud's, keeping local files for takes uploaded from here. */
-    fun pull(db: Supabase, lib: Library, id: String, meta: SyncMeta) {
+    fun pull(db: Supabase, lib: Library, id: String, meta: SyncMeta): StoryRows {
         val remote = fetch(db, id)
         val back = meta.audio.entries.associate { (local, bucket) -> bucket to local }
         val rows = remote.mapAudio { p -> back[p] ?: lib.localTake(p) ?: p }
@@ -217,6 +325,7 @@ object Sync {
         lib.save(rows, id)
         val t = edited?.let { runCatching { Instant.parse(normal(it)).toEpochMilli() }.getOrNull() } ?: 0L
         lib.setMeta(id, meta.copy(localEditedAt = t, syncedLocalAt = t, cloudSeen = edited))
+        return remote
     }
 
     private val SLUGGED = setOf("nodes", "state_vars", "characters")

@@ -132,3 +132,80 @@ private fun Input(value: String, onChange: (String) -> Unit, hint: String, type:
             enabled = enabled, keyboardOptions = KeyboardOptions(keyboardType = type), modifier = Modifier.fillMaxWidth())
     }
 }
+
+/**
+ * Who a story is shared with, and inviting someone: their email, and whether
+ * they can edit it or only look. Someone without an account yet gets an invite
+ * that turns into access the first time they sign in to Jackie Dungeon with
+ * that email. Changes then reach everyone on the story within seconds while
+ * their app is open, merged scene by scene.
+ */
+@Composable
+fun ShareDialog(storyId: String, title: String, onDone: () -> Unit) {
+    val status by CloudSync.status.collectAsStateWithLifecycle()
+    val roles by CloudSync.roles.collectAsStateWithLifecycle()
+    val role = roles[storyId]
+    val owner = role == null || role == "owner"
+    var members by remember { mutableStateOf<List<CloudSync.Member>?>(null) }
+    var email by remember { mutableStateOf("") }
+    var canEdit by remember { mutableStateOf(true) }
+    var busy by remember { mutableStateOf(false) }
+    var note by remember { mutableStateOf<Pair<String, Color>?>(null) }
+    val scope = rememberCoroutineScope()
+    fun attempt(f: () -> Unit, then: () -> Unit = {}) {
+        busy = true; note = null
+        scope.launch {
+            val r = withContext(Dispatchers.IO) { runCatching(f) }
+            busy = false
+            r.onSuccess { then() }.onFailure { note = (it.message ?: "That didn't work.") to Phosphor.alert }
+        }
+    }
+    fun reload() = attempt({ members = CloudSync.members(storyId) })
+    val ready = status.state != State.SIGNED_OUT && CloudSync.inCloud(storyId)
+    androidx.compose.runtime.LaunchedEffect(ready) { if (ready) reload() else if (status.state != State.SIGNED_OUT) CloudSync.syncNow() }
+
+    Dialog(onDismissRequest = onDone) {
+        Column(Modifier.border(1.dp, Phosphor.fg).background(Phosphor.bg).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("SHARE “${title.uppercase()}”", style = style(22, Phosphor.hi))
+            when {
+                status.state == State.SIGNED_OUT -> Text("Sign in to the cloud first (stories list → ☁ CLOUD → SIGN IN).", style = mono(13, Phosphor.warn))
+                !ready -> Text("Sending the story to the cloud first…", style = mono(13, Phosphor.cyan))
+                else -> {
+                    Text(if (owner) "People on this story see each other's changes within seconds while the app is open. Edits to different scenes never collide." else "Shared with you (${role}). Only the owner can invite people.", style = mono(12, Phosphor.dim))
+                    val list = members
+                    if (list == null) Text("…", style = mono(13, Phosphor.cyan))
+                    else for (m in list) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Column(Modifier.weight(1f)) {
+                            Text(m.email.ifBlank { "(no email)" }, style = mono(14, Phosphor.fg))
+                            Text(when { m.pending -> "invited · waiting for them to sign in"; m.role == "owner" -> "owner"; m.role == "viewer" -> "can view"; m.role == "voice" -> "can record"; else -> "can edit" },
+                                style = mono(11, if (m.pending) Phosphor.warn else Phosphor.dim))
+                        }
+                        if (owner && m.role != "owner") Text("remove", style = mono(12, Phosphor.alert), modifier = Modifier.clickable {
+                            if (!busy) attempt({ if (m.pending) CloudSync.cancelInvite(storyId, m.email) else CloudSync.removeMember(storyId, m.userId!!) }) { reload() }
+                        }.padding(6.dp))
+                    }
+                    if (owner) {
+                        Input(email, { email = it.trim() }, "friend@example.com", KeyboardType.Email)
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            for ((v, label) in listOf(true to "Can edit", false to "Can view")) {
+                                val on = canEdit == v
+                                Text(label, style = mono(14, if (on) Phosphor.bg else Phosphor.fg), modifier = Modifier.border(1.dp, if (on) Phosphor.fg else Phosphor.line)
+                                    .background(if (on) Phosphor.fg else Phosphor.panel).clickable { canEdit = v }.padding(horizontal = 12.dp, vertical = 8.dp))
+                            }
+                        }
+                        Button("INVITE", Modifier.fillMaxWidth(), primary = true) {
+                            if (email.contains('@') && !busy) attempt({
+                                val r = CloudSync.invite(storyId, email, if (canEdit) "writer" else "viewer")
+                                note = (if (r == "added") "Added. It appears on their phone the next time their app syncs."
+                                else "Invite sent to the story: it appears when they sign in to Jackie Dungeon with $email. (Tell them — no email is sent.)") to Phosphor.cyan
+                            }) { email = ""; reload() }
+                        }
+                    }
+                }
+            }
+            note?.let { (t, c) -> Text(t, style = mono(13, c)) }
+            if (busy) Text("…", style = mono(14, Phosphor.cyan))
+            Button("DONE", Modifier.fillMaxWidth()) { onDone() }
+        }
+    }
+}

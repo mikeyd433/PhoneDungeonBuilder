@@ -188,6 +188,7 @@ object AppGraph {
 
     @Synchronized fun activityStarted() {
         visibleActivities++
+        if (visibleActivities == 1) CloudSync.foreground(true)
         if (ticker == null) {
             lastTick = System.nanoTime()
             ticker = worker.scheduleWithFixedDelay(::tick, 0, TICK_MS, TimeUnit.MILLISECONDS)
@@ -197,6 +198,7 @@ object AppGraph {
     @Synchronized fun activityStopped() {
         visibleActivities = (visibleActivities - 1).coerceAtLeast(0)
         if (visibleActivities == 0) {
+            CloudSync.foreground(false)
             ticker?.cancel(false); ticker = null
             worker.execute { save() }
         }
