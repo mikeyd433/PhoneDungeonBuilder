@@ -197,10 +197,17 @@ class CarEditorTest {
         b.s = b.s.copy(phone = PhoneView(box.cx, box.y, 400f, 900f))
         val cam = CarEditor.camera(b.s, b.layout(), william, v)
         assertEquals(box.cx, cam.cx)
-        assertEquals(v.w, 400f * cam.zoom, 0.5f, "what spans the phone spans the car")
+        assertEquals(v.w / CarEditor.MIRROR_MARGIN, 400f * cam.zoom, 0.5f, "what spans the phone spans most of the car, with room around it")
         // A scene zoomed in to fill the phone's width fills the car's.
-        val close = CarEditor.mirrored(PhoneView(box.cx, box.y, FlowLayout.W * 1.1f, FlowLayout.W * 2.4f), v)
-        assertTrue(FlowLayout.W * close.zoom > v.w * 0.85f, "the box is ${FlowLayout.W * close.zoom} of ${v.w}")
+        // As on a real phone: the flowchart area about 1.4 times as tall as wide, the box a little above its middle.
+        val pw = FlowLayout.W * 1.1f; val ph = pw * 1.4f
+        val close = CarEditor.mirrored(PhoneView(box.cx, box.y + box.h / 2 + 0.08f * ph, pw, ph), v)
+        val boxW = FlowLayout.W * close.zoom
+        assertTrue(boxW > v.w * 0.6f && boxW < v.w * 0.8f, "the box is $boxW of ${v.w}")
+        // And the whole box is on the map: under the toolbar, above the bottom.
+        val boxTop = (box.y - close.cy) * close.zoom + v.h / 2
+        val boxBottom = (box.bottom - close.cy) * close.zoom + v.h / 2
+        assertTrue(boxTop >= CarView.toolbarBottom(v) && boxBottom <= v.h, "box from $boxTop to $boxBottom")
         // The phone moves: so does the car.
         b.s = b.s.copy(phone = PhoneView(box.cx + 300f, box.y, 400f, 900f))
         assertEquals(box.cx + 300f, CarEditor.camera(b.s, b.layout(), william, v).cx)
@@ -214,6 +221,12 @@ class CarEditorTest {
         assertTrue(b.s.mirror)
         assertEquals(0f, CarEditor.camera(b.s, b.layout(), william, v).cx)
         dump("map-mirror", b)
+        // The phone as in the author's screenshot: Mike's intro, 734 of 923 px wide, a little above the middle.
+        val mike = b.layout().boxes[william.nodes.first { it.slug == "GNOME_RUNS_BY_AND" }.id]!!
+        val scale = 734f / FlowLayout.W
+        val sw = 923f / scale; val sh = 1270f / scale
+        b.s = b.s.copy(phone = PhoneView(mike.cx, mike.y - 348f / scale + sh / 2, sw, sh), scene = null)
+        dump("map-mirror-phone", b)
     }
 
     @Test

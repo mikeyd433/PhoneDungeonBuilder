@@ -175,10 +175,17 @@ object CarEditor {
      */
     fun mirrored(p: PhoneView, v: Viewport): Camera {
         val top = CarView.toolbarBottom(v)
-        val z = (v.w / p.w.coerceAtLeast(1f)).coerceIn(MIN_ZOOM, MAX_ZOOM)
-        // The map's middle is below the toolbar, not the screen's middle.
-        return Camera(p.cx, p.cy - (top / 2) / z, z)
+        // A little wider than the phone, so a box that fills the phone has room around it on the car.
+        val z = (v.w / (p.w.coerceAtLeast(1f) * MIRROR_MARGIN)).coerceIn(MIN_ZOOM, MAX_ZOOM)
+        // The car shows a band of the phone's tall view. Centre it a little above the phone's
+        // middle — where the scene you're looking at sits on the phone — and below the toolbar.
+        return Camera(p.cx, p.cy - MIRROR_LIFT * p.h - (top / 2) / z, z)
     }
+
+    /** How much wider than the phone's view the car shows. */
+    const val MIRROR_MARGIN = 1.35f
+    /** How far above the phone's middle the car centres, as a share of the phone's view height. */
+    const val MIRROR_LIFT = 0.08f
 
     private fun centred(layout: FlowLayout.Layout, id: String?, zoom: Float): Camera {
         val b = layout.boxes[id] ?: layout.boxes.values.firstOrNull() ?: return Camera(0f, 0f, zoom)
