@@ -43,6 +43,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.jackie.dungeon.AppGraph
 import com.jackie.dungeon.Backups
+import com.jackie.dungeon.CloudSync
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.rememberCoroutineScope
@@ -110,6 +111,7 @@ private fun StoriesScreen() {
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("JACKIE DUNGEON", style = style(32, Phosphor.hi))
         Text("Your stories, on this phone.", style = mono(13, Phosphor.dim))
+        SyncBar(Modifier.fillMaxWidth())
         LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(stories, key = { it.id }) { s ->
                 Row(Modifier.fillMaxWidth().border(1.dp, Phosphor.line).background(Phosphor.panel).clickable { Studio.open(s.id) }.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -223,7 +225,13 @@ private fun StoryScreen() {
             }
         }
         if (carPresent) CarControls(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp))
-        if (undo.isNotEmpty() && tab == "edit") Text("Undo: ${undo.last().first}", style = mono(11, Phosphor.dim), modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp))
+        val sync by CloudSync.status.collectAsStateWithLifecycle()
+        Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (undo.isNotEmpty() && tab == "edit") Text("Undo: ${undo.last().first}", style = mono(11, Phosphor.dim), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            else Box(Modifier.weight(1f))
+            val (line, color) = syncLine(sync)
+            Text("☁ " + line, style = mono(11, color), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+        }
 
         val chapters = remember(r) { StoryEditor.chapters(r) }
         val moved = StoryEditor.hasNudges(r) || r.story.layoutHome.isNotEmpty()

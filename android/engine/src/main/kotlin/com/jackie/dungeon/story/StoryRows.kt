@@ -66,6 +66,42 @@ data class StoryRows(
         )
     }
 
+    /**
+     * Rename every row id and every reference to one, through [f] — for giving
+     * a story the cloud's ids. Covers every id column and the layout keys that
+     * name scenes; expressions name items by slug, not id, so they are untouched.
+     */
+    fun mapIds(f: (String) -> String): StoryRows {
+        fun m(id: String?) = id?.let(f)
+        return copy(
+            story = story.copy(
+                id = f(story.id), rootNodeId = m(story.rootNodeId),
+                layoutHome = story.layoutHome.mapKeys { (k, _) -> if (k.startsWith("chapter:")) k else f(k) },
+            ),
+            nodes = nodes.map { it.copy(id = f(it.id), timeoutTargetId = m(it.timeoutTargetId), invalidTargetId = m(it.invalidTargetId)) },
+            choices = choices.map { it.copy(id = f(it.id), fromNodeId = f(it.fromNodeId), toNodeId = m(it.toNodeId)) },
+            stateVars = stateVars.map { it.copy(id = f(it.id)) },
+            effects = effects.map { it.copy(id = f(it.id), nodeId = m(it.nodeId), choiceId = m(it.choiceId), stateVarId = f(it.stateVarId)) },
+            gates = gates.map { it.copy(id = f(it.id), choiceId = f(it.choiceId), failNodeId = m(it.failNodeId)) },
+            characters = characters.map { it.copy(id = f(it.id)) },
+            dialogueLines = dialogueLines.map { it.copy(id = f(it.id), nodeId = m(it.nodeId), choiceId = m(it.choiceId), characterId = m(it.characterId)) },
+            fights = fights.map { it.copy(id = f(it.id), nodeId = f(it.nodeId), winNodeId = m(it.winNodeId), loseNodeId = m(it.loseNodeId)) },
+            fightMoves = fightMoves.map { it.copy(id = f(it.id), fightId = f(it.fightId)) },
+            fightRounds = fightRounds.map { it.copy(id = f(it.id), fightId = f(it.fightId)) },
+            fightRoundOutcomes = fightRoundOutcomes.map { it.copy(id = f(it.id), fightId = f(it.fightId), roundId = f(it.roundId), moveId = f(it.moveId), toNodeId = m(it.toNodeId)) },
+        )
+    }
+
+    /** Every row id in the story, by table name. */
+    fun idsByTable(): Map<String, List<String>> = linkedMapOf(
+        "stories" to listOf(story.id),
+        "nodes" to nodes.map { it.id }, "choices" to choices.map { it.id }, "state_vars" to stateVars.map { it.id },
+        "effects" to effects.map { it.id }, "gates" to gates.map { it.id }, "characters" to characters.map { it.id },
+        "dialogue_lines" to dialogueLines.map { it.id }, "fights" to fights.map { it.id },
+        "fight_moves" to fightMoves.map { it.id }, "fight_rounds" to fightRounds.map { it.id },
+        "fight_round_outcomes" to fightRoundOutcomes.map { it.id },
+    )
+
     /** Every audio path in the story, in the order [mapAudio] visits them. */
     fun audioPaths(): List<String> { val out = ArrayList<String>(); mapAudio { out += it; it }; return out }
 }

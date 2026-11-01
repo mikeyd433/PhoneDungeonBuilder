@@ -22,8 +22,8 @@ android {
         applicationId = "com.jackie.dungeon"
         minSdk = 26
         targetSdk = 36
-        versionCode = 11
-        versionName = "0.11.0"
+        versionCode = 12
+        versionName = "0.12.0"
     }
 
     signingConfigs {
@@ -73,6 +73,8 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.1")
     // Runs the web app's own Twilio exporter (assets/js/exporter.js) on the phone.
     implementation("io.github.dokar3:quickjs-kt:1.0.3")
+    // Sync with Supabase. OkHttp because Android's HttpURLConnection refuses PATCH, which PostgREST needs.
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     // Robolectric renders the phone screens on the JVM, so they can be looked at
     // (and checked) without a device — the Brenda apps' approach.

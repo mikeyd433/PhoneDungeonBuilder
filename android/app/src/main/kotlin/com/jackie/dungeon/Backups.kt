@@ -50,7 +50,14 @@ object Backups {
         return out
     }
 
-    /** When this story was last backed up, or 0 for never. */
+    /** The story got a new id (its first sync): keep its "last backed up". */
+    fun rekey(context: Context, from: String, to: String) {
+        val p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val at = p.getLong(from, 0L)
+        if (at != 0L) p.edit().putLong(to, at).remove(from).apply()
+    }
+
+        /** When this story was last backed up, or 0 for never. */
     fun lastBackup(context: Context, storyId: String): Long =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong(storyId, 0L)
 

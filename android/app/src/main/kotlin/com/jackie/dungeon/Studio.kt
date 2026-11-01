@@ -94,9 +94,41 @@ object Studio {
         file(rows.story.id).writeText(rows.encode())
         refreshList()
         open(rows.story.id)
+        CloudSync.edited(rows.story.id)
     }
 
     fun exists(id: String) = file(id).exists()
+
+    /** Every story on the phone, the open one as it is in memory (its file may still be saving). */
+    fun allStories(): List<StoryRows> {
+        val open = _rows.value
+        return dir.listFiles { f -> f.name.endsWith(".rows.json") }.orEmpty().mapNotNull { f ->
+            val id = f.name.removeSuffix(".rows.json")
+            if (open != null && open.story.id == id) open else runCatching { StoryRows.parse(f.readText()) }.getOrNull()
+        }
+    }
+
+    /**
+     * A story from the sync: brought down from the cloud, or given the cloud's
+     * ids ([oldId] is what it was called here). Undo starts afresh — its
+     * history is of a different copy.
+     */
+    fun replaceFromSync(rows: StoryRows, oldId: String) {
+        file(rows.story.id).writeText(rows.encode())
+        val wasOpen = _rows.value?.story?.id
+        if (oldId != rows.story.id) {
+            file(oldId).delete()
+            Backups.rekey(app, oldId, rows.story.id)
+            if (runCatching { currentFile.readText().trim() }.getOrNull() == oldId) runCatching { currentFile.writeText(rows.story.id) }
+        }
+        if (wasOpen == oldId || wasOpen == rows.story.id) {
+            if (wasOpen != rows.story.id) CarEdit.reset()
+            _rows.value = rows
+            _undo.value = emptyList()
+            AppGraph.storyEdited(packOf(rows))
+        }
+        refreshList()
+    }
 
     /** The saved rows of a story on this phone (not just the open one), for backing up. */
     fun load(id: String): StoryRows? = runCatching { StoryRows.parse(file(id).readText()) }.getOrNull()
@@ -107,12 +139,14 @@ object Studio {
         if (_rows.value?.story?.id == rows.story.id) _rows.value = null
         refreshList()
         open(rows.story.id)
+        CloudSync.edited(rows.story.id)
     }
 
     fun reportError(message: String) { _error.value = message }
 
     fun deleteStory(id: String) {
         file(id).delete()
+        CloudSync.deleted(id)
         if (_rows.value?.story?.id == id) _rows.value = null
         refreshList()
     }
@@ -156,6 +190,7 @@ object Studio {
             }.onFailure { Log.w(TAG, "save", it) }
         }
         AppGraph.storyEdited(packOf(rows))
+        CloudSync.edited(id)
     }
 
     fun clearError() { _error.value = null }

@@ -1,0 +1,226 @@
+package com.jackie.dungeon
+
+import android.app.Application
+import android.content.Context
+import android.net.ConnectivityManager
+import android.net.Network
+import android.os.Handler
+import android.os.Looper
+import android.util.Log
+import com.jackie.dungeon.story.StoryRows
+import com.jackie.dungeon.sync.Http
+import com.jackie.dungeon.sync.Request
+import com.jackie.dungeon.sync.Response
+import com.jackie.dungeon.sync.Session
+import com.jackie.dungeon.sync.Supabase
+import com.jackie.dungeon.sync.Sync
+import com.jackie.dungeon.sync.SyncError
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.serialization.builtins.MapSerializer
+import kotlinx.serialization.builtins.SetSerializer
+import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.json.Json
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.OkHttpClient
+import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.File
+import java.io.IOException
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledFuture
+import java.util.concurrent.TimeUnit
+
+/**
+ * Keeps the stories on this phone in step with Supabase — automatically, a
+ * few seconds after each edit, when the app opens, and when the connection
+ * comes back. The rules live in [Sync] (pure, tested against a fake Supabase
+ * in `SyncTest`); this object signs in, remembers what it needs between runs
+ * (`files/sync/`), and runs one sync at a time on its own thread.
+ */
+object CloudSync {
+    private const val TAG = "CloudSync"
+    const val URL = "https://tzfkylvtndgaugbgxbuc.supabase.co"
+    /** The project's publishable key — public by design, as in the web app. */
+    private const val KEY = "sb_publishable_ENoH6QxlfhfUaSjOk80QkQ_uFarNZ07"
+    private const val DEBOUNCE_MS = 5_000L
+
+    enum class State { SIGNED_OUT, IDLE, WAITING, SYNCING, OFFLINE, ERROR }
+
+    data class Status(
+        val state: State = State.SIGNED_OUT,
+        val email: String? = null,
+        /** Epoch ms of the last sync that finished cleanly. */
+        val lastSynced: Long = 0,
+        val message: String? = null,
+    )
+
+    private lateinit var app: Application
+    private val worker = Executors.newSingleThreadScheduledExecutor { Thread(it, "jackie-sync") }
+    private val main = Handler(Looper.getMainLooper())
+    private var pending: ScheduledFuture<*>? = null
+    private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+
+    private val _status = MutableStateFlow(Status())
+    val status: StateFlow<Status> = _status
+
+    private val dir get() = File(app.filesDir, "sync").apply { mkdirs() }
+    private val metaFile get() = File(dir, "meta.json")
+    private val goneFile get() = File(dir, "deleted.json")
+    private val sessionFile get() = File(dir, "session.json")
+
+    private val metas = HashMap<String, Sync.SyncMeta>()
+    private val gone = HashSet<String>()
+
+    private val client = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS).build()
+    private val http = Http { r -> send(r) }
+
+    lateinit var db: Supabase
+        private set
+
+    fun init(application: Application) {
+        app = application
+        runCatching { metas.putAll(json.decodeFromString(MapSerializer(String.serializer(), Sync.SyncMeta.serializer()), metaFile.readText())) }
+        runCatching { gone.addAll(json.decodeFromString(SetSerializer(String.serializer()), goneFile.readText())) }
+        val session = runCatching { json.decodeFromString(Session.serializer(), sessionFile.readText()) }.getOrNull()
+        db = Supabase(URL, KEY, http, session, onSession = ::keepSession)
+        val last = app.getSharedPreferences("sync", Context.MODE_PRIVATE).getLong("lastSynced", 0)
+        _status.value = Status(if (session == null) State.SIGNED_OUT else State.IDLE, session?.email, last)
+        // When the connection comes back, catch up.
+        runCatching {
+            app.getSystemService(ConnectivityManager::class.java).registerDefaultNetworkCallback(object : ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: Network) { if (_status.value.state == State.OFFLINE || _status.value.state == State.WAITING) soon(1_000) }
+            })
+        }
+        soon(2_000)
+    }
+
+    // ---- signing in -------------------------------------------------------------
+
+    /** Off the main thread. Throws [SyncError] with a readable message. */
+    fun sendCode(email: String) = db.sendCode(email)
+
+    fun verify(email: String, code: String) {
+        val s = db.verify(email, code)
+        _status.value = _status.value.copy(state = State.IDLE, email = s.email, message = null)
+        soon(0)
+    }
+
+    fun signOut() {
+        db.signOut()
+        _status.value = Status(State.SIGNED_OUT)
+    }
+
+    private fun keepSession(s: Session?) {
+        if (s == null) sessionFile.delete() else write(sessionFile, json.encodeToString(Session.serializer(), s))
+    }
+
+    // ---- what the rest of the app tells it ----------------------------------------
+
+    /** A story was edited on this phone just now. */
+    @Synchronized fun edited(storyId: String) {
+        metas[storyId] = (metas[storyId] ?: Sync.SyncMeta()).copy(localEditedAt = System.currentTimeMillis())
+        saveMeta()
+        if (db.session != null) {
+            _status.value = _status.value.copy(state = State.WAITING)
+            soon(DEBOUNCE_MS)
+        }
+    }
+
+    /** A story was deleted on this phone: if the cloud has it, it goes there too. */
+    @Synchronized fun deleted(storyId: String) {
+        if (metas[storyId]?.cloudSeen != null) { gone += storyId; saveGone() }
+        metas.remove(storyId); saveMeta()
+        soon(DEBOUNCE_MS)
+    }
+
+    fun syncNow() = soon(0)
+
+    // ---- running it ------------------------------------------------------------------
+
+    @Synchronized private fun soon(delayMs: Long) {
+        if (!::db.isInitialized || db.session == null) return
+        pending?.cancel(false)
+        pending = worker.schedule(::runOnce, delayMs, TimeUnit.MILLISECONDS)
+    }
+
+    @Volatile private var runStartedAt = 0L
+
+    private fun runOnce() {
+        if (db.session == null) return
+        runStartedAt = System.currentTimeMillis()
+        _status.value = _status.value.copy(state = State.SYNCING, message = null)
+        try {
+            val report = Sync.run(db, library)
+            val at = System.currentTimeMillis()
+            app.getSharedPreferences("sync", Context.MODE_PRIVATE).edit().putLong("lastSynced", at).apply()
+            val msg = when {
+                report.errors.isNotEmpty() -> report.errors.joinToString("\n")
+                report.quiet -> null
+                else -> buildList {
+                    if (report.pushed.isNotEmpty()) add("Sent up: " + report.pushed.joinToString(", "))
+                    if (report.pulled.isNotEmpty()) add("Brought down: " + report.pulled.joinToString(", "))
+                    if (report.deleted.isNotEmpty()) add("Deleted in the cloud: ${report.deleted.size}")
+                }.joinToString(" · ")
+            }
+            _status.value = _status.value.copy(state = if (report.errors.isEmpty()) State.IDLE else State.ERROR, lastSynced = at, message = msg)
+        } catch (e: SyncError) {
+            Log.w(TAG, "sync", e)
+            when {
+                e.code == 401 -> { db.signOut(); _status.value = Status(State.SIGNED_OUT, message = "Signed out: sign in again to keep syncing.") }
+                e.code == 0 -> _status.value = _status.value.copy(state = State.OFFLINE, message = null)
+                else -> { _status.value = _status.value.copy(state = State.ERROR, message = e.message); soon(60_000) }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "sync", e)
+            _status.value = _status.value.copy(state = State.ERROR, message = e.message ?: e.javaClass.simpleName)
+        }
+    }
+
+    /** The phone's library as [Sync] sees it: the files, with the open story as it is in memory. */
+    private val library = object : Sync.Library {
+        override fun stories(): List<StoryRows> = onMain { Studio.allStories() }
+        override fun meta(storyId: String) = synchronized(this@CloudSync) { metas[storyId] }
+        override fun setMeta(storyId: String, meta: Sync.SyncMeta) = synchronized(this@CloudSync) {
+            // An edit made while this sync ran is kept as unsynced.
+            val now = metas[storyId]
+            metas[storyId] = if (now != null && now.localEditedAt > meta.localEditedAt) meta.copy(localEditedAt = now.localEditedAt) else meta
+            saveMeta()
+        }
+        override fun save(rows: StoryRows, oldId: String) {
+            synchronized(this@CloudSync) {
+                // Edited here while this sync was running: don't overwrite that; the next sync decides again.
+                if (oldId == rows.story.id && (metas[oldId]?.localEditedAt ?: 0) > runStartedAt) return
+                if (oldId != rows.story.id) metas.remove(oldId)?.let { metas[rows.story.id] = it; saveMeta() }
+            }
+            onMain { Studio.replaceFromSync(rows, oldId) }
+        }
+        override fun deleted(): Set<String> = synchronized(this@CloudSync) { gone.toSet() }
+        override fun forget(storyId: String) = synchronized(this@CloudSync) { gone -= storyId; saveGone() }
+        override fun readTake(path: String): ByteArray? = File(path).takeIf { it.exists() }?.readBytes()
+    }
+
+    private fun <T> onMain(f: () -> T): T {
+        if (Looper.myLooper() == Looper.getMainLooper()) return f()
+        var out: Result<T>? = null
+        val done = CountDownLatch(1)
+        main.post { out = runCatching(f); done.countDown() }
+        done.await(30, TimeUnit.SECONDS)
+        return (out ?: error("The app was busy.")).getOrThrow()
+    }
+
+    private fun saveMeta() = write(metaFile, json.encodeToString(MapSerializer(String.serializer(), Sync.SyncMeta.serializer()), metas))
+    private fun saveGone() = write(goneFile, json.encodeToString(SetSerializer(String.serializer()), gone))
+    private fun write(f: File, text: String) { val tmp = File(f.path + ".tmp"); tmp.writeText(text); tmp.renameTo(f) }
+
+    private fun send(r: Request): Response {
+        val body = r.body?.toRequestBody(r.headers["Content-Type"]?.toMediaTypeOrNull())
+            ?: if (r.method in setOf("POST", "PATCH", "PUT")) ByteArray(0).toRequestBody(null) else null
+        val req = okhttp3.Request.Builder().url(r.url).method(r.method, body).apply { r.headers.forEach { (k, v) -> header(k, v) } }.build()
+        return try {
+            client.newCall(req).execute().use { Response(it.code, it.body?.string().orEmpty()) }
+        } catch (e: IOException) {
+            throw SyncError("No connection.", 0)
+        }
+    }
+}

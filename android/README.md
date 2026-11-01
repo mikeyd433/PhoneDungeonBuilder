@@ -79,6 +79,26 @@ undo stack, saves, and hands the player a fresh pack built by `PackBuilder`.
 build exactly the pack `buildStoryPack` built, and split every script exactly as
 `splitNarration` did.
 
+## Syncing with Supabase
+
+Signed in (stories list → ☁ CLOUD → SIGN IN, with the web app's email and a code sent
+by email), the phone keeps its stories in step with the cloud: a few seconds after each
+edit, when the app opens and when the connection returns. Whole stories at a time:
+changed on one side, it moves to the other; changed on both, the newer edit wins; a
+story deleted on the phone is deleted in the cloud. Takes recorded on the phone are
+uploaded to `story-audio/<story id>/phone/` and the cloud points there, while the phone
+keeps playing its own files. The first sync of a story that came from the cloud with
+short ids (William, JCFC) finds the cloud copy by title, takes its ids and replaces it.
+
+The rules are `engine/.../sync/Sync.kt`, held by `SyncTest` against `FakeSupabase` (the
+same PostgREST calls, unique slugs, foreign keys and `edited_at` bump as the real one).
+The cloud side is migration `0022_phone_sync.sql`: the phone-only columns, and
+`stories.edited_at`, bumped by triggers on every story table so deletes count too.
+
+**One-time setup in the Supabase dashboard:** Authentication → Emails → Templates →
+Magic Link: add `Your code: {{ .Token }}` to the body. Without it the email only has a
+link, and the phone needs the code.
+
 ## Backing up
 
 Stories live on the phone, so the stories list backs them up: **back up** on a story
