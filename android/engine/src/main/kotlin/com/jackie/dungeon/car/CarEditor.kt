@@ -69,6 +69,9 @@ data class CarState(
     val mirror: Boolean = true,
     /** The phone's flowchart view, as last reported. */
     val phone: PhoneView? = null,
+    /** The scene (and choice) whose sheet is open on the phone, so FOLLOW PHONE can rejoin it. */
+    val phoneSheet: String? = null,
+    val phoneChoice: String? = null,
     /** First script row shown on a scene page. */
     val scriptScroll: Int = 0,
     /** First choice tile shown on a scene page. */
@@ -195,28 +198,32 @@ object CarEditor {
     const val MIN_ZOOM = 0.02f
     const val MAX_ZOOM = 3f
 
-    /** The phone opened a scene: the car goes there too. */
+    /**
+     * The phone opened a scene's sheet. Following the phone, the car shows that
+     * scene's page; on its own (someone else is browsing the car), the car stays
+     * where it is and only remembers it, for FOLLOW PHONE.
+     *
+     * The car never moves the phone: two people can work at once, one typing on
+     * the phone and one looking around on the car, and neither yanks the other.
+     */
     fun follow(s: CarState, rows: StoryRows, layout: FlowLayout.Layout, sceneId: String, v: Viewport?): CarState {
         if (rows.nodes.none { it.id == sceneId }) return s
-        // Mirroring the phone: its sheet is open on this scene, so the car shows the scene's page.
-        if (s.mirror) return if (s.scene == sceneId) s else s.copy(scene = sceneId, back = emptyList(), selected = sceneId, choice = null, scriptScroll = 0, tileScroll = 0, menu = emptyList())
-        if (s.scene != null) {
-            if (s.scene == sceneId) return s
-            return s.copy(scene = sceneId, back = s.back + s.scene, choice = null, scriptScroll = 0, tileScroll = 0, menu = emptyList())
-        }
-        val zoom = s.camera?.zoom ?: v?.let(::readableZoom) ?: 1f
-        return s.copy(selected = sceneId, camera = if (v == null) null else centred(layout, sceneId, zoom))
+        val noted = s.copy(phoneSheet = sceneId, phoneChoice = null)
+        if (!s.mirror || s.scene == sceneId) return noted
+        return noted.copy(scene = sceneId, back = emptyList(), selected = sceneId, choice = null, scriptScroll = 0, tileScroll = 0, menu = emptyList())
     }
 
-    /** The phone closed its sheet: while mirroring, the car goes back to the map too. */
-    fun sheetClosed(s: CarState): CarState =
-        if (s.mirror && s.scene != null) s.copy(scene = null, back = emptyList(), choice = null, selected = s.scene, popup = null, menu = emptyList()) else s
+    /** The phone closed its sheet: following it, the car goes back to the map too. */
+    fun sheetClosed(s: CarState): CarState {
+        val noted = s.copy(phoneSheet = null, phoneChoice = null)
+        return if (s.mirror && s.scene != null) noted.copy(scene = null, back = emptyList(), choice = null, selected = s.scene, popup = null, menu = emptyList()) else noted
+    }
 
-    /** The phone opened a choice: show its scene, with it picked. */
+    /** The phone opened a choice's sheet: its scene, with the choice picked. */
     fun followChoice(s: CarState, rows: StoryRows, layout: FlowLayout.Layout, choiceId: String, v: Viewport?): CarState {
         val c = rows.choices.firstOrNull { it.id == choiceId } ?: return s
-        val there = follow(s, rows, layout, c.fromNodeId, v)
-        return there.copy(choice = if (there.scene == c.fromNodeId) choiceId else there.choice)
+        val there = follow(s, rows, layout, c.fromNodeId, v).copy(phoneChoice = choiceId)
+        return if (there.mirror) there.copy(choice = choiceId) else there
     }
 
     fun dispatch(s: CarState, rows: StoryRows, layout: FlowLayout.Layout, v: Viewport, a: Action): Outcome {
@@ -227,31 +234,34 @@ object CarEditor {
             Action.None -> Outcome(s)
             Action.ToPlay -> Outcome(closed.copy(mode = Mode.PLAY, popup = null))
             Action.ToEdit -> Outcome(s.copy(mode = Mode.EDIT))
+            // Going somewhere on the car puts the car on its own (FOLLOW PHONE rejoins); the phone stays put.
             Action.ToMap -> Outcome(closed.copy(scene = null, back = emptyList(), choice = null, selected = s.scene ?: s.selected,
-                camera = s.scene?.let { centred(layout, it, camera(s, layout, rows, v).zoom) } ?: s.camera),
-                // Back on the map: the phone closes the sheet it had open for this page.
-                listOf(Effect.FocusPhone(Focus.Map)))
+                camera = s.scene?.let { centred(layout, it, camera(s, layout, rows, v).zoom) } ?: camera(s, layout, rows, v), mirror = false))
             Action.Back -> {
                 val prev = s.back.lastOrNull()
                 if (prev == null) dispatch(s, rows, layout, v, Action.ToMap)
-                else Outcome(closed.copy(scene = prev, back = s.back.dropLast(1), choice = null, scriptScroll = 0, tileScroll = 0), listOf(Effect.FocusPhone(Focus.Scene(prev))))
+                else Outcome(closed.copy(scene = prev, back = s.back.dropLast(1), choice = null, scriptScroll = 0, tileScroll = 0, mirror = false))
             }
             Action.Undo -> Outcome(closed, listOf(Effect.Undo))
             Action.Dismiss -> Outcome(s.copy(menu = emptyList(), popup = null))
             is Action.OpenScene -> {
                 if (rows.nodes.none { it.id == a.id }) return Outcome(closed)
                 val back = if (s.scene != null && s.scene != a.id) s.back + s.scene else s.back
-                Outcome(closed.copy(scene = a.id, back = back, selected = a.id, choice = null, scriptScroll = 0, tileScroll = 0, popup = null),
-                    listOf(Effect.FocusPhone(Focus.Scene(a.id))))
+                if (s.scene == a.id) return Outcome(closed)
+                Outcome(closed.copy(scene = a.id, back = back, selected = a.id, choice = null, scriptScroll = 0, tileScroll = 0, popup = null, mirror = false,
+                    camera = if (s.mirror) camera(s, layout, rows, v) else s.camera))
             }
-            is Action.SelectChoice -> Outcome(closed.copy(choice = a.id), listOf(Effect.FocusPhone(Focus.Choice(a.id))))
+            is Action.SelectChoice -> Outcome(closed.copy(choice = a.id))
             is Action.Menu -> Outcome(s.copy(menu = if (a.path == s.menu) emptyList() else a.path, popup = null))
-            is Action.ItemInfo -> Outcome(closed.copy(choice = a.choiceId, popup = Popup.ItemInfo(a.choiceId)), listOf(Effect.FocusPhone(Focus.Choice(a.choiceId))))
+            is Action.ItemInfo -> Outcome(closed.copy(choice = a.choiceId, popup = Popup.ItemInfo(a.choiceId)))
             is Action.EditOnPhone -> Outcome(closed.copy(popup = Popup.Notice("${a.what}: TYPE IT ON YOUR PHONE")), listOf(Effect.FocusPhone(a.focus)))
             is Action.PlayTake -> Outcome(closed, listOf(Effect.PlayTake(a.path)))
 
             // Moving the car's own map stops it following the phone's (FOLLOW PHONE brings it back).
-            is Action.Mirror -> Outcome(closed.copy(mirror = a.on, camera = if (a.on) s.camera else camera(s, layout, rows, v)))
+            // FOLLOW PHONE: back to the phone's view — its open sheet's page, or its map.
+            is Action.Mirror -> if (a.on) Outcome(closed.copy(mirror = true, scene = s.phoneSheet, choice = s.phoneChoice, back = emptyList(), scriptScroll = 0, tileScroll = 0,
+                selected = s.phoneSheet ?: s.selected))
+            else Outcome(closed.copy(mirror = false, camera = camera(s, layout, rows, v)))
             Action.Fit -> Outcome(closed.copy(camera = fit(layout, v), mirror = false))
             Action.GoStart -> Outcome(closed.copy(selected = rows.story.rootNodeId, camera = centred(layout, rows.story.rootNodeId, camera(s, layout, rows, v).zoom), mirror = false))
             is Action.ZoomBy -> {

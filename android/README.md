@@ -19,13 +19,16 @@ to pick the choice, the destination to walk there, the ◆ line for its items). 
 toolbar's menus edit: SCENE ▾ (rename, script, ending, play its take, play from here,
 make start, delete), CHOICE ▾ (words, reply, key, where it leads, delete), ITEMS ▾
 (gives, needs, refuse or fork), plus + CHOICE, ▶ PLAY HERE (pick what to carry, on the
-car or the phone) and UNDO. **Typing happens on the phone**, which opens whatever the car
-opens — and the car opens whatever the phone opens; text shows on the car as it is typed.
+car or the phone) and UNDO. **Typing happens on the phone**; the car follows what the phone has open, and text
+shows on the car as it is typed.
 The car's map **mirrors the phone's flowchart**: same centre and the same width — what
 spans the phone spans the car, so a scene zoomed in on the phone is as big on the car —
 with boxes the phone's own size (`CarEditor.mirrored`). The page follows too: a scene or
 choice sheet open on the phone shows that scene's page on the car, and closing it goes
-back to the map (and MAP on the car closes the phone's sheet). Moving the car's own map (drag, pinch,
+back to the map. **The car never moves the phone**, so two people can work at once: going
+anywhere on the car (MAP, BACK, a scene, dragging the map) leaves the phone's sheet open
+and puts the car on its own, and FOLLOW PHONE rejoins whatever the phone has open. Only
+the "…on your phone" actions (rename, script, words) send something to the phone. Moving the car's own map (drag, pinch,
 VIEW ▾) stops it following; FOLLOW PHONE on the toolbar, or VIEW ▾, picks it back up.
 The map can outline empty scenes, dead ends and unrecorded scenes, switched on from the
 phone (LIGHT UP). All of it is `engine/.../car/` — pure, and tested in `CarEditorTest`;

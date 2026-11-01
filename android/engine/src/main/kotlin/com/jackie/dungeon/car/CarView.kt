@@ -212,7 +212,7 @@ object CarView {
             add(Button("SCENE ▾", Action.Menu(listOf("SCENE")), menu = "SCENE", on = s.menu.firstOrNull() == "SCENE", enabled = s.selected != null, short = "SCENE▾"))
             add(Button("UNDO", Action.Undo, enabled = canUndo))
             // Moved away from the phone's view: one tap to follow it again.
-            if (!s.mirror && s.phone != null) add(Button("FOLLOW PHONE", Action.Mirror(true), on = true, short = "PHONE"))
+            if (!s.mirror) add(Button("FOLLOW PHONE", Action.Mirror(true), on = true, short = "PHONE"))
         }, title = r.story.title.ifBlank { "Untitled story" }.uppercase())
     }
 
@@ -232,7 +232,7 @@ object CarView {
             Button("+ CHOICE", Action.AddChoice(id), enabled = n.nodeType != "ending", short = "+"),
             Button("▶ PLAY HERE", Action.PlayHere(id), short = "▶HERE"),
             Button("UNDO", Action.Undo, enabled = canUndo),
-        ))
+        ) + (if (!s.mirror) listOf(Button("FOLLOW PHONE", Action.Mirror(true), on = true, short = "PHONE")) else emptyList()))
         var y = b.toolbarBottom + v.ch * 0.3f
 
         // The name, and what kind of scene it is.

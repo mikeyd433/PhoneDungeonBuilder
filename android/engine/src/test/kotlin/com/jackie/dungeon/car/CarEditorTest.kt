@@ -77,12 +77,12 @@ class CarEditorTest {
     }
 
     @Test
-    fun `tapping a scene opens its page and tells the phone`() {
+    fun `tapping a scene opens its page, and leaves the phone where it is`() {
         val b = Bench(william, v)
         val root = william.story.rootNodeId!!
         b.go(Action.OpenScene(root))
         assertEquals(root, b.s.scene)
-        assertEquals(Effect.FocusPhone(Focus.Scene(root)), b.effects.last())
+        assertTrue(b.effects.none { it is Effect.FocusPhone }, "the car never moves the phone")
         assertTrue(b.says("+ CHOICE")); assertTrue(b.says("▶ PLAY HERE")); assertTrue(b.says("‹ BACK"))
         val doors = FlowLayout.doorsOf(william, root)
         assertTrue(doors.isNotEmpty())
@@ -138,7 +138,7 @@ class CarEditorTest {
         b.go(Action.OpenScene(hall))
         val c = FlowLayout.doorsOf(b.r, hall).first { b.r.gates.none { g -> g.choiceId == it.id } }
         b.go(Action.SelectChoice(c.id))
-        assertEquals(Effect.FocusPhone(Focus.Choice(c.id)), b.effects.last())
+        assertEquals(c.id, b.s.choice)
         val item = b.r.stateVars.first { it.kind == "item" }
         b.tap("ITEMS ▾").tap("NEEDS: NOTHING ▸").tap(item.name.uppercase())
         assertEquals(item.slug, StoryEditor.simpleRequirement(b.r, c.id))
@@ -228,26 +228,38 @@ class CarEditorTest {
         assertTrue(b.s.back.isEmpty(), "following the phone isn't a walk to retrace with BACK")
         b.s = CarEditor.sheetClosed(b.s)
         assertNull(b.s.scene, "the sheet closed: back to the map")
-        // From the car: MAP closes the phone's sheet.
-        b.go(Action.OpenScene(root)).go(Action.ToMap)
-        assertEquals(Effect.FocusPhone(Focus.Map), b.effects.last())
-        // Not mirroring (the car's own map was moved): the phone's sheet doesn't take the car anywhere.
-        b.go(Action.Pan(5f, 5f))
-        b.s = CarEditor.follow(b.s, william, b.layout(), other, v)
+        // Someone looks around on the car while the phone has a sheet open: the phone
+        // is left alone, the car goes its own way, and FOLLOW PHONE rejoins the phone's sheet.
+        b.s = CarEditor.follow(b.s, william, b.layout(), root, v)
+        b.go(Action.ToMap)
         assertNull(b.s.scene)
+        assertFalse(b.s.mirror)
+        assertTrue(b.effects.none { it is Effect.FocusPhone }, "the phone's sheet stays open")
+        assertTrue(b.says("FOLLOW PHONE"))
+        b.s = CarEditor.follow(b.s, william, b.layout(), other, v)
+        assertNull(b.s.scene, "on its own, the car isn't pulled to the phone's new sheet")
+        b.tap("FOLLOW PHONE")
+        assertTrue(b.s.mirror)
+        assertEquals(other, b.s.scene, "following again: the phone's open sheet")
+        // Walking somewhere from a page detaches too.
+        b.go(Action.OpenScene(root))
+        assertFalse(b.s.mirror)
+        assertTrue(b.says("FOLLOW PHONE"), "and the scene page offers the way back")
+        b.s = CarEditor.sheetClosed(b.s)
+        assertEquals(root, b.s.scene, "the phone closing its sheet doesn't close the car's page")
+        b.tap("FOLLOW PHONE")
+        assertNull(b.s.scene, "the phone has no sheet open: following it is its map")
     }
 
     @Test
-    fun `not mirroring, the phone opening a scene moves the car's map to it`() {
+    fun `not following, the phone opening a sheet leaves the car's map alone`() {
         val b = Bench(william, v, CarState(mode = Mode.EDIT, mirror = false))
         val far = william.nodes.last().id
+        val before = CarEditor.camera(b.s, b.layout(), william, v)
         b.s = CarEditor.follow(b.s, william, b.layout(), far, v)
-        assertEquals(far, b.s.selected)
-        val box = b.layout().boxes[far]!!
-        assertEquals(box.cx, b.s.camera!!.cx)
-        b.go(Action.OpenScene(william.story.rootNodeId!!))
-        b.s = CarEditor.follow(b.s, william, b.layout(), far, v)
-        assertEquals(far, b.s.scene, "on a page, it opens that scene's page")
+        assertEquals(before, CarEditor.camera(b.s, b.layout(), william, v))
+        assertNull(b.s.scene)
+        assertEquals(far, b.s.phoneSheet)
     }
 
     @Test
