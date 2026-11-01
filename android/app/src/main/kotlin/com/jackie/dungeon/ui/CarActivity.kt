@@ -153,7 +153,7 @@ private fun PreviewPanel() {
                 is Focus.Choice -> ChoiceSheet(r, f.id, onClose = { CarEdit.clearDrafts() }, onGo = { CarEdit.dispatch(Action.OpenScene(it)) }, inSheet = false)
                 is Focus.Scene -> SceneSheet(r, f.id, onClose = { CarEdit.clearDrafts() }, onChoice = { CarEdit.dispatch(Action.SelectChoice(it)) },
                     onPlay = { CarEdit.dispatch(Action.PlayHere(it)) }, onGo = { CarEdit.dispatch(Action.OpenScene(it)) }, inSheet = false)
-                null -> androidx.compose.material3.Text("Tap a scene on the screen to edit it here.", style = style(18, Phosphor.dim))
+                Focus.Map, null -> androidx.compose.material3.Text("Tap a scene on the screen to edit it here.", style = style(18, Phosphor.dim))
             }
         }
     }

@@ -212,10 +212,19 @@ private fun StoryScreen() {
         when (f) {
             is Focus.Scene -> { choice = null; scene = f.id; selected = f.id; jump = f.id + "#" + at }
             is Focus.Choice -> { scene = null; choice = f.id }
+            Focus.Map -> { scene = null; choice = null }
         }
     }
-    LaunchedEffect(scene) { scene?.let(CarEdit::followScene) }
-    LaunchedEffect(choice) { choice?.let(CarEdit::followChoice) }
+    // The car's page mirrors the open sheet: a scene's page while one is open, the map once it closes.
+    var hadSheet by remember { mutableStateOf(false) }
+    LaunchedEffect(scene, choice) {
+        when {
+            scene != null -> CarEdit.followScene(scene!!)
+            choice != null -> CarEdit.followChoice(choice!!)
+            hadSheet -> CarEdit.sheetClosed()
+        }
+        hadSheet = scene != null || choice != null
+    }
 
     BackHandler { if (tab == "play") tab = "edit" else Studio.close() }
 

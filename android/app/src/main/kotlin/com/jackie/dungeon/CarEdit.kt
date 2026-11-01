@@ -119,6 +119,9 @@ object CarEdit {
         _state.value = CarEditor.follow(_state.value, base, layoutOf(base), id, viewport)
     }
 
+    /** The phone's sheet closed. */
+    fun sheetClosed() = main.post { _state.value = CarEditor.sheetClosed(_state.value) }
+
     fun followChoice(id: String) = main.post {
         val base = Studio.rows.value ?: return@post
         _state.value = CarEditor.followChoice(_state.value, base, layoutOf(base), id, viewport)

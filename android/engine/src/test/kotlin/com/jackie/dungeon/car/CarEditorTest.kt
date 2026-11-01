@@ -217,8 +217,29 @@ class CarEditorTest {
     }
 
     @Test
-    fun `the phone opening a scene moves the car there`() {
+    fun `the car's page mirrors the phone's sheet - open, switch, close, and back the other way`() {
         val b = Bench(william, v)
+        val root = william.story.rootNodeId!!
+        val other = william.nodes.last().id
+        b.s = CarEditor.follow(b.s, william, b.layout(), root, v)
+        assertEquals(root, b.s.scene, "a sheet open on the phone opens the scene's page on the car")
+        b.s = CarEditor.follow(b.s, william, b.layout(), other, v)
+        assertEquals(other, b.s.scene)
+        assertTrue(b.s.back.isEmpty(), "following the phone isn't a walk to retrace with BACK")
+        b.s = CarEditor.sheetClosed(b.s)
+        assertNull(b.s.scene, "the sheet closed: back to the map")
+        // From the car: MAP closes the phone's sheet.
+        b.go(Action.OpenScene(root)).go(Action.ToMap)
+        assertEquals(Effect.FocusPhone(Focus.Map), b.effects.last())
+        // Not mirroring (the car's own map was moved): the phone's sheet doesn't take the car anywhere.
+        b.go(Action.Pan(5f, 5f))
+        b.s = CarEditor.follow(b.s, william, b.layout(), other, v)
+        assertNull(b.s.scene)
+    }
+
+    @Test
+    fun `not mirroring, the phone opening a scene moves the car's map to it`() {
+        val b = Bench(william, v, CarState(mode = Mode.EDIT, mirror = false))
         val far = william.nodes.last().id
         b.s = CarEditor.follow(b.s, william, b.layout(), far, v)
         assertEquals(far, b.s.selected)

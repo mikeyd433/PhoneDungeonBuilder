@@ -27,6 +27,8 @@ enum class Highlight(val label: String) { EMPTY("EMPTY"), DEAD_END("DEAD END"), 
 sealed interface Focus {
     data class Scene(val id: String) : Focus
     data class Choice(val id: String) : Focus
+    /** Nothing open: the car went back to its map, so the phone closes its sheet. */
+    data object Map : Focus
 }
 
 /** Where the map is looking: a point in layout units, and source pixels per unit. */
@@ -196,15 +198,19 @@ object CarEditor {
     /** The phone opened a scene: the car goes there too. */
     fun follow(s: CarState, rows: StoryRows, layout: FlowLayout.Layout, sceneId: String, v: Viewport?): CarState {
         if (rows.nodes.none { it.id == sceneId }) return s
+        // Mirroring the phone: its sheet is open on this scene, so the car shows the scene's page.
+        if (s.mirror) return if (s.scene == sceneId) s else s.copy(scene = sceneId, back = emptyList(), selected = sceneId, choice = null, scriptScroll = 0, tileScroll = 0, menu = emptyList())
         if (s.scene != null) {
             if (s.scene == sceneId) return s
             return s.copy(scene = sceneId, back = s.back + s.scene, choice = null, scriptScroll = 0, tileScroll = 0, menu = emptyList())
         }
-        // Following the phone's map: the phone moves to it, and the car with the phone.
-        if (s.mirror && s.phone != null) return s.copy(selected = sceneId)
         val zoom = s.camera?.zoom ?: v?.let(::readableZoom) ?: 1f
         return s.copy(selected = sceneId, camera = if (v == null) null else centred(layout, sceneId, zoom))
     }
+
+    /** The phone closed its sheet: while mirroring, the car goes back to the map too. */
+    fun sheetClosed(s: CarState): CarState =
+        if (s.mirror && s.scene != null) s.copy(scene = null, back = emptyList(), choice = null, selected = s.scene, popup = null, menu = emptyList()) else s
 
     /** The phone opened a choice: show its scene, with it picked. */
     fun followChoice(s: CarState, rows: StoryRows, layout: FlowLayout.Layout, choiceId: String, v: Viewport?): CarState {
@@ -222,7 +228,9 @@ object CarEditor {
             Action.ToPlay -> Outcome(closed.copy(mode = Mode.PLAY, popup = null))
             Action.ToEdit -> Outcome(s.copy(mode = Mode.EDIT))
             Action.ToMap -> Outcome(closed.copy(scene = null, back = emptyList(), choice = null, selected = s.scene ?: s.selected,
-                camera = s.scene?.let { centred(layout, it, camera(s, layout, rows, v).zoom) } ?: s.camera))
+                camera = s.scene?.let { centred(layout, it, camera(s, layout, rows, v).zoom) } ?: s.camera),
+                // Back on the map: the phone closes the sheet it had open for this page.
+                listOf(Effect.FocusPhone(Focus.Map)))
             Action.Back -> {
                 val prev = s.back.lastOrNull()
                 if (prev == null) dispatch(s, rows, layout, v, Action.ToMap)

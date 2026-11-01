@@ -23,7 +23,9 @@ car or the phone) and UNDO. **Typing happens on the phone**, which opens whateve
 opens — and the car opens whatever the phone opens; text shows on the car as it is typed.
 The car's map **mirrors the phone's flowchart**: same centre and the same width — what
 spans the phone spans the car, so a scene zoomed in on the phone is as big on the car —
-with boxes the phone's own size (`CarEditor.mirrored`). Moving the car's own map (drag, pinch,
+with boxes the phone's own size (`CarEditor.mirrored`). The page follows too: a scene or
+choice sheet open on the phone shows that scene's page on the car, and closing it goes
+back to the map (and MAP on the car closes the phone's sheet). Moving the car's own map (drag, pinch,
 VIEW ▾) stops it following; FOLLOW PHONE on the toolbar, or VIEW ▾, picks it back up.
 The map can outline empty scenes, dead ends and unrecorded scenes, switched on from the
 phone (LIGHT UP). All of it is `engine/.../car/` — pure, and tested in `CarEditorTest`;
