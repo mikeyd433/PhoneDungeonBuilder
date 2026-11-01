@@ -141,8 +141,13 @@ class CarEditorTest {
         val item = b.r.stateVars.first { it.kind == "item" }
         b.tap("ITEMS ▾").tap("NEEDS: NOTHING ▸").tap(item.name.uppercase())
         assertEquals(item.slug, StoryEditor.simpleRequirement(b.r, c.id))
+        // The menu stays open: tick a second item, and make either one do.
+        val other = b.r.stateVars.filter { it.kind != "counter" }.first { it.slug != item.slug }
+        b.tap(other.name.uppercase()).tap("ANY ONE OF THESE")
+        assertEquals(StoryEditor.Need(listOf(item.slug, other.slug), any = true), StoryEditor.need(b.r, c.id))
+        b.go(Action.Dismiss)
         assertTrue(b.says("◆" + item.name.uppercase().take(3)))
-        b.tap("ITEMS ▾").tap("WITHOUT IT ▸").tap("FORK TO A NEW SCENE")
+        b.tap("ITEMS ▾").tap("IF THEY DON'T HAVE IT ▸").tap("GO TO A NEW SCENE")
         val g = b.r.gates.first { it.choiceId == c.id }
         assertEquals("divert", g.failBehavior)
         assertNotNull(b.r.nodes.firstOrNull { it.id == g.failNodeId })

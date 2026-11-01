@@ -189,7 +189,7 @@ object FlowLayout {
                 when {
                     c.toNodeId == null -> edges += Edge.Nowhere(c.id, from)
                     gate != null && gate.failBehavior == "divert" ->
-                        edges += Edge.Fork(c.id, from, StoryEditor.describe(gate.expression), c.toNodeId.takeIf { it in boxes }, gate.failNodeId?.takeIf { it in boxes })
+                        edges += Edge.Fork(c.id, from, StoryEditor.need(r, c.id)?.let { StoryEditor.needWords(r, it) } ?: StoryEditor.describe(gate.expression), c.toNodeId.takeIf { it in boxes }, gate.failNodeId?.takeIf { it in boxes })
                     c.toNodeId !in boxes -> edges += Edge.Nowhere(c.id, from)
                     isBack(c.toNodeId) -> edges += Edge.Loop(c.id, from, c.toNodeId)
                     else -> edges += Edge.Forward(c.id, from, c.toNodeId)

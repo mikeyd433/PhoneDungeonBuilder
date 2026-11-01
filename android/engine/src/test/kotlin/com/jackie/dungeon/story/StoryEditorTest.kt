@@ -9,6 +9,7 @@ import kotlin.test.assertTrue
 
 class StoryEditorTest {
     private val william = StoryRows.parse(javaClass.getResource("/golden/william.rows.json")!!.readText())
+    private fun rows(name: String) = StoryRows.parse(javaClass.getResource("/golden/$name.rows.json")!!.readText())
 
     @Test
     fun `slugs follow the web app's rules`() {
@@ -125,5 +126,53 @@ class StoryEditorTest {
         val g = william.gates.first()
         assertEquals("has CARTERHELMET or has MIKEHELMET", StoryEditor.describe(g.expression))
         assertNull(StoryEditor.simpleRequirement(william, g.choiceId), "an OR isn't the simple editor's to change")
+    }
+
+    @Test
+    fun `a choice can need one item or another, and each answer goes to its own scene`() {
+        var r = rows("kitchen")
+        val hall = r.story.rootNodeId!!
+        val (r1, door) = StoryEditor.addChoice(r, hall, "Climb out", newScene = true)
+        r = r1
+        val items = r.stateVars.filter { it.kind == "item" }.take(2)
+        r = StoryEditor.toggleNeed(r, door, items[0].slug)
+        r = StoryEditor.toggleNeed(r, door, items[1].slug)
+        assertEquals(com.jackie.dungeon.engine.Expression.Or(items.map { com.jackie.dungeon.engine.Expression.Has(it.slug) }), r.gates.first { it.choiceId == door }.expression)
+        val (r2, without) = StoryEditor.addScene(r, "Stuck")
+        r = StoryEditor.setNeed(r2, door, StoryEditor.need(r2, door), "divert", failNode = without)
+        // Changing the items keeps where a caller without them goes.
+        r = StoryEditor.setNeedAny(r, door, false)
+        val g = r.gates.first { it.choiceId == door }
+        assertTrue(g.expression is com.jackie.dungeon.engine.Expression.And)
+        assertEquals("divert", g.failBehavior); assertEquals(without, g.failNodeId)
+        assertEquals(items[0].name + " and " + items[1].name, StoryEditor.needWords(r, StoryEditor.need(r, door)!!))
+
+        // The engine sends a caller with either item one way and one with neither the other.
+        r = StoryEditor.setNeedAny(r, door, true)
+        val pack = PackBuilder.build(r)
+        val e = com.jackie.dungeon.engine.Engine(pack)
+        val key = r.choices.first { it.id == door }.digit
+        val to = r.choices.first { it.id == door }.toNodeId
+        assertEquals(without, e.press(e.start(), key).next.nodeId)
+        assertEquals(to, e.press(e.start(mapOf(items[1].slug to 1)), key).next.nodeId)
+        r = StoryEditor.toggleNeed(StoryEditor.toggleNeed(r, door, items[0].slug), door, items[1].slug)
+        assertTrue(r.gates.none { it.choiceId == door }, "untick everything and the condition goes")
+    }
+
+    @Test
+    fun `the layout can be saved as the default and reset back to it`() {
+        var r = rows("william")
+        val a = r.nodes[3].id; val b = r.nodes[5].id
+        r = StoryEditor.nudgeScene(r, a, 50f, 0f)
+        r = StoryEditor.saveLayoutAsDefault(r)
+        assertTrue(!StoryEditor.layoutChanged(r))
+        r = StoryEditor.nudgeScene(r, b, 0f, 80f)
+        r = StoryEditor.nudgeScene(r, a, 10f, 0f)
+        assertTrue(StoryEditor.layoutChanged(r))
+        r = StoryEditor.resetLayout(r)
+        assertEquals(50f, r.nodes.first { it.id == a }.nudgeX)
+        assertEquals(0f, r.nodes.first { it.id == b }.nudgeY)
+        r = StoryEditor.autoLayout(r)
+        assertTrue(!StoryEditor.hasNudges(r) && r.story.layoutHome.isEmpty())
     }
 }

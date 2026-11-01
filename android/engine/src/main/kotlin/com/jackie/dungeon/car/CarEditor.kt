@@ -111,6 +111,10 @@ sealed interface Action {
     data class DeleteChoice(val choiceId: String) : Action
     data class Gives(val choiceId: String, val varId: String?) : Action
     data class Requires(val choiceId: String, val slug: String?) : Action
+    /** Add or take away one item from what a choice needs. */
+    data class ToggleNeed(val choiceId: String, val slug: String) : Action
+    /** With several items: any one will do, or all are needed. */
+    data class NeedAny(val choiceId: String, val any: Boolean) : Action
     data class Refuse(val choiceId: String) : Action
     data class ForkNew(val choiceId: String) : Action
 }
@@ -270,15 +274,17 @@ object CarEditor {
                 val g = r.gates.firstOrNull { it.choiceId == a.choiceId }
                 StoryEditor.setRequires(r, a.choiceId, a.slug, g?.failBehavior?.takeIf { a.slug != null } ?: "refuse", failLine = g?.failNarration, failNode = g?.failNodeId)
             }
+            // Ticking items keeps the menu open, so several can be ticked in a row.
+            is Action.ToggleNeed -> edit("Change what it needs", after = { s.copy(popup = null) }) { StoryEditor.toggleNeed(it, a.choiceId, a.slug) }
+            is Action.NeedAny -> edit(if (a.any) "Needs any one" else "Needs all", after = { s.copy(popup = null) }) { StoryEditor.setNeedAny(it, a.choiceId, a.any) }
             is Action.Refuse -> edit("Refuse") { r ->
-                val slug = StoryEditor.simpleRequirement(r, a.choiceId) ?: error("This choice doesn't require anything yet.")
-                StoryEditor.setRequires(r, a.choiceId, slug, "refuse", failLine = r.gates.firstOrNull { it.choiceId == a.choiceId }?.failNarration)
+                val need = StoryEditor.need(r, a.choiceId) ?: error("This choice doesn't need anything yet.")
+                StoryEditor.setNeed(r, a.choiceId, need, "refuse", failLine = r.gates.firstOrNull { it.choiceId == a.choiceId }?.failNarration)
             }
             is Action.ForkNew -> edit("Fork to new scene") { r ->
-                val slug = StoryEditor.simpleRequirement(r, a.choiceId) ?: error("This choice doesn't require anything yet.")
-                val name = r.stateVars.firstOrNull { it.slug == slug }?.name?.ifBlank { null } ?: slug.lowercase()
-                val (r2, scene) = StoryEditor.addScene(r, "Without " + name.lowercase(), r.nodes.firstOrNull { n -> n.id == r.choices.first { it.id == a.choiceId }.fromNodeId }?.chapter)
-                StoryEditor.setRequires(r2, a.choiceId, slug, "divert", failNode = scene)
+                val need = StoryEditor.need(r, a.choiceId) ?: error("This choice doesn't need anything yet.")
+                val (r2, scene) = StoryEditor.addScene(r, "Without " + StoryEditor.needWords(r, need).lowercase(), r.nodes.firstOrNull { n -> n.id == r.choices.first { it.id == a.choiceId }.fromNodeId }?.chapter)
+                StoryEditor.setNeed(r2, a.choiceId, need, "divert", failNode = scene)
             }
         }
     }

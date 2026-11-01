@@ -196,12 +196,12 @@ fun ChoiceSheet(rows: StoryRows, id: String, onClose: () -> Unit, onGo: (String)
     var picking by remember(id) { mutableStateOf<String?>(null) } // "to", "fork", "gives", "needs"
     var confirmDelete by remember(id) { mutableStateOf(false) }
     val taken = rows.choices.filter { it.fromNodeId == c.fromNodeId && it.id != id }.map { it.digit }.toSet()
-    val simple = StoryEditor.simpleRequirement(rows, id)
+    val need = StoryEditor.need(rows, id)
     val save = {
-        if (words != c.label) Studio.edit("Edit choice words") { StoryEditor.updateChoice(it, id, label = words) }
+        if (words != c.label) Studio.edit("Rename choice") { StoryEditor.updateChoice(it, id, label = words) }
         if (reply != (c.reactionNarration ?: "")) Studio.edit("Edit reply") { StoryEditor.setReply(it, id, reply) }
-        if (gate != null && gate.failBehavior == "refuse" && simple != null && failLine != (gate.failNarration ?: ""))
-            Studio.edit("Edit refusal") { StoryEditor.setRequires(it, id, simple, "refuse", failLine = failLine) }
+        if (gate != null && gate.failBehavior == "refuse" && need != null && failLine != (gate.failNarration ?: ""))
+            Studio.edit("Edit refusal") { StoryEditor.setNeed(it, id, need, "refuse", failLine = failLine) }
     }
     val latestSave by rememberUpdatedState(save)
     DisposableEffect(id) { onDispose { latestSave(); CarEdit.clearDrafts() } }
@@ -215,8 +215,10 @@ fun ChoiceSheet(rows: StoryRows, id: String, onClose: () -> Unit, onGo: (String)
                     for (k in StoryEditor.KEYS) Box(Modifier.weight(1f)) { Chip(k, k == c.digit, enabled = k !in taken) { Studio.edit("Change key") { StoryEditor.updateChoice(it, id, digit = k) } } }
                 }
             }
-            Field("What the caller hears", words, { words = it; CarEdit.draft("label:$id", it) }, hint = "go below")
-            LinkRow("Leads to", sceneName(rows, c.toNodeId), if (c.toNodeId == null) Phosphor.alert else Phosphor.fg) { save(); picking = "to" }
+            Field("Choice name", words, { words = it; CarEdit.draft("label:$id", it) }, hint = "Give Moobert the helmet")
+            Text("What this choice is called: on the flowchart, the keypad and the car screen.", style = body(12, Phosphor.dim))
+            val forks = gate != null && gate.failBehavior == "divert" && need != null
+            LinkRow(if (forks) "If they have it, leads to" else "Leads to", sceneName(rows, c.toNodeId), if (c.toNodeId == null) Phosphor.alert else Phosphor.fg) { save(); picking = "to" }
             Field("Reply · heard before the next scene", reply, { reply = it; CarEdit.draft("reply:$id", it) }, lines = 2, hint = "Carter: Careful. The stairs are wet.")
             val from = rows.nodes.firstOrNull { it.id == c.fromNodeId }?.slug ?: "CHOICE"
             if (reply.isNotBlank()) TakeRow("Reply take", c.audioPath, c.audioDurationMs, "${from}_reply_${c.digit}") { path, ms ->
@@ -224,26 +226,30 @@ fun ChoiceSheet(rows: StoryRows, id: String, onClose: () -> Unit, onGo: (String)
             }
 
             LinkRow("Gives", StoryEditor.gives(rows, id)?.name ?: "nothing") { save(); picking = "gives" }
-            if (gate != null && simple == null) {
+            if (gate != null && need == null) {
+                // Written on the web app with counters or "lacks": shown, not edited here.
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("REQUIRES", style = label())
+                    Text("NEEDS", style = label())
                     Text(StoryEditor.describe(gate.expression) + if (gate.failBehavior == "divert") "  ·  otherwise → ${sceneName(rows, gate.failNodeId)}" else "  ·  otherwise refused", style = body(14, Phosphor.warn))
-                    Text("Replace with a simple condition", style = body(13, Phosphor.cyan), modifier = Modifier.clickable { save(); picking = "needs" })
+                    Text("Replace with items", style = body(13, Phosphor.cyan), modifier = Modifier.clickable { save(); picking = "needs" })
                 }
             } else {
-                LinkRow("Requires", simple?.let { s -> rows.stateVars.firstOrNull { it.slug == s }?.name ?: s } ?: "nothing") { save(); picking = "needs" }
-                if (gate != null && simple != null) {
+                LinkRow("Needs", need?.let { StoryEditor.needWords(rows, it) } ?: "nothing") { save(); picking = "needs" }
+                if (gate != null && need != null) {
+                    Text("IF THEY DON'T HAVE ${if (need.slugs.size > 1 && !need.any) "ALL OF THEM" else "IT"}", style = label())
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Chip("If not: refuse", gate.failBehavior == "refuse") { Studio.edit("Refuse") { StoryEditor.setRequires(it, id, simple, "refuse", failLine = failLine) } }
-                        Chip("If not: go elsewhere", gate.failBehavior == "divert") { save(); picking = "fork" }
+                        Chip("Refuse · stay here", gate.failBehavior == "refuse") { save(); Studio.edit("Refuse") { StoryEditor.setNeed(it, id, need, "refuse", failLine = failLine) } }
+                        Chip("Go to another scene", gate.failBehavior == "divert") { save(); picking = "fork" }
                     }
                     if (gate.failBehavior == "refuse") {
                         Field("What a refused caller hears", failLine, { failLine = it; CarEdit.draft("refuse:$id", it) }, lines = 2, hint = "You need something to haul on.")
                         TakeRow("Refusal take", gate.failAudioPath, null, "${from}_refused_${c.digit}") { path, _ ->
                             save(); Studio.edit(if (path == null) "Clear refusal take" else "Record refusal") { StoryEditor.setRefusalTake(it, id, path) }
                         }
+                    } else {
+                        LinkRow("If they don't, leads to", sceneName(rows, gate.failNodeId), if (gate.failNodeId == null) Phosphor.alert else Phosphor.fg) { picking = "fork" }
+                        Text("Each scene plays its own script and offers its own choices. The reply above is heard either way.", style = body(12, Phosphor.dim))
                     }
-                    else LinkRow("Without it, go to", sceneName(rows, gate.failNodeId), if (gate.failNodeId == null) Phosphor.alert else Phosphor.fg) { picking = "fork" }
                 }
             }
 
@@ -271,26 +277,21 @@ fun ChoiceSheet(rows: StoryRows, id: String, onClose: () -> Unit, onGo: (String)
             }
             picking = null
         }
-        "fork" -> ScenePicker(rows, "Without it, go to…", allowNew = true, onDismiss = { picking = null }) { pick ->
-            val item = simple ?: return@ScenePicker
+        "fork" -> ScenePicker(rows, "If they don't have it, go to…", allowNew = true, onDismiss = { picking = null }) { pick ->
+            val n = need ?: return@ScenePicker
             when (pick) {
                 NEW -> Studio.edit("Fork to new scene") { r ->
-                    val (r2, scene) = StoryEditor.addScene(r, "Without the ${item.lowercase()}")
-                    StoryEditor.setRequires(r2, id, item, "divert", failNode = scene)
+                    val (r2, scene) = StoryEditor.addScene(r, "Without " + StoryEditor.needWords(r, n).lowercase(), r.nodes.firstOrNull { it.id == c.fromNodeId }?.chapter)
+                    StoryEditor.setNeed(r2, id, n, "divert", failNode = scene)
                 }
-                else -> Studio.edit("Fork") { StoryEditor.setRequires(it, id, item, "divert", failNode = pick) }
+                else -> Studio.edit("Fork") { StoryEditor.setNeed(it, id, n, "divert", failNode = pick) }
             }
             picking = null
         }
         "gives" -> ItemPicker(rows, "Pressing ${c.digit} gives…", onDismiss = { picking = null }) { varId ->
             Studio.edit("Give item") { StoryEditor.setGives(it, id, varId) }; picking = null
         }
-        "needs" -> ItemPicker(rows, "Pressing ${c.digit} requires…", onDismiss = { picking = null }) { varId ->
-            val slug = rows.stateVars.firstOrNull { it.id == varId }?.slug
-                ?: varId?.let { v -> Studio.rows.value?.stateVars?.firstOrNull { it.id == v }?.slug }
-            Studio.edit("Require item") { StoryEditor.setRequires(it, id, slug, gate?.failBehavior?.takeIf { slug != null } ?: "refuse", failLine = failLine, failNode = gate?.failNodeId) }
-            picking = null
-        }
+        "needs" -> NeedPicker(rows, id, "Pressing ${c.digit} needs…") { picking = null }
     }
 }
 
@@ -341,6 +342,52 @@ fun ScenePicker(rows: StoryRows, title: String, allowNew: Boolean, onDismiss: ()
                 if (allowNew) item { PickRow("+ A NEW SCENE", Phosphor.cyan) { onPick(NEW) } }
                 item { PickRow("Nowhere yet", Phosphor.alert) { onPick(null) } }
                 items(found, key = { it.id }) { n -> PickRow(n.title.ifBlank { n.slug }, Phosphor.fg) { onPick(n.id) } }
+            }
+        }
+    }
+}
+
+/**
+ * What a choice needs: tick one item or several, and with several, whether
+ * ANY ONE of them will do or the caller needs ALL of them. Each tick is saved
+ * as it's made, so the sheet behind is always up to date.
+ */
+@Composable
+fun NeedPicker(rows: StoryRows, choiceId: String, title: String, onDone: () -> Unit) {
+    val need = StoryEditor.need(rows, choiceId)
+    val complex = need == null && rows.gates.any { it.choiceId == choiceId }
+    var newName by remember { mutableStateOf("") }
+    Dialog(onDismissRequest = onDone) {
+        Column(Modifier.border(1.dp, Phosphor.fg).background(Phosphor.bg).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(title, style = body(17, Phosphor.hi))
+            if (complex) Text("Ticking an item replaces the condition written on the web app.", style = body(12, Phosphor.warn))
+            val items = rows.stateVars.filter { it.kind != "counter" }
+            LazyColumn(Modifier.heightIn(max = 300.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                items(items, key = { it.id }) { v ->
+                    val on = need?.slugs?.contains(v.slug) == true
+                    Row(Modifier.fillMaxWidth().border(1.dp, if (on) Phosphor.fg else Phosphor.line).background(Phosphor.panel)
+                        .clickable { Studio.edit(if (on) "Don't need ${v.name}" else "Need ${v.name}") { r ->
+                            if (complex) StoryEditor.setNeed(r, choiceId, StoryEditor.Need(listOf(v.slug))) else StoryEditor.toggleNeed(r, choiceId, v.slug)
+                        } }.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(if (on) "▣" else "□", style = body(16, if (on) Phosphor.hi else Phosphor.fg))
+                        Text(v.name.ifBlank { v.slug }, style = body(15, if (on) Phosphor.hi else Phosphor.fg))
+                    }
+                }
+            }
+            if (need != null && need.slugs.size > 1) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Chip("Any one of these", need.any) { Studio.edit("Needs any one") { StoryEditor.setNeedAny(it, choiceId, true) } }
+                Chip("All of these", !need.any) { Studio.edit("Needs all") { StoryEditor.setNeedAny(it, choiceId, false) } }
+            }
+            if (need != null) Text("Needs " + StoryEditor.needWords(rows, need) + ".", style = body(13, Phosphor.cyan))
+            Field("Or a new item", newName, { newName = it }, hint = "A coil of rope")
+            if (newName.isNotBlank()) PickRow("+ ADD \"${newName.trim()}\"", Phosphor.cyan) {
+                val name = newName.trim()
+                Studio.edit("New item") { r -> val (r2, v) = StoryEditor.addItem(r, name); if (complex) StoryEditor.setNeed(r2, choiceId, StoryEditor.Need(listOf(v.slug))) else StoryEditor.toggleNeed(r2, choiceId, v.slug) }
+                newName = ""
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (need != null || complex) Box(Modifier.weight(1f)) { Chip("NEEDS NOTHING", false) { Studio.edit("Need nothing") { StoryEditor.setNeed(it, choiceId, null) }; onDone() } }
+                Box(Modifier.weight(1f)) { Chip("DONE", true, onClick = onDone) }
             }
         }
     }

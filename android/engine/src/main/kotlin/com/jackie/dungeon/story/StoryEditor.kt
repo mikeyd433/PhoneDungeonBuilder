@@ -136,7 +136,9 @@ object StoryEditor {
         val name = to.trim().takeIf { it.isNotEmpty() }
         val nudge = r.story.laneNudges[from]
         val lanes = r.story.laneNudges - from + (if (name != null && nudge != null) mapOf(name to nudge) else emptyMap())
-        return r.copy(story = r.story.copy(laneNudges = lanes), nodes = r.nodes.map { if (it.chapter == from) it.copy(chapter = name) else it })
+        val homeNudge = r.story.layoutHome["chapter:$from"]
+        val home = r.story.layoutHome - "chapter:$from" + (if (name != null && homeNudge != null) mapOf("chapter:$name" to homeNudge) else emptyMap())
+        return r.copy(story = r.story.copy(laneNudges = lanes, layoutHome = home), nodes = r.nodes.map { if (it.chapter == from) it.copy(chapter = name) else it })
     }
 
     /**
@@ -187,12 +189,37 @@ object StoryEditor {
         return r.copy(story = r.story.copy(laneNudges = r.story.laneNudges + (chapter to listOf(x + dx, y + dy))))
     }
 
-    fun resetLayout(r: StoryRows) = r.copy(
-        story = r.story.copy(laneNudges = emptyMap()),
-        nodes = r.nodes.map { if (it.nudgeX == 0f && it.nudgeY == 0f) it else it.copy(nudgeX = 0f, nudgeY = 0f) },
+    /** Every hand-made move, as "<scene id>" / "chapter:<name>" -> [dx, dy]; only the ones that move anything. */
+    fun currentLayout(r: StoryRows): Map<String, List<Float>> {
+        val out = LinkedHashMap<String, List<Float>>()
+        for ((k, v) in r.story.laneNudges) if (v.any { it != 0f }) out["chapter:$k"] = v
+        for (n in r.nodes) if (n.nudgeX != 0f || n.nudgeY != 0f) out[n.id] = listOf(n.nudgeX, n.nudgeY)
+        return out
+    }
+
+    /** Put the layout to [home]'s moves exactly (empty for the automatic layout). */
+    private fun applyLayout(r: StoryRows, home: Map<String, List<Float>>) = r.copy(
+        story = r.story.copy(laneNudges = home.filterKeys { it.startsWith("chapter:") }.mapKeys { it.key.removePrefix("chapter:") }),
+        nodes = r.nodes.map { n ->
+            val h = home[n.id]
+            val x = h?.getOrNull(0) ?: 0f; val y = h?.getOrNull(1) ?: 0f
+            if (n.nudgeX == x && n.nudgeY == y) n else n.copy(nudgeX = x, nudgeY = y)
+        },
     )
 
-    fun hasNudges(r: StoryRows) = r.story.laneNudges.isNotEmpty() || r.nodes.any { it.nudgeX != 0f || it.nudgeY != 0f }
+    /** Make the arrangement on screen now the one RESET LAYOUT comes back to. */
+    fun saveLayoutAsDefault(r: StoryRows) = r.copy(story = r.story.copy(layoutHome = currentLayout(r)))
+
+    /** Back to the saved default arrangement (or the automatic one, if none was saved). */
+    fun resetLayout(r: StoryRows) = applyLayout(r, r.story.layoutHome)
+
+    /** Forget every move and the saved default: back to the layout the app works out. */
+    fun autoLayout(r: StoryRows) = applyLayout(r.copy(story = r.story.copy(layoutHome = emptyMap())), emptyMap())
+
+    /** Has anything moved since the default was saved? */
+    fun layoutChanged(r: StoryRows) = currentLayout(r) != r.story.layoutHome
+
+    fun hasNudges(r: StoryRows) = currentLayout(r).isNotEmpty()
 
     /** Remove a scene and everything that hangs off it; nothing is left pointing at it. */
     fun deleteScene(r: StoryRows, id: String): StoryRows {
@@ -323,22 +350,84 @@ object StoryEditor {
      * or "divert" (a fork: without it, go to [failNode]). Null [varSlug] removes
      * the condition.
      */
-    fun setRequires(r: StoryRows, choiceId: String, varSlug: String?, mode: String = "refuse", failLine: String? = null, failNode: String? = null): StoryRows {
+    fun setRequires(r: StoryRows, choiceId: String, varSlug: String?, mode: String = "refuse", failLine: String? = null, failNode: String? = null): StoryRows =
+        setNeed(r, choiceId, varSlug?.let { Need(listOf(it), any = true) }, mode, failLine, failNode)
+
+    /**
+     * A requirement the phone can edit: one or more items, and whether the
+     * caller needs ANY one of them ("the rope or the ladder") or ALL of them.
+     * Underneath it is the same gate expression the web app writes — `has`,
+     * or an `or` / `and` of `has` — so the engine, the playtest and the Twilio
+     * export already understand it.
+     */
+    data class Need(val slugs: List<String>, val any: Boolean = true) {
+        fun expression(): Expression? = when {
+            slugs.isEmpty() -> null
+            slugs.size == 1 -> Expression.Has(slugs[0])
+            any -> Expression.Or(slugs.map { Expression.Has(it) })
+            else -> Expression.And(slugs.map { Expression.Has(it) })
+        }
+    }
+
+    /** The door's requirement as a [Need], or null if it has none or one too complex for the phone (a counter, a "lacks"). */
+    fun need(r: StoryRows, choiceId: String): Need? {
+        val e = r.gates.firstOrNull { it.choiceId == choiceId }?.expression ?: return null
+        fun slugs(args: List<Expression>) = args.map { (it as? Expression.Has)?.v }.takeIf { l -> l.all { it != null } }?.filterNotNull()
+        return when (e) {
+            is Expression.Has -> Need(listOf(e.v))
+            is Expression.Or -> slugs(e.args)?.let { Need(it, any = true) }
+            is Expression.And -> slugs(e.args)?.takeIf { it.isNotEmpty() }?.let { Need(it, any = false) }
+            else -> null
+        }
+    }
+
+    /** Add or remove one item from what a door needs, keeping everything else about the gate. */
+    fun toggleNeed(r: StoryRows, choiceId: String, slug: String): StoryRows {
+        val now = need(r, choiceId) ?: Need(emptyList())
+        val next = if (slug in now.slugs) now.slugs - slug else now.slugs + slug
+        return setNeed(r, choiceId, now.copy(slugs = next).takeIf { next.isNotEmpty() })
+    }
+
+    /** Needs ANY one of its items, or ALL of them. */
+    fun setNeedAny(r: StoryRows, choiceId: String, any: Boolean): StoryRows {
+        val now = need(r, choiceId) ?: return r
+        return setNeed(r, choiceId, now.copy(any = any))
+    }
+
+    /**
+     * Set what a door needs. [mode], [failLine] and [failNode] default to what
+     * the gate already says, so changing the items never forgets where a caller
+     * without them goes. A null or empty [need] removes the condition.
+     */
+    fun setNeed(r: StoryRows, choiceId: String, need: Need?, mode: String? = null, failLine: String? = null, failNode: String? = null): StoryRows {
         val rest = r.gates.filterNot { it.choiceId == choiceId }
-        if (varSlug == null) return r.copy(gates = rest)
+        val expr = need?.expression() ?: return r.copy(gates = rest)
         val old = r.gates.firstOrNull { it.choiceId == choiceId }
+        val m = mode ?: old?.failBehavior ?: r.story.defaultFailBehavior
+        val line = if (mode == null) old?.failNarration else failLine
+        val node = if (mode == null) old?.failNodeId else failNode
         val g = GateRow(
             id = old?.id ?: newId(),
             choiceId = choiceId,
-            expression = Expression.Has(varSlug),
-            failBehavior = mode,
-            failNarration = if (mode == "refuse") failLine?.takeIf { it.isNotBlank() } else null,
-            failAudioPath = if (mode == "refuse") old?.failAudioPath else null,
-            failNodeId = if (mode == "divert") failNode else null,
+            expression = expr,
+            failBehavior = m,
+            failNarration = if (m == "refuse") line?.takeIf { it.isNotBlank() } else null,
+            failAudioPath = if (m == "refuse") old?.failAudioPath else null,
+            failNodeId = if (m == "divert") node else null,
             consumeOnPass = old?.consumeOnPass ?: false,
         )
         // Keep its place, so an edit doesn't reorder anything else.
         return if (old == null) r.copy(gates = rest + g) else r.copy(gates = r.gates.map { if (it.choiceId == choiceId) g else it })
+    }
+
+    /** What a door needs, in words, with item names: "the rope or the ladder". */
+    fun needWords(r: StoryRows, n: Need): String {
+        val names = n.slugs.map { sl -> r.stateVars.firstOrNull { it.slug == sl }?.name?.ifBlank { null } ?: sl }
+        return when (names.size) {
+            0 -> "nothing"
+            1 -> names[0]
+            else -> names.dropLast(1).joinToString(", ") + (if (n.any) " or " else " and ") + names.last()
+        }
     }
 
     /** A condition the phone's simple editor can show and change: one "has". */

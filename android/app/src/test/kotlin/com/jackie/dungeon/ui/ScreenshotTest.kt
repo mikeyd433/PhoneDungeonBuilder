@@ -74,6 +74,13 @@ class ScreenshotTest {
         shoot("choice-sheet")
     }
 
+    @Test fun choiceSheetWithAFork() {
+        val door = william.gates.first { it.failBehavior == "divert" }.choiceId
+        compose.setContent { Box(Modifier.fillMaxSize().background(Phosphor.bg)) { ChoiceSheet(william, door, onClose = {}, onGo = {}, inSheet = false) } }
+        compose.waitForIdle()
+        shoot("choice-sheet-fork")
+    }
+
     @Test fun sceneSheet() {
         val room = william.nodes.first { it.slug == "PRESS_1_TO_BUY" }.id
         compose.setContent { Box(Modifier.fillMaxSize().background(Phosphor.bg)) { SceneSheet(william, room, onClose = {}, onChoice = {}, onPlay = {}, onGo = {}, inSheet = false) } }

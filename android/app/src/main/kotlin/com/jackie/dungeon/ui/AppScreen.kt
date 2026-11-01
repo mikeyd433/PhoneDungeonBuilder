@@ -152,7 +152,8 @@ private fun StoryScreen() {
         if (undo.isNotEmpty() && tab == "edit") Text("Undo: ${undo.last().first}", style = mono(11, Phosphor.dim), modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp))
 
         val chapters = remember(r) { StoryEditor.chapters(r) }
-        if (tab == "edit" && chapters.isNotEmpty()) {
+        val moved = StoryEditor.hasNudges(r) || r.story.layoutHome.isNotEmpty()
+        if (tab == "edit" && (chapters.isNotEmpty() || moved)) {
             // Jump to a chapter's lane: its first scene, near the top of the screen.
             // ALL fits the whole story; a chapter fits its lane, from the top.
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -161,8 +162,18 @@ private fun StoryScreen() {
                         jump = key + "#" + System.nanoTime()
                     }.padding(horizontal = 10.dp, vertical = 6.dp))
                 }
-                if (StoryEditor.hasNudges(r)) Text("RESET LAYOUT", style = mono(13, Phosphor.warn), modifier = Modifier.border(1.dp, Phosphor.line).clickable {
-                    Studio.edit("Reset layout") { StoryEditor.resetLayout(it) }
+                // The arrangement: save the one on screen as the default, go back to
+                // the default, or drop every move for the automatic layout.
+                if (StoryEditor.layoutChanged(r)) {
+                    Text("SAVE AS DEFAULT", style = mono(13, Phosphor.cyan), modifier = Modifier.border(1.dp, Phosphor.cyan).clickable {
+                        Studio.edit("Save layout as default") { StoryEditor.saveLayoutAsDefault(it) }
+                    }.padding(horizontal = 10.dp, vertical = 6.dp))
+                    Text(if (r.story.layoutHome.isEmpty()) "RESET LAYOUT" else "BACK TO DEFAULT", style = mono(13, Phosphor.warn), modifier = Modifier.border(1.dp, Phosphor.line).clickable {
+                        Studio.edit("Reset layout") { StoryEditor.resetLayout(it) }
+                    }.padding(horizontal = 10.dp, vertical = 6.dp))
+                }
+                if (r.story.layoutHome.isNotEmpty()) Text("AUTO LAYOUT", style = mono(13, Phosphor.dim), modifier = Modifier.border(1.dp, Phosphor.line).clickable {
+                    Studio.edit("Automatic layout") { StoryEditor.autoLayout(it) }
                 }.padding(horizontal = 10.dp, vertical = 6.dp))
             }
         }

@@ -494,7 +494,7 @@ object CarView {
                 }
                 when (path.getOrNull(1)) {
                     null -> {
-                        out += Entry("EDIT WORDS…", Action.EditOnPhone(Focus.Choice(c.id), "WORDS"))
+                        out += Entry("RENAME CHOICE…", Action.EditOnPhone(Focus.Choice(c.id), "CHOICE NAME"))
                         out += Entry("EDIT REPLY…", Action.EditOnPhone(Focus.Choice(c.id), "REPLY"))
                         Dialogue.reactionPlaybackFor(r, c).firstOrNull { !it.audio.isNullOrEmpty() }?.audio?.let { out += Entry("♪ PLAY REPLY", Action.PlayTake(it)) }
                         out += Entry("KEY: ${c.digit} ▸", sub("KEY"))
@@ -517,15 +517,15 @@ object CarView {
             "ITEMS" -> {
                 if (c == null) return out + Entry("TAP A CHOICE TILE FIRST", null, enabled = false)
                 val gate = r.gates.firstOrNull { it.choiceId == c.id }
-                val simple = StoryEditor.simpleRequirement(r, c.id)
+                val need = StoryEditor.need(r, c.id)
                 val items = r.stateVars.filter { it.kind != "counter" }
                 when (path.getOrNull(1)) {
                     null -> {
                         out += Entry("GIVES: ${StoryEditor.gives(r, c.id)?.name?.uppercase() ?: "NOTHING"} ▸", sub("GIVES"))
-                        if (gate != null && simple == null) out += Entry("NEEDS: ${fit(StoryEditor.describe(gate.expression).uppercase(), 20)} (PHONE)", Action.EditOnPhone(Focus.Choice(c.id), "REQUIRES"))
-                        else out += Entry("NEEDS: ${simple?.let { sl -> r.stateVars.firstOrNull { it.slug == sl }?.name?.uppercase() ?: sl } ?: "NOTHING"} ▸", sub("NEEDS"))
-                        if (simple != null) {
-                            out += Entry("WITHOUT IT ▸", sub("IFNOT"))
+                        if (gate != null && need == null) out += Entry("NEEDS: ${fit(StoryEditor.describe(gate.expression).uppercase(), 20)} (PHONE)", Action.EditOnPhone(Focus.Choice(c.id), "REQUIRES"))
+                        else out += Entry("NEEDS: ${fit((need?.let { StoryEditor.needWords(r, it) } ?: "nothing").uppercase(), 24)} ▸", sub("NEEDS"))
+                        if (need != null) {
+                            out += Entry("IF THEY DON'T HAVE IT ▸", sub("IFNOT"))
                             if (gate?.failBehavior == "refuse") {
                                 out += Entry("REFUSAL WORDS…", Action.EditOnPhone(Focus.Choice(c.id), "REFUSAL"))
                                 gate.failAudioPath?.takeIf { it.isNotEmpty() }?.let { out += Entry("♪ PLAY REFUSAL", Action.PlayTake(it)) }
@@ -540,13 +540,18 @@ object CarView {
                         out += Entry("A NEW ITEM… (PHONE)", Action.EditOnPhone(Focus.Choice(c.id), "NEW ITEM"))
                     }
                     "NEEDS" -> {
-                        out += Entry("NOTHING", Action.Requires(c.id, null), on = simple == null)
-                        items.forEach { out += Entry(it.name.ifBlank { it.slug }.uppercase(), Action.Requires(c.id, it.slug), on = it.slug == simple) }
+                        // Ticks: several can be on. With two or more, ANY ONE or ALL.
+                        out += Entry("NOTHING", Action.Requires(c.id, null), on = need == null)
+                        items.forEach { out += Entry(it.name.ifBlank { it.slug }.uppercase(), Action.ToggleNeed(c.id, it.slug), on = need?.slugs?.contains(it.slug) == true) }
+                        if (need != null && need.slugs.size > 1) {
+                            out += Entry("ANY ONE OF THESE", Action.NeedAny(c.id, true), on = need.any)
+                            out += Entry("ALL OF THESE", Action.NeedAny(c.id, false), on = !need.any)
+                        }
                     }
                     "IFNOT" -> {
                         out += Entry("REFUSE: STAY HERE", Action.Refuse(c.id), on = gate?.failBehavior == "refuse")
-                        out += Entry("FORK TO A NEW SCENE", Action.ForkNew(c.id), on = gate?.failBehavior == "divert")
-                        out += Entry("FORK TO… (PICK ON PHONE)", Action.EditOnPhone(Focus.Choice(c.id), "FORK"))
+                        out += Entry("GO TO A NEW SCENE", Action.ForkNew(c.id), on = gate?.failBehavior == "divert")
+                        out += Entry("GO TO… (PICK ON PHONE)", Action.EditOnPhone(Focus.Choice(c.id), "FORK"))
                     }
                 }
             }

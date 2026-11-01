@@ -29,7 +29,14 @@ terminal grows.
 chapter's frame (or its name) to drag the whole lane. The layout still decides where
 everything goes — a move is an offset on top of it (`nudge_x`/`nudge_y` on the scene,
 `lane_nudges` on the story, phone-only fields), so it undoes like any edit and
-RESET LAYOUT takes them all back. The chapter buttons frame their lane; ALL fits the story.
+SAVE AS DEFAULT makes the arrangement on screen the one BACK TO DEFAULT returns to
+(`stories.layout_home`); AUTO LAYOUT drops every move and the default. The chapter
+buttons frame their lane; ALL fits the story.
+
+**Choices that need items:** NEEDS takes one item or several, and with several,
+"any one of these" or "all of these" (an `or` / `and` of `has` — the same gate the web
+app writes). If the caller doesn't have it: refuse and stay, or go to another scene —
+a fork, where each scene has its own script, takes and choices.
 
 Recording: tap ● REC on a scene, a speaker line, a reply or a refusal (or FILE… to
 bring one in). Every take is stored as 8 kHz mono WAV (`engine/.../audio/IvrWav.kt`),

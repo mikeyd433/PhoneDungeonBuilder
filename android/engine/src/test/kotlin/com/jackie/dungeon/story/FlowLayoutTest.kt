@@ -29,7 +29,9 @@ class FlowLayoutTest {
         val l = FlowLayout.layout(r)
         val fork = l.edges.filterIsInstance<Edge.Fork>()
         assertEquals(1, fork.size)
-        assertEquals("has CARTERHELMET or has MIKEHELMET", fork.single().item)
+        val words = StoryEditor.needWords(r, StoryEditor.need(r, fork.single().choiceId)!!)
+        assertTrue(" or " in words, words)
+        assertEquals(words, fork.single().item, "the diamond names the items, not their slugs")
         assertTrue(l.edges.any { it is Edge.Loop }, "the hell house loops back on itself")
         assertTrue(l.edges.filterIsInstance<Edge.Forward>().all { e -> l.boxes[e.to]!!.y > l.boxes.values.first { it.id == r.choices.first { c -> c.id == e.choiceId }.fromNodeId }.y })
     }

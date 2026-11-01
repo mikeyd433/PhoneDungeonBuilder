@@ -61,6 +61,8 @@ data class StoryRow(
     val inventoryEmptyAudioPath: String? = null,
     /** Phone-only: how far each chapter's lane was moved by hand on the flowchart, [dx, dy]. */
     val laneNudges: Map<String, List<Float>> = emptyMap(),
+    /** Phone-only: the arrangement RESET LAYOUT returns to ("<scene id>" or "chapter:<name>" -> [dx, dy]). */
+    val layoutHome: Map<String, List<Float>> = emptyMap(),
 )
 
 @Serializable
