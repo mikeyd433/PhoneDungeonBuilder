@@ -67,6 +67,8 @@ fun Flowchart(
     onNudge: (String, Float, Float) -> Unit = { _, _, _ -> },
     /** What is on screen, in layout units (centre x, centre y, width, height) — for the car to mirror. */
     onView: (Float, Float, Float, Float) -> Unit = { _, _, _, _ -> },
+    /** Who else has which scene open (scene id -> names): a tab on that box. */
+    others: Map<String, List<String>> = emptyMap(),
 ) {
     // What is being dragged right now, and by how much: drawn live, saved on release.
     var drag by remember { mutableStateOf<Pair<String, Offset>?>(null) }
@@ -295,6 +297,13 @@ fun Flowchart(
                         Offset(b.x, b.y), Size(FlowLayout.W, b.h), CornerRadius(7f),
                         style = Stroke(if (sel) 3f else 1.5f, pathEffect = if (loose || !written) PathEffect.dashPathEffect(floatArrayOf(6f, 4f)) else null),
                     )
+                    // Someone else is in this scene: their name on an amber tab over the box's corner.
+                    others[b.id]?.let { names ->
+                        val tl = measurer.measure(names.joinToString(", "), style(if (blocks) 40f else 12f, Phosphor.bg, bold = true))
+                        val tw = tl.size.width + 16f; val th = tl.size.height + 6f
+                        drawRoundRect(Phosphor.warn, Offset(b.x + FlowLayout.W - tw, b.y - th - 2f), Size(tw, th), CornerRadius(6f))
+                        drawText(tl, topLeft = Offset(b.x + FlowLayout.W - tw + 8f, b.y - th + 1f))
+                    }
                     if (blocks) {
                         val fill = when { loose -> Phosphor.alert; recorded -> Phosphor.fg; written -> Phosphor.dim; else -> Phosphor.line }
                         drawRoundRect(fill, Offset(b.x + 8f, b.y + 8f), Size(FlowLayout.W - 16f, b.h - 16f), CornerRadius(4f))

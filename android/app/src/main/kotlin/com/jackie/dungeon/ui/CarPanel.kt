@@ -1,6 +1,7 @@
 package com.jackie.dungeon.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -15,6 +16,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -69,6 +71,7 @@ fun CarControls(modifier: Modifier = Modifier, showMode: Boolean = true) {
                 }
             }
         }
+        CarSettingsLink()
     }
 }
 
@@ -108,4 +111,72 @@ fun PlayHereDialog() {
             }
         }
     }
+}
+
+/**
+ * CAR SCREEN SETTINGS: every slider moves the car screen live, so it can be
+ * tuned while looking at the car. Saved on this phone.
+ */
+@Composable
+fun CarSettingsDialog(onDone: () -> Unit) {
+    val s by com.jackie.dungeon.CarScreen.settings.collectAsStateWithLifecycle()
+    Dialog(onDismissRequest = onDone) {
+        Column(
+            Modifier.border(1.dp, Phosphor.fg).background(Phosphor.bg).padding(16.dp)
+                .heightIn(max = 640.dp).verticalScroll(androidx.compose.foundation.rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text("CAR SCREEN SETTINGS", style = style(22, Phosphor.hi))
+            Text("Changes show on the car as you slide.", style = mono(12, Phosphor.dim))
+            CarTextSize(Modifier.fillMaxWidth())
+            Text("PHOSPHOR", style = mono(11, Phosphor.dim))
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                for (c in com.jackie.dungeon.CarScreen.Colour.entries) {
+                    val on = s.colour == c
+                    Box(Modifier.weight(1f).border(1.dp, if (on) Phosphor.fg else Phosphor.line).background(if (on) Phosphor.fg else Phosphor.panel)
+                        .clickable { com.jackie.dungeon.CarScreen.update { it.copy(colour = c) } }.padding(vertical = 6.dp), contentAlignment = Alignment.Center) {
+                        Text(c.label.uppercase(), style = style(18, if (on) Phosphor.bg else Phosphor.fg))
+                    }
+                }
+            }
+            Text("Amber and white show everything in one colour, as those tubes did.", style = mono(11, Phosphor.dim))
+            Setting("Typing speed", s.typing, 10f..120f, "${s.typing.toInt()} letters/s") { v -> com.jackie.dungeon.CarScreen.update { it.copy(typing = v) } }
+            Text("MAP FOLLOWING THE PHONE", style = mono(11, Phosphor.dim))
+            Setting("How much wider than the phone", s.mirrorMargin, 1f..2.5f, "×%.2f".format(s.mirrorMargin)) { v -> com.jackie.dungeon.CarScreen.update { it.copy(mirrorMargin = v) } }
+            Setting("Shift up / down", s.mirrorLift, -0.3f..0.3f, if (s.mirrorLift >= 0) "up %.0f%%".format(s.mirrorLift * 100) else "down %.0f%%".format(-s.mirrorLift * 100)) { v -> com.jackie.dungeon.CarScreen.update { it.copy(mirrorLift = v) } }
+            Text("THE GLASS", style = mono(11, Phosphor.dim))
+            Setting("Curve", s.curve, 0f..2f, if (s.curve < 0.05f) "flat" else "%.1f".format(s.curve)) { v -> com.jackie.dungeon.CarScreen.update { it.copy(curve = v) } }
+            Setting("Scanlines", s.scanlines, 0f..1f, "%.0f%%".format(s.scanlines * 100)) { v -> com.jackie.dungeon.CarScreen.update { it.copy(scanlines = v) } }
+            Setting("Glow", s.glow, 0f..2f, "%.1f".format(s.glow)) { v -> com.jackie.dungeon.CarScreen.update { it.copy(glow = v) } }
+            Setting("Rolling band brightness", s.barBright, 0f..3f, if (s.barBright < 0.05f) "off" else "%.1f".format(s.barBright)) { v -> com.jackie.dungeon.CarScreen.update { it.copy(barBright = v) } }
+            Setting("Rolling band speed", s.barSpeed, 0f..3f, if (s.barSpeed < 0.05f) "still" else "%.1f".format(s.barSpeed)) { v -> com.jackie.dungeon.CarScreen.update { it.copy(barSpeed = v) } }
+            Setting("Flicker", s.flicker, 0f..2f, if (s.flicker < 0.05f) "steady" else "%.1f".format(s.flicker)) { v -> com.jackie.dungeon.CarScreen.update { it.copy(flicker = v) } }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button("RESET ALL", Modifier.weight(1f)) { com.jackie.dungeon.CarScreen.reset() }
+                Button("DONE", Modifier.weight(1f), primary = true) { onDone() }
+            }
+        }
+    }
+}
+
+@Composable
+private fun Setting(name: String, value: Float, range: ClosedFloatingPointRange<Float>, shown: String, onChange: (Float) -> Unit) {
+    Column {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(name, style = mono(13, Phosphor.fg))
+            Text(shown, style = mono(13, Phosphor.cyan))
+        }
+        androidx.compose.material3.Slider(
+            value = value.coerceIn(range), onValueChange = onChange, valueRange = range,
+            colors = androidx.compose.material3.SliderDefaults.colors(thumbColor = Phosphor.hi, activeTrackColor = Phosphor.fg, inactiveTrackColor = Phosphor.line),
+        )
+    }
+}
+
+/** The way into CAR SCREEN SETTINGS. */
+@Composable
+fun CarSettingsLink(modifier: Modifier = Modifier) {
+    var open by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    Text("⚙ CAR SCREEN SETTINGS", style = mono(13, Phosphor.cyan), modifier = modifier.border(1.dp, Phosphor.line).clickable { open = true }.padding(horizontal = 10.dp, vertical = 6.dp))
+    if (open) CarSettingsDialog { open = false }
 }

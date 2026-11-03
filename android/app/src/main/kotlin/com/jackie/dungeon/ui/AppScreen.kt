@@ -194,8 +194,10 @@ private fun StoryScreen() {
     var renaming by remember { mutableStateOf(false) }
     var exporting by remember { mutableStateOf(false) }
     var managing by remember { mutableStateOf(false) }
+    var recordings by remember { mutableStateOf(false) }
     var sharing by remember { mutableStateOf(false) }
     val roles by CloudSync.roles.collectAsStateWithLifecycle()
+    val people by CloudSync.people.collectAsStateWithLifecycle()
     val carPresent by CarEdit.present.collectAsStateWithLifecycle()
 
     // The car's mode mirrors the tab: EDIT shows the map, PLAY the terminal. And the
@@ -264,16 +266,19 @@ private fun StoryScreen() {
             if (undo.isNotEmpty() && tab == "edit") Text("Undo: ${undo.last().first}", style = mono(11, Phosphor.dim), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
             else Box(Modifier.weight(1f))
             val (line, color) = syncLine(sync)
-            Text("☁ " + line, style = mono(11, color), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+            val here = people.map { it.name }.distinct()
+            Text("☁ " + line + (if (here.isEmpty()) "" else " · on now: " + here.joinToString(", ")), style = mono(11, if (here.isEmpty()) color else Phosphor.warn),
+                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
         }
 
         val chapters = remember(r) { StoryEditor.chapters(r) }
         val moved = StoryEditor.hasNudges(r) || r.story.layoutHome.isNotEmpty()
-        if (tab == "edit" && (chapters.isNotEmpty() || moved)) {
+        if (tab == "edit") {
             // Jump to a chapter's lane: its first scene, near the top of the screen.
             // ALL fits the whole story; a chapter fits its lane, from the top.
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                for ((key, label) in listOf("all" to "ALL") + chapters.map { "chapter:$it" to (if ('/' in it) "› " + it.substringAfterLast('/') else it) }) {
+                Text("♪ RECORDINGS", style = mono(13, Phosphor.cyan), modifier = Modifier.border(1.dp, Phosphor.cyan).clickable { recordings = true }.padding(horizontal = 10.dp, vertical = 6.dp))
+                if (chapters.isNotEmpty()) for ((key, label) in listOf("all" to "ALL") + chapters.map { "chapter:$it" to (if ('/' in it) "› " + it.substringAfterLast('/') else it) }) {
                     Text(label, style = mono(13, Phosphor.fg), modifier = Modifier.border(1.dp, Phosphor.line).clickable {
                         jump = key + "#" + System.nanoTime()
                     }.padding(horizontal = 10.dp, vertical = 6.dp))
@@ -307,6 +312,7 @@ private fun StoryScreen() {
                     },
                     onPlayFrom = { id -> AppGraph.playFrom(Studio.packOf(r, startAt = id)); tab = "play" },
                     onView = { cx, cy, vw, vh -> CarEdit.phoneView(com.jackie.dungeon.car.PhoneView(cx, cy, vw, vh)) },
+                    others = people.filter { it.sceneId != null }.groupBy({ it.sceneId!! }, { it.name }),
                     onNudge = { target, dx, dy ->
                         if (target.startsWith("chapter:")) Studio.edit("Move ${target.removePrefix("chapter:")}") { StoryEditor.nudgeChapter(it, target.removePrefix("chapter:"), dx, dy) }
                         else Studio.edit("Move scene") { StoryEditor.nudgeScene(it, target, dx, dy) }
@@ -327,6 +333,7 @@ private fun StoryScreen() {
     }
     if (exporting) ExportDialog(r) { exporting = false }
     if (managing) ChaptersDialog(r) { managing = false }
+    if (recordings) RecordingsDialog(r, onGo = { id -> recordings = false; selected = id; jump = id + "#" + System.nanoTime(); scene = id }) { recordings = false }
     if (sharing) ShareDialog(r.story.id, r.story.title.ifBlank { "Untitled story" }) { sharing = false }
     PlayHereDialog()
     if (renaming) AskText("Name this story", "Rename", r.story.title) { t -> renaming = false; if (t != null) Studio.edit("Rename story") { StoryEditor.setStoryTitle(it, t) } }
@@ -378,7 +385,10 @@ private fun PlayScreen() {
             items(lines.size) { i -> TranscriptLine(lines[i]) }
         }
         Keypad(Modifier.fillMaxWidth().height(260.dp), compact = true)
-        CarTextSize(Modifier.fillMaxWidth())
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            CarTextSize(Modifier.weight(1f))
+            CarSettingsLink()
+        }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button("REDIAL", Modifier.weight(1f)) { AppGraph.redial() }
             Button("CAR PREVIEW", Modifier.weight(1f)) {

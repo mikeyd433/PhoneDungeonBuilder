@@ -150,6 +150,15 @@ object CarEdit {
         if (s.phone != v) _state.value = s.copy(phone = v)
     }
 
+    /** Where everyone else is, for the car's markers. */
+    fun others(m: Map<String, List<String>>) { val s = _state.value; if (s.others != m) _state.value = s.copy(others = m) }
+
+    /** CAR SCREEN SETTINGS changed the mirror. */
+    fun mirrorSettings(margin: Float, lift: Float) {
+        val s = _state.value
+        if (s.mirrorMargin != margin || s.mirrorLift != lift) _state.value = s.copy(mirrorMargin = margin, mirrorLift = lift)
+    }
+
     fun draft(key: String, text: String) { _drafts.value = _drafts.value + (key to text) }
     fun clearDrafts() { if (_drafts.value.isNotEmpty()) _drafts.value = emptyMap() }
 

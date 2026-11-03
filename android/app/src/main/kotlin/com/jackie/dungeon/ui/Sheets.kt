@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.jackie.dungeon.CarEdit
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.jackie.dungeon.Studio
 import com.jackie.dungeon.story.FlowLayout
 import com.jackie.dungeon.story.StoryEditor
@@ -101,6 +102,15 @@ private fun SheetFrame(inSheet: Boolean, onDismiss: () -> Unit, content: @Compos
     else Box(Modifier.background(Phosphor.panel)) { content() }
 }
 
+/** "Friend is in this scene too": so two people don't type over each other in the same place. */
+@Composable
+private fun InHere(sceneId: String) {
+    val people by com.jackie.dungeon.CloudSync.people.collectAsStateWithLifecycle()
+    val here = people.filter { it.sceneId == sceneId }.map { it.name }.distinct()
+    if (here.isNotEmpty()) Text("⚠ ${here.joinToString(" and ")} ${if (here.size == 1) "is" else "are"} in this scene too. Edits to different fields both keep; the same field goes to whoever saves last.",
+        style = body(13, Phosphor.warn), modifier = Modifier.fillMaxWidth().border(1.dp, Phosphor.warn).padding(8.dp))
+}
+
 /**
  * A text field's words while its sheet is open. Until you type in it, it
  * follows the story — so an edit that arrives from someone else (live sync)
@@ -142,6 +152,7 @@ fun SceneSheet(rows: StoryRows, id: String, onClose: () -> Unit, onChoice: (Stri
     DisposableEffect(id) { onDispose { latestSave(); CarEdit.clearDrafts() } }
     SheetFrame(inSheet, onDismiss = { save(); onClose() }) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            InHere(id)
             Text(if (id == rows.story.rootNodeId) "START SCENE" else "SCENE", style = label())
             Field("Name", title, { titleD.type(it); CarEdit.draft("title:$id", it) }, hint = "Name this scene")
             ChapterPicker(rows, id) { save() }
@@ -229,6 +240,7 @@ fun ChoiceSheet(rows: StoryRows, id: String, onClose: () -> Unit, onGo: (String)
 
     SheetFrame(inSheet, onDismiss = { save(); onClose() }) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            InHere(c.fromNodeId)
             Text("CHOICE IN ${sceneName(rows, c.fromNodeId).uppercase()}", style = label())
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("KEY", style = label())

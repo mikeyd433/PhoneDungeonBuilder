@@ -183,7 +183,32 @@ object CloudSync {
                 runCatching { java.time.Instant.parse(Sync.normal(v.second)).isAfter(java.time.Instant.parse(Sync.normal(was))) }.getOrDefault(true)
             }
             if (news) runOnce()
+            lookForPeople()
         }.onFailure { e -> if (e is SyncError && e.code == 0) _status.value = _status.value.copy(state = State.OFFLINE) }
+    }
+
+    // ---- who else is here ----------------------------------------------------------------
+
+    private val _people = MutableStateFlow<List<com.jackie.dungeon.sync.Presence.Person>>(emptyList())
+    /** Everyone else with the open story open right now, and the scene they're in. */
+    val people: StateFlow<List<com.jackie.dungeon.sync.Presence.Person>> = _people
+
+    /** Say where this phone is (the open story, the scene whose sheet is open) and see where everyone else is. */
+    private fun lookForPeople() {
+        val uid = db.session?.userId ?: return
+        val open = Studio.rows.value?.story?.id
+        if (open == null || !inCloud(open)) { publishPeople(emptyList()); return }
+        // Before 0024_presence.sql there's nowhere to say it: no markers, no fuss.
+        runCatching {
+            com.jackie.dungeon.sync.Presence.here(db, open, CarEdit.state.value.phoneSheet)
+            publishPeople(com.jackie.dungeon.sync.Presence.others(db, open, uid))
+        }
+    }
+
+    private fun publishPeople(p: List<com.jackie.dungeon.sync.Presence.Person>) {
+        if (_people.value != p) _people.value = p
+        val bySceneName = p.filter { it.sceneId != null }.groupBy({ it.sceneId!! }, { it.name })
+        main.post { CarEdit.others(bySceneName) }
     }
 
     // ---- sharing ------------------------------------------------------------------------

@@ -169,6 +169,12 @@ class FakeSupabase(var clock: Instant = Instant.parse("2026-11-01T12:00:00Z")) :
             } + invites.filter { it.first == story }.map { obj("user_id" to null, "email" to it.second, "role" to it.third, "pending" to true) }).toString())
             "remove_story_member" -> { t("memberships").removeAll { it.s("story_id") == story && it.s("user_id") == a.s("p_user") && it.s("role") != "owner" }; ok("") }
             "cancel_story_invite" -> { invites.removeAll { it.first == story && it.second == a.s("p_email") }; ok("") }
+            "set_presence" -> {
+                if (role(story, me) == null) return ok("")
+                t("story_presence").removeAll { it.s("story_id") == story && it.s("user_id") == me }
+                t("story_presence") += obj("story_id" to story, "user_id" to me, "email" to myEmail, "scene_id" to a.s("p_scene"), "seen_at" to clock.toString())
+                ok("")
+            }
             "leave_story" -> { t("memberships").removeAll { it.s("story_id") == story && it.s("user_id") == me }; ok("") }
             else -> Response(404, """{"message":"function not found"}""")
         }

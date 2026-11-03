@@ -131,6 +131,22 @@ Redirect URLs → add `jackiedungeon://login`, so the email's link opens the app
 templates can only be edited with custom SMTP, so the link is used rather than a code.)
 Without it the link opens the web app instead; pasting the link into the phone still works.
 
+**Car screen settings** (⚙ CAR SCREEN SETTINGS, on PLAY and under the car switches):
+text size, phosphor colour (green, amber, white), typing speed, how wide and how high the
+mirrored map sits, and the glass — curve, scanlines, glow, rolling band brightness and
+speed, flicker. Live: the car changes as a slider moves (`CarScreen.kt`, read by the
+renderer every frame).
+
+**Recordings** (♪ RECORDINGS above the flowchart): every take the story needs — each
+scene's script, or its lines once it plays line by line, and each choice's reply — in the
+order a caller hears them (`story/Recordings.kt`), showing what's missing. FILE… on one
+attaches a finished file; ● REC records it here.
+
+**Who's here:** while a shared story is open, each phone says which scene's sheet it has
+open (`0024_presence.sql`, every few seconds). Others show as an amber name tab on that
+scene on the flowchart and the car, "on now: …" on the status line, and a warning at the
+top of that scene's sheet.
+
 ## Backing up
 
 Stories live on the phone, so the stories list backs them up: **back up** on a story

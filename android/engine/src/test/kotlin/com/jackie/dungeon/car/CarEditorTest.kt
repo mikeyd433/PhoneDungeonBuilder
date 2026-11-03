@@ -313,4 +313,22 @@ class CarEditorTest {
         call.dial()
         assertTrue(call.held().any { it.endsWith("×2") }, call.held().toString())
     }
+
+    @Test
+    fun `someone else's scene is marked on the car's map and page`() {
+        val b = Bench(william, v)
+        val root = william.story.rootNodeId!!
+        b.s = b.s.copy(others = mapOf(root to listOf("Friend")))
+        assertTrue(b.says("FRIEND"), "a tab on the box")
+        b.go(Action.OpenScene(root))
+        assertTrue(b.says("FRIEND IS HERE"))
+    }
+
+    @Test
+    fun `the mirror's width and height follow the settings`() {
+        val p = PhoneView(0f, 0f, 400f, 800f)
+        val a = CarEditor.mirrored(p, v, 1f, 0f); val b2 = CarEditor.mirrored(p, v, 2f, 0.2f)
+        assertEquals(2f, a.zoom / b2.zoom, 0.001f)
+        assertTrue(b2.cy < a.cy, "shifted up")
+    }
 }

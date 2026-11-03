@@ -71,6 +71,11 @@ data class CarState(
     val phone: PhoneView? = null,
     /** The scene (and choice) whose sheet is open on the phone, so FOLLOW PHONE can rejoin it. */
     val phoneSheet: String? = null,
+    /** CAR SCREEN SETTINGS: how much wider than the phone, and how much higher, the mirrored map sits. */
+    val mirrorMargin: Float = CarEditor.MIRROR_MARGIN,
+    val mirrorLift: Float = CarEditor.MIRROR_LIFT,
+    /** Who else has which scene open (scene id -> their names), from the cloud: drawn as markers. */
+    val others: Map<String, List<String>> = emptyMap(),
     val phoneChoice: String? = null,
     /** First script row shown on a scene page. */
     val scriptScroll: Int = 0,
@@ -161,7 +166,7 @@ object CarEditor {
 
     /** Where the map is looking when nobody has moved it: on the selected scene or the start. */
     fun camera(s: CarState, layout: FlowLayout.Layout, rows: StoryRows, v: Viewport): Camera {
-        if (s.mirror && s.phone != null) return mirrored(s.phone, v)
+        if (s.mirror && s.phone != null) return mirrored(s.phone, v, s.mirrorMargin, s.mirrorLift)
         return s.camera ?: centred(layout, s.selected ?: rows.story.rootNodeId, readableZoom(v))
     }
 
@@ -173,13 +178,13 @@ object CarEditor {
      * (Fitting the phone's whole height made a phone-filling box a small one
      * in the middle of the car.)
      */
-    fun mirrored(p: PhoneView, v: Viewport): Camera {
+    fun mirrored(p: PhoneView, v: Viewport, margin: Float = MIRROR_MARGIN, lift: Float = MIRROR_LIFT): Camera {
         val top = CarView.toolbarBottom(v)
         // A little wider than the phone, so a box that fills the phone has room around it on the car.
-        val z = (v.w / (p.w.coerceAtLeast(1f) * MIRROR_MARGIN)).coerceIn(MIN_ZOOM, MAX_ZOOM)
+        val z = (v.w / (p.w.coerceAtLeast(1f) * margin.coerceAtLeast(0.2f))).coerceIn(MIN_ZOOM, MAX_ZOOM)
         // The car shows a band of the phone's tall view. Centre it a little above the phone's
         // middle — where the scene you're looking at sits on the phone — and below the toolbar.
-        return Camera(p.cx, p.cy - MIRROR_LIFT * p.h - (top / 2) / z, z)
+        return Camera(p.cx, p.cy - lift * p.h - (top / 2) / z, z)
     }
 
     /** How much wider than the phone's view the car shows. */

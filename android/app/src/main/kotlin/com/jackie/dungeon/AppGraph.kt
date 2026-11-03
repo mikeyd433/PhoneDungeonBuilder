@@ -213,7 +213,7 @@ object AppGraph {
             val dt = ((now - lastTick) / 1_000_000L).coerceIn(0, 250)
             lastTick = now
             val s = session ?: return
-            s.tick(dt)
+            s.tick(dt, CarScreen.current.typing.toDouble())
             if (!audio.playing && !s.holding) {
                 val next = s.takeAudio()
                 if (next?.audio != null && audio.play(next.audio!!)) s.audioBusy = true

@@ -68,6 +68,10 @@ class CrtRenderer(private val context: Context, private val fps: Int = 30, priva
     // Uniform locations, looked up once per surface rather than every frame.
     private var uRes = -1; private var uAtlas = -1
     private var uTex = -1; private var uSrc = -1; private var uBar = -1; private var uFlick = -1
+    private var uCurve = -1; private var uScan = -1; private var uGlow = -1; private var uBarAmt = -1; private var uTint = -1; private var uMono = -1
+    /** The rolling band's position, advanced each frame by its speed (so changing the speed doesn't make it jump). */
+    private var barPhase = 0.0
+    private var lastSeconds = -1.0
     /**
      * What the offscreen terminal last drew. Pass 1 is only redone when this
      * changes — while nothing is typing, blinking or being edited, a frame is
@@ -83,6 +87,8 @@ class CrtRenderer(private val context: Context, private val fps: Int = 30, priva
         uRes = glGetUniformLocation(textProgram, "uRes"); uAtlas = glGetUniformLocation(textProgram, "uAtlas")
         uTex = glGetUniformLocation(crtProgram, "uTex"); uSrc = glGetUniformLocation(crtProgram, "uSrc")
         uBar = glGetUniformLocation(crtProgram, "uBar"); uFlick = glGetUniformLocation(crtProgram, "uFlick")
+        uCurve = glGetUniformLocation(crtProgram, "uCurve"); uScan = glGetUniformLocation(crtProgram, "uScan"); uGlow = glGetUniformLocation(crtProgram, "uGlow")
+        uBarAmt = glGetUniformLocation(crtProgram, "uBarAmt"); uTint = glGetUniformLocation(crtProgram, "uTint"); uMono = glGetUniformLocation(crtProgram, "uMono")
         drawnKey = null
         atlasTex = 0
         buildAtlas(AppGraph.carTextSize)
@@ -165,9 +171,20 @@ class CrtRenderer(private val context: Context, private val fps: Int = 30, priva
         glBindTexture(GL_TEXTURE_2D, fboTex)
         glUniform1i(uTex, 0)
         glUniform2f(uSrc, srcW.toFloat(), srcH.toFloat())
-        val bar = 1.0 - ((seconds * 0.06) % 1.0)
-        glUniform1f(uBar, bar.toFloat())
-        glUniform1f(uFlick, (0.975 + 0.025 * kotlin.math.sin((seconds * 57.0) % (2 * Math.PI))).toFloat())
+        val look = com.jackie.dungeon.CarScreen.current
+        if (lastSeconds >= 0) barPhase = (barPhase + (seconds - lastSeconds) * 0.06 * look.barSpeed) % 1.0
+        lastSeconds = seconds
+        glUniform1f(uBar, (1.0 - barPhase).toFloat())
+        glUniform1f(uFlick, (1.0 - 0.025 * look.flicker + 0.025 * look.flicker * kotlin.math.sin((seconds * 57.0) % (2 * Math.PI))).toFloat())
+        glUniform1f(uCurve, look.curve)
+        glUniform1f(uScan, look.scanlines)
+        glUniform1f(uGlow, look.glow)
+        glUniform1f(uBarAmt, look.barBright)
+        when (look.colour) {
+            com.jackie.dungeon.CarScreen.Colour.GREEN -> { glUniform1f(uMono, 0f); glUniform3f(uTint, 1f, 1f, 1f) }
+            com.jackie.dungeon.CarScreen.Colour.AMBER -> { glUniform1f(uMono, 1f); glUniform3f(uTint, 1.0f, 0.62f, 0.12f) }
+            com.jackie.dungeon.CarScreen.Colour.WHITE -> { glUniform1f(uMono, 1f); glUniform3f(uTint, 0.92f, 0.95f, 1.0f) }
+        }
         glBindBuffer(GL_ARRAY_BUFFER, 0)
         glDisableVertexAttribArray(0)
         glDrawArrays(GL_TRIANGLES, 0, 3)
@@ -343,7 +360,8 @@ class CrtRenderer(private val context: Context, private val fps: Int = 30, priva
     fun toSource(px: Float, py: Float): Pair<Float, Float> {
         var x = px / outW * 2f - 1f
         var y = (1f - py / outH) * 2f - 1f
-        val ox = abs(y) / 7f; val oy = abs(x) / 6f
+        val k = com.jackie.dungeon.CarScreen.current.curve
+        val ox = abs(y) / 7f * k; val oy = abs(x) / 6f * k
         x += x * ox * ox; y += y * oy * oy
         return (x * 0.5f + 0.5f) * srcW to (1f - (y * 0.5f + 0.5f)) * srcH
     }
@@ -452,11 +470,17 @@ uniform sampler2D uTex;
 uniform vec2 uSrc;
 uniform float uBar;    // where the rolling band is, 0..1, worked out on the CPU
 uniform float uFlick;  // this frame's brightness, 0.95..1
+uniform float uCurve;  // glass curve, 0 flat .. 2
+uniform float uScan;   // scanline strength 0..1
+uniform float uGlow;   // bloom 0..2
+uniform float uBarAmt; // rolling band brightness 0..3
+uniform vec3 uTint;    // amber or white phosphor
+uniform float uMono;   // 1: one phosphor colour (amber / white), 0: the green palette as drawn
 out vec4 o;
 
 vec2 bulge(vec2 uv) {
     uv = uv * 2.0 - 1.0;
-    vec2 off = abs(uv.yx) / vec2(7.0, 6.0);
+    vec2 off = abs(uv.yx) / vec2(7.0, 6.0) * uCurve;
     uv = uv + uv * off * off;
     return uv * 0.5 + 0.5;
 }
@@ -470,11 +494,11 @@ void main() {
     vec3 glow = texture(uTex, uv + vec2(px.x, 0.0)).rgb + texture(uTex, uv - vec2(px.x, 0.0)).rgb
               + texture(uTex, uv + vec2(0.0, px.y)).rgb + texture(uTex, uv - vec2(0.0, px.y)).rgb
               + texture(uTex, uv + 2.0 * vec2(px.x, 0.0)).rgb + texture(uTex, uv - 2.0 * vec2(px.x, 0.0)).rgb;
-    c += glow * 0.16;
+    c += glow * 0.16 * uGlow;
 
     // Scanlines, locked to the terminal's own pixel rows.
     float line = 0.5 + 0.5 * cos(uv.y * uSrc.y * 6.2831853);
-    c *= mix(0.55, 1.05, line);
+    c *= mix(1.0, mix(0.55, 1.05, line), uScan);
 
     // Aperture mask, in screen pixels.
     float m = mod(gl_FragCoord.x, 3.0);
@@ -488,9 +512,11 @@ void main() {
 
     // A slow bright band rolling down, and the faintest flicker.
     float bar = 1.0 - smoothstep(0.0, 0.07, abs(uBar - uv.y));
-    c += vec3(0.015, 0.05, 0.025) * bar;
+    c += vec3(0.015, 0.05, 0.025) * bar * uBarAmt;
     c *= uFlick;
 
+    // Amber or white tubes have one phosphor: everything in its colour, by brightness.
+    if (uMono > 0.5) c = uTint * dot(c, vec3(0.3, 0.59, 0.11)) * 1.5;
     o = vec4(c, 1.0);
 }"""
     }

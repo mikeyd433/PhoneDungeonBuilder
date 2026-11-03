@@ -163,6 +163,13 @@ object CarView {
             b.outline(x, y, w, h, when { sel -> Ink.BRIGHT; n.id in layout.unreachable -> Ink.RULE; else -> Ink.DIM })
             if (sel) b.outline(x + 1, y + 1, w - 2, h - 2, Ink.BRIGHT)
             b.hit(x, y, x + w, y + h, Action.OpenScene(n.id))
+            // Someone else has this scene open: their name on a tab at the box's top-right.
+            s.others[n.id]?.let { names ->
+                val tag = " " + names.joinToString(", ").uppercase() + " "
+                val tw = tag.length * v.cw
+                b.fill(x + w - tw, y - v.ch, tw, v.ch, Ink.AMBER)
+                b.text(x + w - tw, y - v.ch, tag, Ink.INVERSE)
+            }
 
             val cols = floor((w - v.cw * 0.8f) / v.cw).toInt()
             if (cols >= 4 && h >= v.ch * 1.1f) {
@@ -239,6 +246,7 @@ object CarView {
         val parts = Dialogue.playbackFor(r, n)
         val byLine = parts.size > 1 || Dialogue.splitsByLine(r, nodeId = id)
         val tag = buildList {
+            s.others[id]?.let { add(it.joinToString(", ").uppercase() + " IS HERE") }
             if (id == r.story.rootNodeId) add("START")
             if (n.nodeType == "ending") add(if (n.endingKind == "win") "ENDING: WIN" else "ENDING: DEATH")
             n.chapter?.takeIf { it.isNotBlank() }?.let { add(it.uppercase()) }

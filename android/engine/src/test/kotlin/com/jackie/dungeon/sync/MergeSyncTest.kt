@@ -172,4 +172,17 @@ class MergeSyncTest {
         assertEquals(listOf("Later"), sync(newcomer).pulled)
         assertEquals("writer", fake.role(r.story.id, fake.accounts["new@example.com"]!!))
     }
+
+    @Test
+    fun `each phone sees which scene the other has open, until they go quiet`() {
+        val (me, friend, id) = shared()
+        val mike = scene(me, "Mike's way")
+        Presence.here(friend.db, id, mike)
+        Presence.here(me.db, id, null)
+        val seen = Presence.others(me.db, id, fake.user, fake.clock)
+        assertEquals(listOf(mike), seen.map { it.sceneId })
+        assertEquals("Friend", seen.single().name)
+        assertTrue(Presence.others(friend.db, id, fake.friend, fake.clock).single().sceneId == null, "I'm on the story with nothing open")
+        assertTrue(Presence.others(me.db, id, fake.user, fake.clock.plusSeconds(60)).isEmpty(), "a minute without a word: gone")
+    }
 }
