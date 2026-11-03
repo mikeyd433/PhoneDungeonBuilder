@@ -142,6 +142,7 @@ object CloudSync {
     @Synchronized fun edited(storyId: String) {
         metas[storyId] = (metas[storyId] ?: Sync.SyncMeta()).copy(localEditedAt = System.currentTimeMillis())
         saveMeta()
+        lively()
         if (db.session != null) {
             _status.value = _status.value.copy(state = State.WAITING)
             soon(DEBOUNCE_MS)
@@ -159,21 +160,44 @@ object CloudSync {
 
     // ---- live: while the app is open, notice changes made elsewhere -------------------
 
-    private const val WATCH_MS = 4_000L
+    /** Quick while something is happening — a friend in the story, an edit just made or just arrived. */
+    private const val WATCH_BUSY_MS = 4_000L
+    /** Otherwise: each look wakes the phone's radio, and a radio kept awake is a warm phone. */
+    private const val WATCH_QUIET_MS = 15_000L
+    /** How long "something just happened" lasts. */
+    private const val BUSY_FOR_MS = 120_000L
     private var watcher: ScheduledFuture<*>? = null
+    private var watching = false
+    @Volatile private var busyUntil = 0L
+
+    /** An edit here or a change from elsewhere: watch closely for a while. */
+    fun lively() { busyUntil = System.currentTimeMillis() + BUSY_FOR_MS }
 
     /**
      * The app is on screen (true) or not. While it is, every few seconds one tiny
      * request asks the cloud when each story last changed; anything new — a
      * friend's edit, a story just shared — starts a sync, which merges it in.
+     * Every 4 seconds while someone else is in the open story or anything changed
+     * in the last two minutes; every 15 when it's just you (still inside presence's 25-second window, so friends keep seeing you).
      */
     @Synchronized fun foreground(on: Boolean) {
         if (!::db.isInitialized) return
-        if (on && watcher == null) watcher = worker.scheduleWithFixedDelay(::look, WATCH_MS, WATCH_MS, TimeUnit.MILLISECONDS)
+        watching = on
+        if (on && watcher == null) { lively(); watcher = worker.schedule(::look, WATCH_BUSY_MS, TimeUnit.MILLISECONDS) }
         if (!on) { watcher?.cancel(false); watcher = null }
     }
 
+    @Synchronized private fun nextLook() {
+        if (!watching) { watcher = null; return }
+        val busy = _people.value.isNotEmpty() || System.currentTimeMillis() < busyUntil
+        watcher = worker.schedule(::look, if (busy) WATCH_BUSY_MS else WATCH_QUIET_MS, TimeUnit.MILLISECONDS)
+    }
+
     private fun look() {
+        try { lookOnce() } finally { nextLook() }
+    }
+
+    private fun lookOnce() {
         if (db.session == null || _status.value.state == State.SYNCING) return
         runCatching {
             val cloud = Sync.cloudStories(db)
@@ -182,7 +206,7 @@ object CloudSync {
                 val was = seen[id] ?: return@any true
                 runCatching { java.time.Instant.parse(Sync.normal(v.second)).isAfter(java.time.Instant.parse(Sync.normal(was))) }.getOrDefault(true)
             }
-            if (news) runOnce()
+            if (news) { lively(); runOnce() }
             lookForPeople()
         }.onFailure { e -> if (e is SyncError && e.code == 0) _status.value = _status.value.copy(state = State.OFFLINE) }
     }

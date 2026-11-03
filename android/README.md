@@ -143,7 +143,7 @@ order a caller hears them (`story/Recordings.kt`), showing what's missing. FILE�
 attaches a finished file; ● REC records it here.
 
 **Who's here:** while a shared story is open, each phone says which scene's sheet it has
-open (`0024_presence.sql`, every few seconds). Others show as an amber name tab on that
+open (`0024_presence.sql`, every 4 s while anyone else is there, else every 15). Others show as an amber name tab on that
 scene on the flowchart and the car, "on now: …" on the status line, and a warning at the
 top of that scene's sheet.
 
@@ -235,6 +235,18 @@ plain float array and handed to GL in one copy; uniform locations are looked up 
 The rolling bar and the flicker are worked out on the CPU in double precision and
 passed in as small numbers: computed in the shader from a seconds-since-start clock,
 mediump precision made the bar move in visible steps.
+
+**Heat.** Every frame runs the CRT shader over every pixel, and Android Auto then encodes
+the picture as video, all on the phone. So the frame rate follows what is happening:
+30 fps for 1.5 s after the picture changes (a cursor blink alone doesn't count), 15 fps
+while only the rolling band and flicker move, 5 fps with both turned off in CAR SCREEN
+SETTINGS. The surface is capped at 1280 px wide (the picture is 360 lines scaled up
+anyway); touches are mapped from the view's size, not the surface's.
+
+Elsewhere: the call loop skips its work on hold and rebuilds the screens only when
+`CallSession.look()` says something moved; the flowchart draws only the scenes and arrows
+on screen; and the cloud check runs every 4 s only while someone else is in the story or
+something changed in the last two minutes, otherwise every 15 s.
 
 ## Release
 

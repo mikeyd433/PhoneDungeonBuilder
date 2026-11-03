@@ -42,6 +42,20 @@ class CallSessionTest {
     }
 
     @Test
+    fun `look changes while typing and holds still while waiting`() {
+        val s = CallSession(demo)
+        s.dial()
+        val a = s.look(); s.tick(100)
+        assertNotEquals(a, s.look(), "letters typed is a change")
+        s.settle()
+        val waiting = s.look()
+        s.tick(10)
+        assertEquals(waiting, s.look(), "a tick that moved nothing on screen")
+        repeat(60) { s.tick(20) }
+        assertNotEquals(waiting, s.look(), "the clock's second ticked over")
+    }
+
+    @Test
     fun `the room's timeout only counts once the prompt is fully up`() {
         val s = CallSession(kitchen)
         s.dial(); s.settle()

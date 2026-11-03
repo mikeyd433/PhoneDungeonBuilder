@@ -213,6 +213,8 @@ object AppGraph {
             val dt = ((now - lastTick) / 1_000_000L).coerceIn(0, 250)
             lastTick = now
             val s = session ?: return
+            // On hold nothing moves; only a take still finishing needs the loop.
+            if (s.phase == CallSession.Phase.ON_HOLD && !audio.playing) return
             s.tick(dt, CarScreen.current.typing.toDouble())
             if (!audio.playing && !s.holding) {
                 val next = s.takeAudio()
@@ -236,8 +238,15 @@ object AppGraph {
         }.onFailure { Log.w(TAG, "save", it) }
     }
 
+    private var screenLook = Long.MIN_VALUE
+    private var uiLook = Long.MIN_VALUE
+
     private fun publish(force: Boolean) {
         val s = session
+        // Most ticks change nothing (waiting for a key): don't copy the transcript 30 times a second for that.
+        val look = s?.look() ?: 0L
+        if (!force && look == screenLook && look == uiLook) return
+        screenLook = look
         screen = if (s == null) Screen.EMPTY else Screen(
             title = s.pack.title,
             scene = s.sceneTitle,
@@ -251,6 +260,7 @@ object AppGraph {
         val ms = System.nanoTime() / 1_000_000L
         if (!force && ms - lastUi < 100) return
         lastUi = ms
+        uiLook = look
         _ui.value = PhoneUi(
             story = s?.pack?.title ?: "No story",
             scene = s?.sceneTitle ?: "",

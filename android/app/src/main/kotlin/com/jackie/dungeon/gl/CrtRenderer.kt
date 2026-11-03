@@ -142,7 +142,7 @@ class CrtRenderer(private val context: Context, private val fps: Int = 30, priva
     }
 
     override fun onDrawFrame(gl: GL10?) {
-        capFrameRate()
+        capFrameRate(paceNow())
         val editing = CarEdit.state.value.mode == Mode.EDIT && Studio.rows.value != null
         // The editor tops out at L: at XL its toolbar and tiles leave the script one row.
         val size = if (editing) minOf(AppGraph.carTextSize, 2) else AppGraph.carTextSize
@@ -157,6 +157,9 @@ class CrtRenderer(private val context: Context, private val fps: Int = 30, priva
             val count = if (editing) buildEdit() else buildText(AppGraph.screen, time)
             drawText(count)
             drawnKey = key
+            // The cursor's blink redraws pass 1 twice a second; that alone isn't "something changing".
+            val content = if (key is TextKey) key.copy(blink = 0) else key
+            if (content != lastContent) { lastContent = content; lastChangeNs = System.nanoTime() }
         }
 
         // Pass 2: through the glass. The rolling bar's position and the flicker are
@@ -357,9 +360,15 @@ class CrtRenderer(private val context: Context, private val fps: Int = 30, priva
      * through the same bulge the CRT pass draws with, so a tap on a curved
      * button hits the button it looks like it's on.
      */
+    /** The view's size on screen, for touches; the surface itself may be drawn smaller and scaled up. 0 = same as the surface. */
+    @Volatile var viewW = 0
+    @Volatile var viewH = 0
+
     fun toSource(px: Float, py: Float): Pair<Float, Float> {
-        var x = px / outW * 2f - 1f
-        var y = (1f - py / outH) * 2f - 1f
+        val vw = if (viewW > 0) viewW else outW
+        val vh = if (viewH > 0) viewH else outH
+        var x = px / vw * 2f - 1f
+        var y = (1f - py / vh) * 2f - 1f
         val k = com.jackie.dungeon.CarScreen.current.curve
         val ox = abs(y) / 7f * k; val oy = abs(x) / 6f * k
         x += x * ox * ox; y += y * oy * oy
@@ -385,7 +394,26 @@ class CrtRenderer(private val context: Context, private val fps: Int = 30, priva
 
     // ---- plumbing ------------------------------------------------------------
 
-    private fun capFrameRate() {
+    /** When the picture last changed: full speed for a moment after, so typing, panning and taps stay smooth. */
+    private var lastChangeNs = 0L
+    private var lastContent: Any? = null
+
+    /**
+     * Frames per second for the NEXT frame. Every frame runs the CRT shader over
+     * every pixel of the screen, and Android Auto then encodes it as video — all
+     * on the phone, which is what makes it warm. So: [fps] while something is
+     * changing, a slower rate that still keeps the rolling band smooth while
+     * only the glass is moving, and a crawl (enough for the cursor's blink) when
+     * the band and flicker are off and nothing has changed.
+     */
+    private fun paceNow(): Int {
+        if (System.nanoTime() - lastChangeNs < 1_500_000_000L) return fps
+        val look = com.jackie.dungeon.CarScreen.current
+        val glassMoves = (look.barBright > 0f && look.barSpeed > 0f) || look.flicker > 0f
+        return if (glassMoves) minOf(fps, 15) else minOf(fps, 5)
+    }
+
+    private fun capFrameRate(fps: Int) {
         val budget = 1_000_000_000L / fps
         val now = System.nanoTime()
         val wait = budget - (now - lastFrameNs)

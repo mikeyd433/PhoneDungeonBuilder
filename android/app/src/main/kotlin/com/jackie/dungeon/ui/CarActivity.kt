@@ -74,6 +74,17 @@ class CarActivity : ComponentActivity() {
             renderer = CrtRenderer(applicationContext)
             setRenderer(renderer)
             renderMode = GLSurfaceView.RENDERMODE_CONTINUOUSLY
+            // The picture is drawn at 360 lines and scaled up, so the glass pass gains
+            // nothing past ~1280 wide — it only costs every extra pixel, every frame.
+            var fixedFor = 0 to 0
+            addOnLayoutChangeListener { _, l, t, r, b, _, _, _, _ ->
+                val w = r - l; val h = b - t
+                if (w > 0 && h > 0 && (w to h) != fixedFor) {
+                    fixedFor = w to h
+                    renderer.viewW = w; renderer.viewH = h
+                    if (w > MAX_SURFACE_W) holder.setFixedSize(MAX_SURFACE_W, h * MAX_SURFACE_W / w) else holder.setSizeFromLayout()
+                }
+            }
             val touch = CarTouch(renderer)
             setOnTouchListener { v, e ->
                 if (e.actionMasked == MotionEvent.ACTION_UP) v.performClick()
@@ -129,7 +140,7 @@ class CarActivity : ComponentActivity() {
         systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
     }
 
-    companion object { const val EXTRA_PREVIEW = "preview" }
+    companion object { const val EXTRA_PREVIEW = "preview"; private const val MAX_SURFACE_W = 1280 }
 }
 
 /**

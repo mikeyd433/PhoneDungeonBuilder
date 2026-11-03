@@ -80,6 +80,17 @@ class CallSession(
 
     val holding get() = phase == Phase.ON_HOLD || phase == Phase.RECONNECTING
 
+    /**
+     * Changes whenever anything a screen shows could have: lines added, letters
+     * typed, the phase, the turn. Cheap, so the app can skip rebuilding the
+     * screens on the many ticks where nothing moved.
+     */
+    fun look(): Long {
+        var n = lines.size.toLong() * 1_000_003L
+        for (l in lines) n += l.shown
+        return n * 31 + phase.ordinal * 7 + countdown + (callMillis / 1000) * 131 + System.identityHashCode(state)
+    }
+
     /** 3, 2, 1 while reconnecting. */
     val countdown: Int get() = if (phase == Phase.RECONNECTING) ((countdownMillis + 999) / 1000).toInt().coerceAtLeast(1) else 0
 

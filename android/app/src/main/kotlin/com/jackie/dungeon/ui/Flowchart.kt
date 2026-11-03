@@ -87,6 +87,9 @@ fun Flowchart(
     val gives = remember(rows) { rows.effects.filter { it.choiceId != null && it.operation == "grant" }.associate { e -> e.choiceId!! to (rows.stateVars.firstOrNull { it.id == e.stateVarId }?.slug ?: "?") } }
     val gates = remember(rows) { rows.gates.associateBy { it.choiceId } }
     val reachable = remember(layout) { layout.boxes.keys - layout.unreachable }
+    // Looked up per door per frame: sets, not scans of every line and edge.
+    val spoken = remember(rows) { rows.dialogueLines.mapNotNullTo(HashSet()) { it.choiceId } }
+    val loops = remember(layout) { layout.edges.filter { it is Edge.Loop }.mapTo(HashSet()) { it.choiceId } }
 
     // Clipped: a canvas draws past its own edges unless told not to, and the
     // zoomed-out chart was painting over the header and the tabs.
@@ -242,6 +245,12 @@ fun Flowchart(
                         style = Stroke(maxOf(2f, 1.5f / scale), pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f / minOf(scale, 1f), 10f / minOf(scale, 1f)))))
                     text(ch.label.uppercase(), ch.x0 + 14f, ch.y0 - labelSize * 1.1f, style(if (ch.depth > 1) labelSize * 0.8f else labelSize, if (ch.depth > 1) Phosphor.cyan else Phosphor.fg, family = Phosphor.font))
                 }
+                // Only what's on screen is drawn: measuring and drawing text for 139 scenes
+                // you can't see, every frame of a pan, is most of what this canvas costs.
+                val vl = -offset.x / scale; val vt = -offset.y / scale
+                val vr = (size.width - offset.x) / scale; val vb = (size.height - offset.y) / scale
+                fun seen(x0: Float, y0: Float, x1: Float, y1: Float, m: Float = 60f) =
+                    maxOf(x0, x1) >= vl - m && minOf(x0, x1) <= vr + m && maxOf(y0, y1) >= vt - m && minOf(y0, y1) <= vb + m
                 // ---- edges ----
                 fun curve(a: Offset, b: Offset, color: Color, dashed: Boolean = false) {
                     val path = Path().apply { moveTo(a.x, a.y); cubicTo(a.x, a.y + 70f, b.x, b.y - 70f, b.x, b.y) }
@@ -252,6 +261,14 @@ fun Flowchart(
                 for (e in layout.edges) {
                     val (x, y) = e.from
                     val from = Offset(x, y + 9f)
+                    val ends = when (e) {
+                        is Edge.Forward -> listOfNotNull(layout.boxes[e.to])
+                        is Edge.Fork -> listOfNotNull(e.yes?.let { layout.boxes[it] }, e.no?.let { layout.boxes[it] })
+                        else -> emptyList()
+                    }
+                    var x0 = x; var x1 = x; var y0 = y; var y1 = y + 60f
+                    for (t in ends) { x0 = minOf(x0, t.cx); x1 = maxOf(x1, t.cx + 20f); y0 = minOf(y0, t.y); y1 = maxOf(y1, t.y) }
+                    if (!seen(x0, y0, x1, y1, 220f)) continue
                     when (e) {
                         is Edge.Forward -> layout.boxes[e.to]?.let { t -> curve(from, Offset(t.cx, t.y - 1f), Phosphor.fg.copy(alpha = 0.8f)) }
                         is Edge.Loop -> if (!blocks) {
@@ -285,6 +302,7 @@ fun Flowchart(
 
                 // ---- scenes ----
                 for (b in layout.boxes.values) {
+                    if (!seen(b.x, b.y - 40f, b.x + FlowLayout.W, b.bottom)) continue
                     val n = nodes[b.id] ?: continue
                     val sel = b.id == selected
                     val ending = n.nodeType == "ending"
@@ -328,9 +346,9 @@ fun Flowchart(
                         val marks = buildList {
                             gates[c.id]?.let { g -> add((if (g.failBehavior == "divert") "◇fork" else "◇needs") to Phosphor.warn) }
                             gives[c.id]?.let { add("+${it.lowercase().take(10)}" to Phosphor.fg) }
-                            if (!c.reactionNarration.isNullOrBlank() || rows.dialogueLines.any { it.choiceId == c.id }) add((if (!c.audioPath.isNullOrEmpty()) "♪" else "“") to (if (!c.audioPath.isNullOrEmpty()) Phosphor.cyan else Phosphor.warn))
+                            if (!c.reactionNarration.isNullOrBlank() || c.id in spoken) add((if (!c.audioPath.isNullOrEmpty()) "♪" else "“") to (if (!c.audioPath.isNullOrEmpty()) Phosphor.cyan else Phosphor.warn))
                             if (c.toNodeId == null) add("?" to Phosphor.alert)
-                            else if (layout.edges.any { it.choiceId == c.id && it is Edge.Loop }) add("↺" to Phosphor.cyan)
+                            else if (c.id in loops) add("↺" to Phosphor.cyan)
                         }
                         val marksW = marks.sumOf { it.first.length + 1 } * 7f
                         val room = ((FlowLayout.W - 34f - marksW) / 6.9f).toInt().coerceAtLeast(6)
