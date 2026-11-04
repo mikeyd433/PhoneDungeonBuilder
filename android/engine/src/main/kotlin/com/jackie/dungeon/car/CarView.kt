@@ -229,6 +229,11 @@ object CarView {
         val n = r.nodes.first { it.id == id }
         val left = marginSide(v); val right = v.w - marginSide(v)
         val cols = floor((right - left) / v.cw).toInt()
+        // What is still silent goes in the top bar, beside the buttons: in the page it
+        // read as part of the script. Only when the bar is full does it fall back below.
+        val silent = CarSurvey.silentParts(r, id)
+        val recText = if (silent.isEmpty()) "ALL RECORDED ♪" else "SILENT: " + silent.joinToString(", ")
+        val recInk = if (silent.isEmpty()) Ink.CYAN else Ink.AMBER
         val buttons = toolbar(b, v, listOf(
             Button("PLAY MODE", Action.ToPlay, short = "PLAY"),
             Button("‹ BACK", Action.Back, short = "‹"),
@@ -239,7 +244,8 @@ object CarView {
             Button("+ CHOICE", Action.AddChoice(id), enabled = n.nodeType != "ending", short = "+"),
             Button("▶ PLAY HERE", Action.PlayHere(id), short = "▶HERE"),
             Button("UNDO", Action.Undo, enabled = canUndo),
-        ) + (if (!s.mirror) listOf(Button("FOLLOW PHONE", Action.Mirror(true), on = true, short = "PHONE")) else emptyList()))
+        ) + (if (!s.mirror) listOf(Button("FOLLOW PHONE", Action.Mirror(true), on = true, short = "PHONE")) else emptyList()), title = recText, titleInk = recInk)
+        val recInTop = b.toolbarTitleShown
         var y = b.toolbarBottom + v.ch * 0.3f
 
         // The name, and what kind of scene it is.
@@ -272,12 +278,11 @@ object CarView {
         val tilesTop = v.h - marginTop(v) - tileH
         // The facts line sits above the tiles — unless that would leave the script
         // fewer than three rows (large text), when the facts scroll with the script.
-        val factsLine = (tilesTop - v.ch * 1.7f - y) / v.ch >= 3
-        val factsY = if (factsLine) tilesTop - v.ch * 1.4f else tilesTop
         val gives = r.effects.filter { it.nodeId == id && it.operation == "grant" }.mapNotNull { e -> r.stateVars.firstOrNull { it.id == e.stateVarId }?.name?.uppercase() }
-        val silent = CarSurvey.silentParts(r, id)
         val givesText = if (gives.isEmpty()) null else "GIVES: ${gives.joinToString(", ")}"
-        val recText = if (silent.isEmpty()) "ALL RECORDED ♪" else "SILENT: " + silent.joinToString(", ")
+        val anyFacts = givesText != null || !recInTop
+        val factsLine = anyFacts && (tilesTop - v.ch * 1.7f - y) / v.ch >= 3
+        val factsY = if (factsLine) tilesTop - v.ch * 1.4f else tilesTop
 
         // The script, scrolled.
         val scriptBottom = factsY - v.ch * 0.3f
@@ -287,7 +292,7 @@ object CarView {
         val script = ArrayList<Row>()
         if (!factsLine) {
             givesText?.let { script += Row(it, Ink.FG, null) }
-            TerminalLayout.wrap(recText, textCols, 2).forEach { script += Row(it, if (silent.isEmpty()) Ink.CYAN else Ink.AMBER, null) }
+            if (!recInTop) TerminalLayout.wrap(recText, textCols, 2).forEach { script += Row(it, recInk, null) }
         }
         val speakers = r.characters.map { it.name }
         val inkFor = { who: String? -> if (who == null) Ink.FG else listOf(Ink.CYAN, Ink.AMBER, Ink.BRIGHT)[speakers.indexOf(who).coerceAtLeast(0) % 3] }
@@ -329,7 +334,7 @@ object CarView {
         if (factsLine) {
             var fx = left
             givesText?.let { b.text(fx, factsY, it, Ink.FG); fx += (it.length + 3) * v.cw }
-            b.text(fx, factsY, fit(recText, ((right - fx) / v.cw).toInt()), if (silent.isEmpty()) Ink.CYAN else Ink.AMBER)
+            if (!recInTop) b.text(fx, factsY, fit(recText, ((right - fx) / v.cw).toInt()), recInk)
         }
 
         // The tiles, scrolled sideways.
@@ -414,7 +419,7 @@ object CarView {
     }
 
     /** Lays the buttons out left to right, wrapping when the screen is narrow (large text). Returns where each menu's button sits. */
-    private fun toolbar(b: Builder, v: Viewport, buttons: List<Button>, title: String? = null): Map<String, Float> {
+    private fun toolbar(b: Builder, v: Viewport, buttons: List<Button>, title: String? = null, titleInk: Ink = Ink.DIM): Map<String, Float> {
         val left = marginSide(v); val right = v.w - marginSide(v)
         val bh = buttonH(v); val gap = v.cw * 0.6f
         // Large text: if the full labels need more than two rows, use the short ones.
@@ -446,7 +451,8 @@ object CarView {
             val (lb, lx, ly) = placed.last()
             val from = lx + (lb.label.length + 2) * v.cw + v.cw * 2
             val room = ((right - from) / v.cw).toInt()
-            if (room >= 8) b.text(right - min(room, title.length) * v.cw, ly + (bh - v.ch) / 2, fit(title, room), Ink.DIM)
+            b.toolbarTitleShown = room >= 8
+            if (room >= 8) b.text(right - min(room, title.length) * v.cw, ly + (bh - v.ch) / 2, fit(title, room), titleInk)
         }
         return at
     }
@@ -718,6 +724,8 @@ object CarView {
         val hits = ArrayList<Hit>()
         val scrolls = ArrayList<ScrollArea>()
         var toolbarBottom = toolbarBottom(v)
+        /** Did the toolbar have room for its title? */
+        var toolbarTitleShown = false
         fun fill(x: Float, y: Float, w: Float, h: Float, ink: Ink) { if (w > 0 && h > 0) ops += Op.Fill(x, y, w, h, ink) }
         fun text(x: Float, y: Float, t: String, ink: Ink) { if (t.isNotEmpty()) ops += Op.Text(x, y, t, ink) }
         fun hline(x0: Float, x1: Float, y: Float, ink: Ink) = fill(x0, y, max(1f, x1 - x0), 1f, ink)

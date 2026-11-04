@@ -285,6 +285,20 @@ class CarEditorTest {
     }
 
     @Test
+    fun `what is still silent sits in the top bar, not in the script`() {
+        for ((rowsOnScreen, cw) in listOf(22 to 7f, 17 to 9f, 13 to 12f)) {
+            val vv = Viewport(600f, 360f, cw, 360f / rowsOnScreen)
+            val b = Bench(william, vv)
+            b.go(Action.OpenScene(william.story.rootNodeId!!))
+            val f = b.frame()
+            val top = CarView.toolbarBottom(vv) * 2.5f
+            val rec = f.ops.filterIsInstance<Op.Text>().filter { it.text.startsWith("SILENT") || it.text.startsWith("ALL RECORDED") }
+            assertEquals(1, rec.size, "said once at $rowsOnScreen rows")
+            assertTrue(rec.single().y < top, "in the bar at $rowsOnScreen rows, not at y=${rec.single().y}")
+        }
+    }
+
+    @Test
     fun `every text size the editor uses (S to L) fits a toolbar and a scene page`() {
         for ((rowsOnScreen, cw) in listOf(22 to 7f, 17 to 9f, 13 to 12f)) {
             val vv = Viewport(600f, 360f, cw, 360f / rowsOnScreen)
