@@ -8,7 +8,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -240,35 +239,28 @@ private fun StoryScreen() {
     BackHandler { if (tab == "play") tab = "edit" else Studio.close() }
 
     Column(Modifier.fillMaxSize()) {
-        // With a car attached the car is the big screen and the phone is the controls:
-        // the bars above the flowchart shrink so the map keeps the room.
-        val tight = carPresent && tab == "edit"
-        val big = if (tight) 16 else 20
-        val padV = if (tight) 2.dp else 4.dp
-        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = if (tight) 3.dp else 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(if (tight) 6.dp else 10.dp)) {
-            Text("◄", style = style(if (tight) 20 else 26, Phosphor.fg), modifier = Modifier.clickable { Studio.close() }.padding(if (tight) 3.dp else 6.dp))
-            Text(r.story.title.ifBlank { "Untitled story" }, style = style(if (tight) 18 else 24, Phosphor.hi), maxLines = 1, overflow = TextOverflow.Ellipsis,
+        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("◄", style = style(26, Phosphor.fg), modifier = Modifier.clickable { Studio.close() }.padding(6.dp))
+            Text(r.story.title.ifBlank { "Untitled story" }, style = style(24, Phosphor.hi), maxLines = 1, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f).clickable { renaming = true })
-            Text("SHARE", style = style(big, Phosphor.fg),
-                modifier = Modifier.border(1.dp, Phosphor.line).clickable { sharing = true }.padding(horizontal = if (tight) 6.dp else 10.dp, vertical = padV))
-            Text("EXPORT", style = style(big, Phosphor.fg),
-                modifier = Modifier.border(1.dp, Phosphor.line).clickable { exporting = true }.padding(horizontal = if (tight) 6.dp else 10.dp, vertical = padV))
-            Text("UNDO", style = style(big, if (undo.isEmpty()) Phosphor.line else Phosphor.fg),
-                modifier = Modifier.border(1.dp, Phosphor.line).clickable(enabled = undo.isNotEmpty()) { Studio.undo() }.padding(horizontal = if (tight) 6.dp else 10.dp, vertical = padV))
+            Text("SHARE", style = style(20, Phosphor.fg),
+                modifier = Modifier.border(1.dp, Phosphor.line).clickable { sharing = true }.padding(horizontal = 10.dp, vertical = 4.dp))
+            Text("EXPORT", style = style(20, Phosphor.fg),
+                modifier = Modifier.border(1.dp, Phosphor.line).clickable { exporting = true }.padding(horizontal = 10.dp, vertical = 4.dp))
+            Text("UNDO", style = style(20, if (undo.isEmpty()) Phosphor.line else Phosphor.fg),
+                modifier = Modifier.border(1.dp, Phosphor.line).clickable(enabled = undo.isNotEmpty()) { Studio.undo() }.padding(horizontal = 10.dp, vertical = 4.dp))
         }
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(0.dp)) {
             for ((k, t) in listOf("edit" to "EDIT", "play" to "PLAY")) {
-                Box(Modifier.weight(1f).border(1.dp, Phosphor.line).background(if (tab == k) Phosphor.fg else Phosphor.panel).clickable { tab = k }.padding(vertical = if (tight) 3.dp else 8.dp), contentAlignment = Alignment.Center) {
-                    Text(t, style = style(if (tight) 16 else 22, if (tab == k) Phosphor.bg else Phosphor.dim))
+                Box(Modifier.weight(1f).border(1.dp, Phosphor.line).background(if (tab == k) Phosphor.fg else Phosphor.panel).clickable { tab = k }.padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
+                    Text(t, style = style(22, if (tab == k) Phosphor.bg else Phosphor.dim))
                 }
             }
         }
         if (roles[r.story.id] == "viewer") Text("VIEW ONLY · shared with you to look at: changes made here aren't saved to the cloud, and the next sync puts the shared version back.",
             style = mono(12, Phosphor.warn), modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp))
-        // The phone's EDIT / PLAY tabs are the car's modes too, so only the highlights need a switch here.
-        if (carPresent && tab == "edit") CarControls(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 3.dp), showMode = false, compact = true)
         val sync by CloudSync.status.collectAsStateWithLifecycle()
-        Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = if (tight) 1.dp else 4.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             if (undo.isNotEmpty() && tab == "edit") Text("Undo: ${undo.last().first}", style = mono(11, Phosphor.dim), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
             else Box(Modifier.weight(1f))
             val (line, color) = syncLine(sync)
@@ -282,29 +274,30 @@ private fun StoryScreen() {
         if (tab == "edit") {
             // Jump to a chapter's lane: its first scene, near the top of the screen.
             // ALL fits the whole story; a chapter fits its lane, from the top.
-            val chipSize = if (tight) 11 else 13
-            val chipPad = if (tight) PaddingValues(horizontal = 7.dp, vertical = 3.dp) else PaddingValues(horizontal = 10.dp, vertical = 6.dp)
-            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = if (tight) 2.dp else 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("♪ RECORDINGS", style = mono(chipSize, Phosphor.cyan), modifier = Modifier.border(1.dp, Phosphor.cyan).clickable { recordings = true }.padding(chipPad))
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("♪ RECORDINGS", style = mono(13, Phosphor.cyan), modifier = Modifier.border(1.dp, Phosphor.cyan).clickable { recordings = true }.padding(horizontal = 10.dp, vertical = 6.dp))
+                // With a car attached, its controls ride in this row: LIGHT UP folds open into its checkboxes.
+                // (The phone's EDIT / PLAY tabs are the car's modes too, so no switch for those.)
+                if (carPresent) CarChips()
                 if (chapters.isNotEmpty()) for ((key, label) in listOf("all" to "ALL") + chapters.map { "chapter:$it" to (if ('/' in it) "› " + it.substringAfterLast('/') else it) }) {
-                    Text(label, style = mono(chipSize, Phosphor.fg), modifier = Modifier.border(1.dp, Phosphor.line).clickable {
+                    Text(label, style = mono(13, Phosphor.fg), modifier = Modifier.border(1.dp, Phosphor.line).clickable {
                         jump = key + "#" + System.nanoTime()
-                    }.padding(chipPad))
+                    }.padding(horizontal = 10.dp, vertical = 6.dp))
                 }
                 // The arrangement: save the one on screen as the default, go back to
                 // the default, or drop every move for the automatic layout.
-                if (chapters.isNotEmpty()) Text("CHAPTERS…", style = mono(chipSize, Phosphor.cyan), modifier = Modifier.border(1.dp, Phosphor.cyan).clickable { managing = true }.padding(chipPad))
+                if (chapters.isNotEmpty()) Text("CHAPTERS…", style = mono(13, Phosphor.cyan), modifier = Modifier.border(1.dp, Phosphor.cyan).clickable { managing = true }.padding(horizontal = 10.dp, vertical = 6.dp))
                 if (StoryEditor.layoutChanged(r)) {
-                    Text("SAVE AS DEFAULT", style = mono(chipSize, Phosphor.cyan), modifier = Modifier.border(1.dp, Phosphor.cyan).clickable {
+                    Text("SAVE AS DEFAULT", style = mono(13, Phosphor.cyan), modifier = Modifier.border(1.dp, Phosphor.cyan).clickable {
                         Studio.edit("Save layout as default") { StoryEditor.saveLayoutAsDefault(it) }
-                    }.padding(chipPad))
-                    Text(if (r.story.layoutHome.isEmpty()) "RESET LAYOUT" else "BACK TO DEFAULT", style = mono(chipSize, Phosphor.warn), modifier = Modifier.border(1.dp, Phosphor.line).clickable {
+                    }.padding(horizontal = 10.dp, vertical = 6.dp))
+                    Text(if (r.story.layoutHome.isEmpty()) "RESET LAYOUT" else "BACK TO DEFAULT", style = mono(13, Phosphor.warn), modifier = Modifier.border(1.dp, Phosphor.line).clickable {
                         Studio.edit("Reset layout") { StoryEditor.resetLayout(it) }
-                    }.padding(chipPad))
+                    }.padding(horizontal = 10.dp, vertical = 6.dp))
                 }
-                if (r.story.layoutHome.isNotEmpty()) Text("AUTO LAYOUT", style = mono(chipSize, Phosphor.dim), modifier = Modifier.border(1.dp, Phosphor.line).clickable {
+                if (r.story.layoutHome.isNotEmpty()) Text("AUTO LAYOUT", style = mono(13, Phosphor.dim), modifier = Modifier.border(1.dp, Phosphor.line).clickable {
                     Studio.edit("Automatic layout") { StoryEditor.autoLayout(it) }
-                }.padding(chipPad))
+                }.padding(horizontal = 10.dp, vertical = 6.dp))
             }
         }
         Box(Modifier.weight(1f)) {
