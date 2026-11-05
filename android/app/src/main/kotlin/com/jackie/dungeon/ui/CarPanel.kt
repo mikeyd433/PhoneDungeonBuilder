@@ -3,6 +3,7 @@ package com.jackie.dungeon.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -45,9 +46,27 @@ private val HIGHLIGHT_COLOR = mapOf(Highlight.EMPTY to Phosphor.warn, Highlight.
  * because they're set once and looked at for a while.
  */
 @Composable
-fun CarControls(modifier: Modifier = Modifier, showMode: Boolean = true) {
+fun CarControls(modifier: Modifier = Modifier, showMode: Boolean = true, compact: Boolean = false) {
     val mode by CarEdit.mode.collectAsStateWithLifecycle()
     val lit by CarEdit.highlights.collectAsStateWithLifecycle()
+    // Above the phone's flowchart with a car attached: one short scrolling row, so the map keeps the room.
+    if (compact) {
+        Row(modifier.horizontalScroll(androidx.compose.foundation.rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (mode == Mode.EDIT) {
+                Text("LIGHT UP", style = mono(10, Phosphor.dim))
+                for (h in Highlight.entries) {
+                    val on = h in lit
+                    Row(Modifier.clickable { CarEdit.toggle(h) }.semantics { contentDescription = "Highlight ${h.label.lowercase()}" }.padding(vertical = 2.dp),
+                        horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(if (on) "▣" else "□", style = mono(13, HIGHLIGHT_COLOR.getValue(h)))
+                        Text(h.label, style = mono(10, if (on) HIGHLIGHT_COLOR.getValue(h) else Phosphor.fg))
+                    }
+                }
+            }
+            CarSettingsLink(compact = true)
+        }
+        return
+    }
     Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         if (showMode) Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("CAR SCREEN", style = style(18, Phosphor.dim))
@@ -175,8 +194,9 @@ private fun Setting(name: String, value: Float, range: ClosedFloatingPointRange<
 
 /** The way into CAR SCREEN SETTINGS. */
 @Composable
-fun CarSettingsLink(modifier: Modifier = Modifier) {
+fun CarSettingsLink(modifier: Modifier = Modifier, compact: Boolean = false) {
     var open by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
-    Text("⚙ CAR SCREEN SETTINGS", style = mono(13, Phosphor.cyan), modifier = modifier.border(1.dp, Phosphor.line).clickable { open = true }.padding(horizontal = 10.dp, vertical = 6.dp))
+    if (compact) Text("⚙ CAR SCREEN", style = mono(10, Phosphor.cyan), modifier = modifier.border(1.dp, Phosphor.line).clickable { open = true }.padding(horizontal = 6.dp, vertical = 3.dp))
+    else Text("⚙ CAR SCREEN SETTINGS", style = mono(13, Phosphor.cyan), modifier = modifier.border(1.dp, Phosphor.line).clickable { open = true }.padding(horizontal = 10.dp, vertical = 6.dp))
     if (open) CarSettingsDialog { open = false }
 }
