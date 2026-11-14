@@ -161,6 +161,7 @@ object Studio {
         if (after == before) return true
         commit(after)
         _undo.value = (_undo.value + (label to before)).takeLast(UNDO_DEPTH)
+        CloudSync.activity(after.story.id, label, com.jackie.dungeon.sync.Activity.sceneOf(before, after))
         return true
     }
 
@@ -173,9 +174,11 @@ object Studio {
 
     fun undo() {
         val stack = _undo.value
-        val (_, before) = stack.lastOrNull() ?: return
+        val (label, before) = stack.lastOrNull() ?: return
+        val now = _rows.value
         _undo.value = stack.dropLast(1)
         commit(before)
+        CloudSync.activity(before.story.id, "Undo: $label", now?.let { com.jackie.dungeon.sync.Activity.sceneOf(it, before) })
     }
 
     private fun commit(rows: StoryRows) {

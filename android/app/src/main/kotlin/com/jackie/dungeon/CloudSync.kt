@@ -208,6 +208,8 @@ object CloudSync {
             }
             if (news) { lively(); runOnce() }
             lookForPeople()
+            flushActivity()
+            if (news || System.currentTimeMillis() - activityFetched > ACTIVITY_EVERY_MS) fetchActivity()
         }.onFailure { e -> if (e is SyncError && e.code == 0) _status.value = _status.value.copy(state = State.OFFLINE) }
     }
 
@@ -233,6 +235,96 @@ object CloudSync {
         if (_people.value != p) _people.value = p
         val bySceneName = p.filter { it.sceneId != null }.groupBy({ it.sceneId!! }, { it.name })
         main.post { CarEdit.others(bySceneName) }
+    }
+
+    // ---- the activity log ---------------------------------------------------------------
+
+    private const val ACTIVITY_EVERY_MS = 30_000L
+    private var activityFetched = 0L
+
+    private val _activity = MutableStateFlow<List<com.jackie.dungeon.sync.Activity.Entry>>(emptyList())
+    /** The open story's log, newest first: the cloud's (everyone's), plus this phone's not yet sent. */
+    val activity: StateFlow<List<com.jackie.dungeon.sync.Activity.Entry>> = _activity
+
+    /** This phone's own entries per story, kept on the phone (all of them when not signed in) and sent when it can. */
+    private val local = HashMap<String, MutableList<com.jackie.dungeon.sync.Activity.Entry>>()
+    private val unsent = HashMap<String, MutableList<com.jackie.dungeon.sync.Activity.Entry>>()
+    private var cloudLog: Pair<String, List<com.jackie.dungeon.sync.Activity.Entry>>? = null
+    private val activityDir get() = File(app.filesDir, "activity").apply { mkdirs() }
+
+    /** Who "you" are in the log. */
+    fun myId(): String? = if (::db.isInitialized) db.session?.userId else null
+
+    /** An edit was made on this phone. Called on the main thread by [Studio]. */
+    @Synchronized fun activity(storyId: String, label: String, sceneId: String?) {
+        if (!::db.isInitialized) return
+        val now = java.time.Instant.now()
+        val mine = localOf(storyId)
+        val last = mine.firstOrNull()
+        // The same edit again within a minute (dragging a box in steps, retyping) is one entry.
+        if (last != null && last.label == label && last.sceneId == sceneId && now.toEpochMilli() - last.at.toEpochMilli() < 60_000) {
+            mine[0] = last.copy(at = now)
+        } else {
+            val e = com.jackie.dungeon.sync.Activity.Entry(myId(), db.session?.email ?: "", label, sceneId, now)
+            mine.add(0, e)
+            unsent.getOrPut(storyId) { ArrayList() }.add(e)
+        }
+        while (mine.size > 200) mine.removeAt(mine.size - 1)
+        saveLocal(storyId)
+        publishActivity(storyId)
+        worker.execute { flushActivity() }
+    }
+
+    /** The open story changed: show its log. */
+    fun activityFor(storyId: String?) {
+        if (!::db.isInitialized) return
+        if (storyId == null) { _activity.value = emptyList(); return }
+        publishActivity(storyId)
+        worker.execute { fetchActivity() }
+    }
+
+    private fun localOf(storyId: String) = local.getOrPut(storyId) {
+        runCatching {
+            File(activityDir, "$storyId.tsv").readLines().mapNotNull { l ->
+                val p = l.split('\t'); if (p.size < 4) return@mapNotNull null
+                com.jackie.dungeon.sync.Activity.Entry(myId(), p[1], p[2], p[3].ifEmpty { null }, java.time.Instant.ofEpochMilli(p[0].toLong()))
+            }.toMutableList()
+        }.getOrElse { ArrayList() }
+    }
+
+    private fun saveLocal(storyId: String) {
+        val text = localOf(storyId).joinToString("\n") { "${it.at.toEpochMilli()}\t${it.email}\t${it.label.replace('\t', ' ').replace('\n', ' ')}\t${it.sceneId ?: ""}" }
+        runCatching { File(activityDir, "$storyId.tsv").writeText(text) }
+    }
+
+    @Synchronized private fun publishActivity(storyId: String) {
+        if (Studio.rows.value?.story?.id != storyId) return
+        val cloud = cloudLog?.takeIf { it.first == storyId }?.second
+        _activity.value = if (cloud == null) localOf(storyId).toList()
+        else (cloud + unsent[storyId].orEmpty()).sortedByDescending { it.at }.take(100)
+    }
+
+    /** Send this phone's entries for stories that are in the cloud. On the worker. */
+    private fun flushActivity() {
+        if (db.session == null) return
+        val todo = synchronized(this) { unsent.filter { (id, l) -> l.isNotEmpty() && inCloud(id) }.mapValues { it.value.toList() } }
+        for ((id, list) in todo) {
+            val sent = list.takeWhile { e -> runCatching { com.jackie.dungeon.sync.Activity.log(db, id, e.label, e.sceneId) }.isSuccess }
+            if (sent.isNotEmpty()) synchronized(this) { unsent[id]?.removeAll(sent.toSet()) }
+            if (sent.size < list.size) return // offline, or 0025 isn't there yet: try again later
+        }
+        if (todo.isNotEmpty()) fetchActivity()
+    }
+
+    /** The open story's log from the cloud. On the worker. */
+    private fun fetchActivity() {
+        activityFetched = System.currentTimeMillis()
+        val open = Studio.rows.value?.story?.id ?: return
+        if (db.session == null || !inCloud(open)) return
+        runCatching { com.jackie.dungeon.sync.Activity.recent(db, open, 100) }.onSuccess { list ->
+            synchronized(this) { cloudLog = open to list }
+            main.post { publishActivity(open) }
+        }
     }
 
     // ---- sharing ------------------------------------------------------------------------

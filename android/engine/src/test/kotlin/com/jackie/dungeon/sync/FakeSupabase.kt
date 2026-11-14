@@ -175,6 +175,12 @@ class FakeSupabase(var clock: Instant = Instant.parse("2026-11-01T12:00:00Z")) :
                 t("story_presence") += obj("story_id" to story, "user_id" to me, "email" to myEmail, "scene_id" to a.s("p_scene"), "seen_at" to clock.toString())
                 ok("")
             }
+            "log_activity" -> {
+                val r = role(story, me)
+                if (r == null || r == "viewer") return ok("")
+                t("story_activity") += obj("story_id" to story, "user_id" to me, "email" to myEmail, "label" to a.s("p_label"), "scene_id" to a.s("p_scene"), "created_at" to tick())
+                ok("")
+            }
             "leave_story" -> { t("memberships").removeAll { it.s("story_id") == story && it.s("user_id") == me }; ok("") }
             else -> Response(404, """{"message":"function not found"}""")
         }

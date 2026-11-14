@@ -61,6 +61,19 @@ class CompactBarsShot {
         shoot("find-carter-2")
     }
 
+    @Test fun activityLog() {
+        if (Studio.rows.value == null) Studio.stories.value.firstOrNull { it.title.startsWith("William") }?.let { Studio.open(it.id) }
+        val root = Studio.rows.value!!.story.rootNodeId!!
+        Studio.edit("Edit script") { com.jackie.dungeon.story.StoryEditor.setScript(it, root, "Pick a player.") }
+        Studio.edit("Rename choice") { r -> com.jackie.dungeon.story.StoryEditor.updateChoice(r, r.choices.first { it.fromNodeId == root }.id, label = "MIKE!") }
+        compose.setContent { AppScreen() }
+        compose.waitForIdle()
+        shoot("activity-closed")
+        compose.onNodeWithText("≡ ACTIVITY", substring = true).performClick()
+        compose.waitForIdle()
+        shoot("activity-open")
+    }
+
     @Test fun storiesList() {
         Studio.close()
         compose.setContent { AppScreen() }

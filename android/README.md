@@ -238,6 +238,13 @@ The rolling bar and the flicker are worked out on the CPU in double precision an
 passed in as small numbers: computed in the shader from a seconds-since-start clock,
 mediump precision made the bar move in visible steps.
 
+**Activity** (≡ ACTIVITY, bottom right of the flowchart): who changed what, newest first —
+each edit as Undo names it, the scene it touched (`Activity.sceneOf`), and when; a tap goes
+to the scene. Shared stories keep it in `story_activity` (`0025_activity.sql`, written only
+through `log_activity`, so the name is always the person's), so both phones see both
+people's edits; the tab counts other people's edits since you last opened it. Without
+sign-in, or before 0025, it's this phone's own log (`files/activity/`).
+
 **Find** (⌕ FIND above the flowchart): like a browser's. Every place the words appear —
 scene names, scripts, choice names, replies, refusals — in map order (`story/Find.kt`),
 "3 of 12" with ▲ ▼ to step through, the flowchart going to each. The words are marked on

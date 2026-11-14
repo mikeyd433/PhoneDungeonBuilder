@@ -185,4 +185,29 @@ class MergeSyncTest {
         assertTrue(Presence.others(friend.db, id, fake.friend, fake.clock).single().sceneId == null, "I'm on the story with nothing open")
         assertTrue(Presence.others(me.db, id, fake.user, fake.clock.plusSeconds(60)).isEmpty(), "a minute without a word: gone")
     }
+
+    @Test
+    fun `the activity log shows both people's edits, newest first, and where`() {
+        val (me, friend, id) = shared()
+        val mike = scene(me, "Mike's way")
+        Activity.log(me.db, id, "Edit script", mike)
+        Activity.log(friend.db, id, "Rename choice", null)
+        val log = Activity.recent(me.db, id)
+        assertEquals(listOf("Rename choice", "Edit script"), log.map { it.label })
+        assertEquals(listOf("Friend", "Me"), log.map { it.name })
+        assertEquals(mike, log.last().sceneId)
+        assertEquals(log, Activity.recent(friend.db, id), "both phones read the same log")
+    }
+
+    @Test
+    fun `an edit is filed under the scene it touched`() {
+        val r = StoryEditor.newStory("Where")
+        val (r2, added) = StoryEditor.addScene(r, "Hall", null)
+        assertEquals(added, Activity.sceneOf(r, r2))
+        val r3 = StoryEditor.setScript(r2, added, "It echoes.")
+        assertEquals(added, Activity.sceneOf(r2, r3))
+        val root = r3.story.rootNodeId!!
+        val r4 = StoryEditor.addChoice(r3, root, newScene = false).first
+        assertEquals(root, Activity.sceneOf(r3, r4))
+    }
 }

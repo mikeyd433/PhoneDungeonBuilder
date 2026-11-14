@@ -31,6 +31,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.widthIn
 import com.jackie.dungeon.story.StoryRows
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.runtime.CompositionLocalProvider
@@ -273,6 +275,7 @@ private fun StoryScreen() {
     val roles by CloudSync.roles.collectAsStateWithLifecycle()
     val people by CloudSync.people.collectAsStateWithLifecycle()
     val carPresent by CarEdit.present.collectAsStateWithLifecycle()
+    LaunchedEffect(r.story.id) { CloudSync.activityFor(r.story.id) }
     // FIND, like a browser's: the words, every place they are, and which one is current.
     var finding by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
@@ -414,6 +417,9 @@ private fun StoryScreen() {
                     },
                 )
                 Legend(Modifier.align(Alignment.BottomStart))
+                ActivityPanel(r, Modifier.align(Alignment.BottomEnd).padding(end = 8.dp, bottom = 40.dp)) { id ->
+                    selected = id; jump = id + "#" + System.nanoTime()
+                }
             } else PlayScreen()
         }
     }
@@ -435,6 +441,54 @@ private fun StoryScreen() {
     if (sharing) ShareDialog(r.story.id, r.story.title.ifBlank { "Untitled story" }) { sharing = false }
     PlayHereDialog()
     if (renaming) AskText("Name this story", "Rename", r.story.title) { t -> renaming = false; if (t != null) Studio.edit("Rename story") { StoryEditor.setStoryTitle(it, t) } }
+}
+
+/**
+ * The activity log, folded into a tab in the flowchart's bottom-right corner:
+ * who changed what, newest first ("Carter · Edit script · Player Select · 3 min
+ * ago"). Opened, a tap on an entry goes to its scene. A count on the tab says how
+ * many edits other people made since it was last opened.
+ */
+@Composable
+private fun ActivityPanel(r: StoryRows, modifier: Modifier, go: (String) -> Unit) {
+    val log by CloudSync.activity.collectAsStateWithLifecycle()
+    var open by rememberSaveable { mutableStateOf(false) }
+    var seenAt by rememberSaveable(r.story.id) { mutableStateOf(System.currentTimeMillis()) }
+    val me = CloudSync.myId()
+    val theirs = log.count { it.userId != null && it.userId != me && it.at.toEpochMilli() > seenAt }
+    // Re-reads "3 min ago" every half minute while open.
+    var tick by remember { mutableStateOf(0) }
+    LaunchedEffect(open) { while (open) { kotlinx.coroutines.delay(30_000); tick++ } }
+    if (!open) {
+        Text("≡ ACTIVITY" + if (theirs > 0) "  • $theirs" else "", style = mono(12, if (theirs > 0) Phosphor.bg else Phosphor.cyan),
+            modifier = modifier.border(1.dp, Phosphor.cyan).background(if (theirs > 0) Phosphor.warn else Phosphor.bg)
+                .clickable { open = true; seenAt = System.currentTimeMillis() }.padding(horizontal = 10.dp, vertical = 6.dp))
+        return
+    }
+    Column(modifier.widthIn(max = 320.dp).heightIn(max = 340.dp).border(1.dp, Phosphor.cyan).background(Phosphor.bg)) {
+        Row(Modifier.fillMaxWidth().background(Phosphor.panel).padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("ACTIVITY", style = mono(12, Phosphor.cyan), modifier = Modifier.weight(1f))
+            Text("✕", style = mono(16, Phosphor.dim), modifier = Modifier.clickable { open = false; seenAt = System.currentTimeMillis() }.padding(horizontal = 6.dp))
+        }
+        if (log.isEmpty()) Text("No edits yet. Changes made here, and by anyone this story is shared with, show up here.",
+            style = mono(12, Phosphor.dim), modifier = Modifier.padding(10.dp))
+        LazyColumn(Modifier.fillMaxWidth()) {
+            items(log.size) { i ->
+                val e = log[i]
+                val who = if (e.userId == null || e.userId == me) "You" else e.name
+                val scene = e.sceneId?.let { id -> r.nodes.firstOrNull { it.id == id } }
+                val ago = tick.let {
+                    if (System.currentTimeMillis() - e.at.toEpochMilli() < 60_000) "just now"
+                    else android.text.format.DateUtils.getRelativeTimeSpanString(e.at.toEpochMilli(), System.currentTimeMillis(), android.text.format.DateUtils.MINUTE_IN_MILLIS).toString()
+                }
+                Column(Modifier.fillMaxWidth().clickable(enabled = scene != null) { scene?.let { go(it.id) } }.padding(horizontal = 10.dp, vertical = 6.dp)) {
+                    Text("$who · ${e.label}", style = mono(13, if (who == "You") Phosphor.fg else Phosphor.warn), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text((scene?.let { (it.title.ifBlank { it.slug }) + " · " } ?: (if (e.sceneId != null) "a deleted scene · " else "")) + ago,
+                        style = mono(11, if (scene != null) Phosphor.cyan else Phosphor.dim), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+        }
+    }
 }
 
 @Composable
