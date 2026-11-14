@@ -197,6 +197,8 @@ class CrtRenderer(private val context: Context, private val fps: Int = 30, priva
 
     // ---- PLAY's scrollback: drag the terminal to read what has gone by ----------------------
 
+    private val version by lazy { com.jackie.dungeon.ui.appVersion(context).uppercase() }
+
     /** First transcript row shown while scrolled back; null follows the newest. Touch thread writes, GL thread reads. */
     @Volatile var playTop: Int? = null; private set
     @Volatile private var playTotal = 0
@@ -261,6 +263,7 @@ class CrtRenderer(private val context: Context, private val fps: Int = 30, priva
         if (s.phase == null) {
             row(rows / 2 - 1, centre("JACKIE DUNGEON", cols), BRIGHT, 1f)
             row(rows / 2 + 1, centre("OPEN A STORY ON YOUR PHONE", cols), DIM, 1f)
+            row(rows - 1, centre(version, cols), RULE, 1f)
             tab?.let(::draw)
             return n
         }

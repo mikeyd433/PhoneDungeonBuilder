@@ -42,6 +42,13 @@ class CompactBarsShot {
         CarEdit.setPresent("car", false)
     }
 
+    @Test fun storiesList() {
+        Studio.close()
+        compose.setContent { AppScreen() }
+        compose.waitForIdle()
+        shoot("stories-list")
+    }
+
     @Test fun phoneAlone() = story(false, "phone-no-car")
     @Test fun phoneWithCar() = story(true, "phone-with-car")
     @Test fun phoneWithCarLightsOpen() = story(true, "phone-with-car-light-up", openLights = true)

@@ -99,6 +99,12 @@ private fun UpdateBanner() {
     }
 }
 
+/** "v0.32.0 (32)": the version name, and the Play version code it was uploaded as. */
+fun appVersion(context: android.content.Context): String = runCatching {
+    val p = context.packageManager.getPackageInfo(context.packageName, 0)
+    "v${p.versionName} (${androidx.core.content.pm.PackageInfoCompat.getLongVersionCode(p)})"
+}.getOrDefault("")
+
 private fun mono(size: Int, color: Color = Phosphor.fg) = TextStyle(fontFamily = FontFamily.Monospace, fontSize = size.sp, color = color)
 
 @Composable
@@ -131,7 +137,11 @@ private fun StoriesScreen() {
         }
     }
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("JACKIE DUNGEON", style = style(32, Phosphor.hi))
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
+            Text("JACKIE DUNGEON", style = style(32, Phosphor.hi), modifier = Modifier.weight(1f))
+            // Which build this is, so an update can be seen to have gone through.
+            Text(remember { appVersion(context) }, style = mono(13, Phosphor.cyan), modifier = Modifier.padding(bottom = 6.dp))
+        }
         Text("Your stories, on this phone.", style = mono(13, Phosphor.dim))
         SyncBar(Modifier.fillMaxWidth())
         LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
