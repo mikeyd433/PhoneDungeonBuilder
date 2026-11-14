@@ -238,6 +238,15 @@ The rolling bar and the flicker are worked out on the CPU in double precision an
 passed in as small numbers: computed in the shader from a seconds-since-start clock,
 mediump precision made the bar move in visible steps.
 
+**Sync safety.** A never-synced story under short ids (the built-in stories every install
+starts with) matches a cloud story by title only if it's *yours* — a new collaborator's
+built-in William once matched the William shared with them and replaced it wholesale. And a
+cloud copy that changed too much since the last sync to merge (30% or more of the scenes
+renamed, rewritten, re-chaptered or gone at once — `Sync.drastic`) is *held*: nothing moves
+either way, and the story shows SYNC PAUSED with KEEP THIS PHONE'S (`Sync.keepPhone`, sends
+it up over the cloud's) or TAKE THE CLOUD'S (`Sync.takeCloud`). Restoring a backup over a
+synced story holds it too, so the restored copy isn't merged away before you choose.
+
 **Activity** (≡ ACTIVITY, bottom right of the flowchart): who changed what, newest first —
 each edit as Undo names it, the scene it touched (`Activity.sceneOf`), and when; a tap goes
 to the scene. Shared stories keep it in `story_activity` (`0025_activity.sql`, written only

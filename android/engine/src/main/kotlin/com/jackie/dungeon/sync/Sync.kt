@@ -46,6 +46,13 @@ object Sync {
         val audio: Map<String, String> = emptyMap(),
         /** Gone from the cloud (deleted there, or no longer shared): kept on this phone, not synced. */
         val detached: Boolean = false,
+        /**
+         * The cloud copy changed too much since the last sync to merge safely (most of
+         * the scenes rewritten or gone at once — someone's phone replaced it). Nothing
+         * moves either way until this phone's owner chooses: keep this phone's copy
+         * (and send it up) or take the cloud's.
+         */
+        val held: Boolean = false,
     )
 
     /** The phone's side, as the sync sees it. */
@@ -110,10 +117,18 @@ object Sync {
             try {
                 val meta = lib.meta(local.story.id) ?: SyncMeta()
                 if (meta.detached) { claimed += local.story.id; continue }
+                if (meta.held) {
+                    claimed += local.story.id
+                    errors += "$title: the cloud copy is very different from this phone's. Open it and choose which to keep."
+                    continue
+                }
                 if (!isUuid(local.story.id) || meta.cloudSeen == null && local.story.id !in cloud) {
                     // Never synced. A story that came from the cloud under short ids
-                    // finds its cloud copy by title, takes its ids, and replaces it.
-                    val match = if (isUuid(local.story.id)) null else cloud.entries.firstOrNull { (id, v) -> v.first == local.story.title && id !in claimed }?.key
+                    // finds its cloud copy by title, takes its ids, and replaces it —
+                    // only one of YOUR OWN. A story someone shared with you is theirs: a
+                    // new phone's built-in copy of the same title once replaced a shared
+                    // story wholesale this way. Anything else goes up as a new story.
+                    val match = if (isUuid(local.story.id)) null else cloud.entries.firstOrNull { (id, v) -> v.first == local.story.title && id !in claimed && roles[id] == "owner" }?.key
                     val linked = link(db, local, match)
                     if (linked.story.id != local.story.id) lib.save(linked, local.story.id)
                     val m = lib.meta(linked.story.id) ?: meta
@@ -140,6 +155,7 @@ object Sync {
                     Moved.DOWN -> pulled += title
                     Moved.BOTH -> { pushed += title; pulled += title }
                     Moved.NONE -> Unit
+                    Moved.HELD -> errors += "$title: the cloud copy is very different from this phone's. Open it and choose which to keep."
                 }
             } catch (e: Exception) {
                 errors += "$title: ${e.message}"
@@ -153,7 +169,35 @@ object Sync {
         return Report(pushed, pulled, removed, errors)
     }
 
-    enum class Moved { NONE, UP, DOWN, BOTH }
+    enum class Moved { NONE, UP, DOWN, BOTH, HELD }
+
+    /**
+     * Has the cloud copy changed too much since [base] to merge? Most scenes renamed,
+     * rewritten, moved to other chapters or gone in one go is not two people editing:
+     * it's a whole copy laid over the top (a phone's first sync replacing it, a restore).
+     * Merging that would quietly undo everything this phone had — so it's held for a
+     * person to choose instead.
+     */
+    fun drastic(base: StoryRows, remote: StoryRows): Boolean {
+        if (base.nodes.size < 10) return false
+        val now = remote.nodes.associateBy { it.id }
+        val changed = base.nodes.count { b -> val r = now[b.id]; r == null || r.title != b.title || r.narration != b.narration || r.chapter != b.chapter }
+        return changed * 100 >= base.nodes.size * 30
+    }
+
+    /** KEEP THIS PHONE'S: the phone's copy replaces the cloud's, and syncing carries on. */
+    fun keepPhone(db: Supabase, lib: Library, id: String, userId: String, now: () -> Long) {
+        val local = lib.stories().firstOrNull { it.story.id == id } ?: throw SyncError("That story isn't on this phone.")
+        val meta = (lib.meta(id) ?: SyncMeta()).copy(held = false)
+        lib.setMeta(id, meta)
+        lib.setBase(id, push(db, lib, local, meta, userId, now))
+    }
+
+    /** TAKE THE CLOUD'S: the cloud's copy replaces this phone's. */
+    fun takeCloud(db: Supabase, lib: Library, id: String) {
+        val meta = (lib.meta(id) ?: SyncMeta()).copy(held = false)
+        lib.setBase(id, pull(db, lib, id, meta))
+    }
 
     /**
      * One story, both sides possibly changed: merge against the base, send the
@@ -169,6 +213,10 @@ object Sync {
         val remote = fetch(db, id)
         // No base on this phone yet (it synced before the merge existed): the cloud as it is now.
         val base = base0 ?: remote
+        if (!viewer && base0 != null && drastic(base0, remote)) {
+            lib.setMeta(id, meta.copy(held = true, audio = audio))
+            return Moved.HELD
+        }
         val merged = if (viewer) remote else {
             val localWins = meta.localEditedAt >= Instant.parse(normal(cloudEdited)).toEpochMilli()
             Merge.merge(base, localCloud, remote, localWins).rows

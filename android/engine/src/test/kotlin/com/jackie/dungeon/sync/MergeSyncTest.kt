@@ -210,4 +210,55 @@ class MergeSyncTest {
         val r4 = StoryEditor.addChoice(r3, root, newScene = false).first
         assertEquals(root, Activity.sceneOf(r3, r4))
     }
+
+    /** A story of [n] + 1 scenes, on my phone and in the cloud. */
+    private fun bigStory(me: Phone, title: String, n: Int = 12): String {
+        var r = StoryEditor.newStory(title)
+        repeat(n) { k -> r = StoryEditor.addScene(r, "Room $k").first }
+        r = r.copy(nodes = r.nodes.mapIndexed { k, nd -> nd.copy(title = "Room $k", narration = "My words $k") })
+        me.stories[r.story.id] = r; me.metas[r.story.id] = Sync.SyncMeta(localEditedAt = clockMs)
+        sync(me)
+        return r.story.id
+    }
+
+    @Test
+    fun `a new phone's built-in copy never replaces a story shared with it`() {
+        val me = phone("me@example.com")
+        val id = bigStory(me, "William Son of Joel")
+        me.db.rpc("invite_to_story", mapOf("p_story" to id, "p_email" to "friend@example.com", "p_role" to "writer"))
+        // The friend's phone came with its own copy of the same title, under short ids, never synced.
+        val friend = phone("friend@example.com")
+        val builtIn = StoryEditor.newStory("William Son of Joel").let { r -> r.mapIds { it.take(8) } }
+        friend.stories[builtIn.story.id] = builtIn
+        sync(friend)
+        val cloud = Sync.fetch(me.db, id)
+        assertEquals((0..12).map { "My words $it" }.toSet(), cloud.nodes.map { it.narration }.toSet(), "the shared story is untouched")
+        assertEquals(2, friend.stories.size, "the friend has the shared story and their own copy, separately")
+    }
+
+    @Test
+    fun `a cloud copy laid over the top is held for a choice, not merged`() {
+        val me = phone("me@example.com")
+        val id = bigStory(me, "Held")
+        me.db.rpc("invite_to_story", mapOf("p_story" to id, "p_email" to "friend@example.com", "p_role" to "writer"))
+        val friend = phone("friend@example.com"); sync(friend)
+        // Something on the friend's side rewrites nearly every scene at once.
+        friend.edit(id, ++clockMs) { r -> r.copy(nodes = r.nodes.map { it.copy(title = "Original import title", chapter = null) }) }
+        sync(friend)
+        val mine = me.only()
+        val report = sync(me)
+        assertEquals(mine, me.only(), "my phone's copy is left exactly as it was")
+        assertTrue(me.metas[id]!!.held)
+        assertTrue(report.errors.single().contains("choose"), report.errors.toString())
+        assertTrue(sync(me).errors.isNotEmpty(), "and stays held until I choose")
+        // KEEP THIS PHONE'S: the cloud gets my copy back.
+        Sync.keepPhone(me.db, me, id, fake.user) { clockMs }
+        assertEquals((0..12).map { "Room $it" }.toSet(), Sync.fetch(me.db, id).nodes.map { it.title }.toSet())
+        assertTrue(sync(me).errors.isEmpty())
+        // The friend's phone now sees the same jump back, and is asked too; taking the cloud's settles it.
+        sync(friend)
+        assertTrue(friend.metas[id]!!.held)
+        Sync.takeCloud(friend.db, friend, id)
+        assertEquals((0..12).map { "Room $it" }.toSet(), friend.only().nodes.map { it.title }.toSet())
+    }
 }

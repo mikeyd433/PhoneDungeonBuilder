@@ -124,6 +124,29 @@ private fun FindBar(r: StoryRows, query: String, onQuery: (String) -> Unit, hits
     }
 }
 
+/**
+ * The cloud copy of this story changed so much since the last sync (most scenes
+ * rewritten or gone at once) that merging it would quietly undo this phone's work.
+ * Nothing syncs for it until you choose.
+ */
+@Composable
+private fun HeldBanner(storyId: String, viewer: Boolean) {
+    var confirm by remember { mutableStateOf(false) }
+    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp).border(2.dp, Phosphor.warn).background(Phosphor.panel).padding(10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("SYNC PAUSED FOR THIS STORY", style = mono(13, Phosphor.warn))
+        Text("The cloud copy is very different from the one on this phone — most scenes changed at once, which is what happens when another phone's copy replaces it. " +
+            "Nothing has been changed here. Choose which copy to keep. (Backing it up first, from the stories list, is a good idea.)", style = mono(12, Phosphor.fg))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (!viewer) Text("KEEP THIS PHONE'S", style = mono(13, Phosphor.bg), modifier = Modifier.weight(1f).background(Phosphor.fg)
+                .clickable { CloudSync.keepPhone(storyId) }.padding(horizontal = 8.dp, vertical = 8.dp))
+            Text(if (confirm) "TAP AGAIN: REPLACE THIS PHONE'S" else "TAKE THE CLOUD'S", style = mono(13, if (confirm) Phosphor.bg else Phosphor.warn),
+                modifier = Modifier.weight(1f).border(1.dp, Phosphor.warn).background(if (confirm) Phosphor.warn else Phosphor.panel)
+                    .clickable { if (confirm) CloudSync.takeCloud(storyId) else confirm = true }.padding(horizontal = 8.dp, vertical = 8.dp))
+        }
+    }
+}
+
 /** A newer build is on Play: say so, at the top of every phone screen, until it's installed or waved off. */
 @Composable
 private fun UpdateBanner() {
@@ -235,7 +258,7 @@ private fun RestoreDialog(o: Backups.Opened, onDone: () -> Unit) {
         scope.launch {
             // Copying the takes is file work: off the main thread, then open the story.
             withContext(Dispatchers.IO) { runCatching { Backups.restore(context, o, asCopy) } }
-                .onSuccess { Studio.install(it) }.onFailure { Studio.reportError("The restore failed: ${it.message}") }
+                .onSuccess { Studio.install(it); if (!asCopy && here) com.jackie.dungeon.CloudSync.hold(it.story.id) }.onFailure { Studio.reportError("The restore failed: ${it.message}") }
             onDone()
         }
     }
@@ -275,6 +298,7 @@ private fun StoryScreen() {
     val roles by CloudSync.roles.collectAsStateWithLifecycle()
     val people by CloudSync.people.collectAsStateWithLifecycle()
     val carPresent by CarEdit.present.collectAsStateWithLifecycle()
+    val heldIds by CloudSync.held.collectAsStateWithLifecycle()
     LaunchedEffect(r.story.id) { CloudSync.activityFor(r.story.id) }
     // FIND, like a browser's: the words, every place they are, and which one is current.
     var finding by rememberSaveable { mutableStateOf(false) }
@@ -347,6 +371,7 @@ private fun StoryScreen() {
                 }
             }
         }
+        if (r.story.id in heldIds) HeldBanner(r.story.id, viewer = roles[r.story.id] == "viewer")
         if (roles[r.story.id] == "viewer") Text("VIEW ONLY · shared with you to look at: changes made here aren't saved to the cloud, and the next sync puts the shared version back.",
             style = mono(12, Phosphor.warn), modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp))
         val sync by CloudSync.status.collectAsStateWithLifecycle()

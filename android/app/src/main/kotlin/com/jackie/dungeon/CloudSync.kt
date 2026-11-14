@@ -87,6 +87,7 @@ object CloudSync {
     fun init(application: Application) {
         app = application
         runCatching { metas.putAll(json.decodeFromString(MapSerializer(String.serializer(), Sync.SyncMeta.serializer()), metaFile.readText())) }
+        refreshHeld()
         runCatching { gone.addAll(json.decodeFromString(SetSerializer(String.serializer()), goneFile.readText())) }
         val session = runCatching { json.decodeFromString(Session.serializer(), sessionFile.readText()) }.getOrNull()
         db = Supabase(URL, KEY, http, session, onSession = ::keepSession)
@@ -361,12 +362,47 @@ object CloudSync {
 
     @Volatile private var runStartedAt = 0L
 
+    // ---- held: the cloud copy changed too much to merge, waiting for the owner to choose ----
+
+    private val _held = MutableStateFlow<Set<String>>(emptySet())
+    /** Stories whose cloud copy was laid over wholesale; nothing syncs for them until [keepPhone] or [takeCloud]. */
+    val held: StateFlow<Set<String>> = _held
+    private fun refreshHeld() { _held.value = synchronized(this) { metas.filterValues { it.held }.keys.toSet() } }
+
+    /**
+     * Pause syncing [storyId] until the owner chooses: used after a backup is
+     * restored over a story that syncs, so the restored copy isn't merged with
+     * (and partly undone by) the cloud's before anyone decides which wins.
+     */
+    @Synchronized fun hold(storyId: String) {
+        val m = metas[storyId] ?: return
+        if (m.cloudSeen == null) return
+        metas[storyId] = m.copy(held = true); saveMeta(); refreshHeld()
+    }
+
+    /** KEEP THIS PHONE'S: send this phone's copy up over the cloud's. */
+    fun keepPhone(storyId: String) = worker.execute {
+        val uid = db.session?.userId ?: return@execute
+        runCatching { Sync.keepPhone(db, library, storyId, uid) { System.currentTimeMillis() } }
+            .onSuccess { _status.value = _status.value.copy(state = State.IDLE, message = "Sent this phone's copy to the cloud.") }
+            .onFailure { _status.value = _status.value.copy(state = State.ERROR, message = "Couldn't send it: ${it.message}") }
+        refreshHeld()
+    }
+
+    /** TAKE THE CLOUD'S: replace this phone's copy with the cloud's. */
+    fun takeCloud(storyId: String) = worker.execute {
+        runCatching { Sync.takeCloud(db, library, storyId) }
+            .onSuccess { _status.value = _status.value.copy(state = State.IDLE, message = "Took the cloud's copy.") }
+            .onFailure { _status.value = _status.value.copy(state = State.ERROR, message = "Couldn't take it: ${it.message}") }
+        refreshHeld()
+    }
+
     private fun runOnce() {
         if (db.session == null) return
         runStartedAt = System.currentTimeMillis()
         _status.value = _status.value.copy(state = State.SYNCING, message = null)
         try {
-            val report = Sync.run(db, library)
+            val report = try { Sync.run(db, library) } finally { refreshHeld() }
             val at = System.currentTimeMillis()
             app.getSharedPreferences("sync", Context.MODE_PRIVATE).edit().putLong("lastSynced", at).apply()
             val msg = when {
