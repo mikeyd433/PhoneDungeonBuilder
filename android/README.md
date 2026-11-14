@@ -23,9 +23,11 @@ car or the phone) and UNDO. **Typing happens on the phone**; the car follows wha
 shows on the car as it is typed.
 The car's map **mirrors the phone's flowchart**: same centre and the same width — what
 spans the phone spans the car, so a scene zoomed in on the phone is as big on the car —
-with boxes the phone's own size (`CarEditor.mirrored`). The page follows too: a scene or
-choice sheet open on the phone shows that scene's page on the car, and closing it goes
-back to the map. **The car never moves the phone**, so two people can work at once: going
+with boxes the phone's own size (`CarEditor.mirrored`). The page follows too: a scene's
+sheet open on the phone shows that scene's page on the car, a choice's sheet shows the
+choice's own page (key, name, where it leads, the reply as it's typed, gives / needs, the
+refusal; also opened on the car by tapping a picked tile again), and closing it goes back
+to the map. **The car never moves the phone**, so two people can work at once: going
 anywhere on the car (MAP, BACK, a scene, dragging the map) leaves the phone's sheet open
 and puts the car on its own, and FOLLOW PHONE rejoins whatever the phone has open. Only
 the "…on your phone" actions (rename, script, words) send something to the phone. Moving the car's own map (drag, pinch,
@@ -235,6 +237,10 @@ plain float array and handed to GL in one copy; uniform locations are looked up 
 The rolling bar and the flicker are worked out on the CPU in double precision and
 passed in as small numbers: computed in the shader from a seconds-since-start clock,
 mediump precision made the bar move in visible steps.
+
+**Copy and paste:** the scene and choice editors are a `Dialog` drawn like a sheet, not
+Material's `ModalBottomSheet`, because inside one a long press in a text field never
+brought up cut / copy / paste (`PasteProbe` holds it).
 
 **Heat.** Every frame runs the CRT shader over every pixel, and Android Auto then encodes
 the picture as video, all on the phone. So the frame rate follows what is happening:

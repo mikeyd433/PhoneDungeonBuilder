@@ -17,9 +17,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.DisposableEffect
@@ -37,6 +35,17 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.Alignment
 import com.jackie.dungeon.CarEdit
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.jackie.dungeon.Studio
@@ -95,11 +104,36 @@ private fun SheetButtons(vararg buttons: Pair<String, () -> Unit>, danger: Set<S
 }
 
 /** A bottom sheet on the phone; a plain panel where there's no room for one to pop up (tests). */
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * A scene's or a choice's editor, up from the bottom over the flowchart.
+ *
+ * Not Material's ModalBottomSheet: inside one, a long press in a text field
+ * never brings up cut / copy / paste (PasteProbe pins it). A plain Dialog keeps
+ * the menu, so this is a Dialog drawn like a sheet: the top of the screen
+ * dims and closes it when tapped, the panel sits at the bottom and rides up
+ * with the keyboard.
+ */
 @Composable
-private fun SheetFrame(inSheet: Boolean, onDismiss: () -> Unit, content: @Composable () -> Unit) {
-    if (inSheet) ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = Phosphor.panel) { content() }
-    else Box(Modifier.background(Phosphor.panel)) { content() }
+internal fun SheetFrame(inSheet: Boolean, onDismiss: () -> Unit, content: @Composable () -> Unit) {
+    if (!inSheet) { Box(Modifier.background(Phosphor.panel)) { content() }; return }
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.32f))
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onDismiss)) {
+            BoxWithConstraints(Modifier.fillMaxSize().imePadding().navigationBarsPadding()) {
+                Column(
+                    Modifier.align(Alignment.BottomCenter).fillMaxWidth().heightIn(max = maxHeight * 0.9f)
+                        .background(Phosphor.panel, RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
+                        // Taps on the panel are the panel's, not the dim area's.
+                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {},
+                ) {
+                    Box(Modifier.fillMaxWidth().padding(vertical = 10.dp), contentAlignment = Alignment.Center) {
+                        Box(Modifier.width(36.dp).height(4.dp).background(Phosphor.line, RoundedCornerShape(2.dp)))
+                    }
+                    content()
+                }
+            }
+        }
+    }
 }
 
 /** "Friend is in this scene too": so two people don't type over each other in the same place. */

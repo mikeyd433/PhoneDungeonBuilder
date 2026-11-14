@@ -73,7 +73,12 @@ object CarView {
     fun render(r: StoryRows, layout: FlowLayout.Layout, s: CarState, v: Viewport, info: MapInfo, canUndo: Boolean): Frame {
         val b = Builder(v)
         val scene = s.scene?.takeIf { id -> r.nodes.any { it.id == id } }
-        val buttons = if (scene == null) mapPage(b, r, layout, s, v, info, canUndo) else scenePage(b, r, s, scene, v, canUndo)
+        val openChoice = s.choice?.takeIf { s.choicePage && scene != null }?.let { id -> r.choices.firstOrNull { it.id == id && it.fromNodeId == scene } }
+        val buttons = when {
+            scene == null -> mapPage(b, r, layout, s, v, info, canUndo)
+            openChoice != null -> choicePage(b, r, s, openChoice, v, canUndo)
+            else -> scenePage(b, r, s, scene, v, canUndo)
+        }
         if (s.menu.isNotEmpty()) menu(b, r, s, v, buttons, scene)
         s.popup?.let { popup(b, r, s, v, it) }
         return b.build()
@@ -408,6 +413,108 @@ object CarView {
         if (firstTile < maxTile) {
             b.text(right - v.cw * 1.4f, tilesTop + tileH / 2 - v.ch / 2, "▶", Ink.BRIGHT)
             b.hit(right - arrow, tilesTop, v.w, tilesTop + tileH, Action.ScrollTiles(1))
+        }
+        return buttons
+    }
+
+    /**
+     * A choice's own page: what the phone's choice sheet holds — key, name, where it
+     * leads, the reply (as it's typed on the phone), what it gives and needs, and what
+     * a refused caller hears — read top to bottom, scrolled like a script.
+     */
+    private fun choicePage(b: Builder, r: StoryRows, s: CarState, c: com.jackie.dungeon.story.ChoiceRow, v: Viewport, canUndo: Boolean): Map<String, Float> {
+        val left = marginSide(v); val right = v.w - marginSide(v)
+        val cols = floor((right - left) / v.cw).toInt()
+        val buttons = toolbar(b, v, listOf(
+            Button("PLAY MODE", Action.ToPlay, short = "PLAY"),
+            Button("‹ SCENE", Action.Back, short = "‹"),
+            Button("MAP", Action.ToMap),
+            Button("CHOICE ▾", Action.Menu(listOf("CHOICE")), menu = "CHOICE", on = s.menu.firstOrNull() == "CHOICE", short = "CHOICE▾"),
+            Button("ITEMS ▾", Action.Menu(listOf("ITEMS")), menu = "ITEMS", on = s.menu.firstOrNull() == "ITEMS", short = "ITEMS▾"),
+            Button("UNDO", Action.Undo, enabled = canUndo),
+        ) + (if (!s.mirror) listOf(Button("FOLLOW PHONE", Action.Mirror(true), on = true, short = "PHONE")) else emptyList()),
+            title = "CHOICE IN " + sceneName(r, c.fromNodeId).uppercase())
+        var y = b.toolbarBottom + v.ch * 0.3f
+
+        // The key and the name, big.
+        val tag = s.others[c.fromNodeId]?.let { it.joinToString(", ").uppercase() + " IS HERE" } ?: ""
+        b.text(left, y, c.digit, Ink.BRIGHT)
+        b.text(left + 3 * v.cw, y, fit(c.label.ifBlank { "(no name yet)" }.uppercase(), (cols - 4 - tag.length - 1).coerceAtLeast(6)), if (c.label.isBlank()) Ink.RULE else Ink.BRIGHT)
+        if (tag.isNotEmpty()) b.text(right - tag.length * v.cw, y, tag, Ink.AMBER)
+        y += v.ch * 1.3f
+
+        data class Row(val text: String, val ink: Ink, val tap: Action? = null, val take: String? = null)
+        val textCols = cols - 6
+        val rows = ArrayList<Row>()
+        fun heading(t: String) { if (rows.isNotEmpty()) rows += Row("", Ink.FG); rows += Row(t, Ink.DIM) }
+        fun para(t: String, ink: Ink, take: String? = null) = TerminalLayout.wrap(t, textCols, 2).forEachIndexed { i, l -> rows += Row(l, ink, take = if (i == 0) take else null) }
+
+        val gate = r.gates.firstOrNull { it.choiceId == c.id }
+        val need = StoryEditor.need(r, c.id)
+        val forks = gate != null && gate.failBehavior == "divert"
+        heading(if (forks) "IF THEY HAVE IT, LEADS TO" else "LEADS TO")
+        val dest = c.toNodeId?.let { t -> r.nodes.firstOrNull { it.id == t } }
+        if (dest == null) rows += Row("» NOWHERE YET", Ink.RED) else rows += Row("» " + dest.title.ifBlank { dest.slug }.uppercase(), Ink.CYAN, tap = Action.OpenScene(dest.id))
+
+        heading("REPLY · HEARD BEFORE THE NEXT SCENE")
+        val speakers = r.characters.map { it.name }
+        val inkFor = { who: String? -> if (who == null) Ink.FG else listOf(Ink.CYAN, Ink.AMBER, Ink.BRIGHT)[speakers.indexOf(who).coerceAtLeast(0) % 3] }
+        val parts = Dialogue.reactionPlaybackFor(r, c)
+        if (Dialogue.splitsByLine(r, choiceId = c.id)) {
+            for (p in parts) para((p.speaker?.let { "${it.uppercase()}: " } ?: "") + p.say, if (p.audio.isNullOrEmpty()) Ink.DIM else inkFor(p.speaker), p.audio ?: "")
+        } else {
+            val said = Dialogue.split(c.reactionNarration ?: "")
+            if (said.isEmpty()) rows += Row("(none: the next scene starts straight away)", Ink.RULE)
+            else {
+                val take = c.audioPath?.takeIf { it.isNotEmpty() }
+                said.forEachIndexed { i, sp -> para((sp.speaker?.let { "${it.uppercase()}: " } ?: "") + sp.text, inkFor(sp.speaker), if (i == 0) (take ?: "") else null) }
+            }
+        }
+
+        heading("GIVES")
+        val give = StoryEditor.gives(r, c.id)
+        rows += Row(give?.let { it.name.ifBlank { it.slug }.uppercase() } ?: "nothing", if (give == null) Ink.RULE else Ink.FG)
+
+        heading("NEEDS")
+        when {
+            gate == null -> rows += Row("nothing", Ink.RULE)
+            else -> {
+                para((need?.let { StoryEditor.needWords(r, it) } ?: itemWords(r, gate.expression)).uppercase(), Ink.AMBER)
+                if (forks) {
+                    val fail = gate.failNodeId?.let { t -> r.nodes.firstOrNull { it.id == t } }
+                    heading("IF THEY DON'T, LEADS TO")
+                    if (fail == null) rows += Row("» NOWHERE YET", Ink.RED) else rows += Row("» " + fail.title.ifBlank { fail.slug }.uppercase(), Ink.CYAN, tap = Action.OpenScene(fail.id))
+                } else {
+                    heading("IF THEY DON'T: REFUSED, AND HEAR")
+                    val line = gate.failNarration.orEmpty()
+                    if (line.isBlank()) rows += Row("(nothing written)", Ink.RULE) else para(line, Ink.FG, gate.failAudioPath?.takeIf { it.isNotEmpty() } ?: "")
+                }
+            }
+        }
+
+        val bottom = v.h - marginTop(v)
+        val rowsAvail = floor((bottom - y) / v.ch).toInt().coerceAtLeast(1)
+        val maxScroll = (rows.size - rowsAvail).coerceAtLeast(0)
+        val first = s.scriptScroll.coerceIn(0, maxScroll)
+        b.scroll(left, y, right, bottom, Scroll.SCRIPT)
+        rows.drop(first).take(rowsAvail).forEachIndexed { i, row ->
+            val ry = y + i * v.ch
+            b.text(left, ry, row.text, row.ink)
+            row.tap?.let { b.hit(left, ry - 2f, right - 6 * v.cw, ry + v.ch + 2f, it) }
+            when {
+                row.take == null -> Unit
+                row.take.isEmpty() -> b.text(right - 7 * v.cw, ry, "silent", Ink.RULE)
+                else -> { b.text(right - 4 * v.cw, ry, "♪ ▶", Ink.CYAN); b.hit(right - 5 * v.cw, ry - 2f, right, ry + v.ch + 2f, Action.PlayTake(row.take)) }
+            }
+        }
+        if (maxScroll > 0) {
+            val trackH = rowsAvail * v.ch
+            val barH = max(v.ch, trackH * rowsAvail / rows.size)
+            val barY = y + (trackH - barH) * first / maxScroll
+            b.fill(right + v.cw * 0.6f, y, 2f, trackH, Ink.RULE)
+            b.fill(right + v.cw * 0.6f - 1f, barY, 4f, barH, Ink.FG)
+            if (first > 0) { b.text(right - v.cw, y, "▲", Ink.FG); b.hit(right - 2 * v.cw, y, right + v.cw * 1.4f, y + v.ch, Action.ScrollScript(-max(1, rowsAvail - 1))) }
+            if (first < maxScroll) { val ay = y + (rowsAvail - 1) * v.ch; b.text(right - v.cw, ay, "▼", Ink.FG); b.hit(right - 2 * v.cw, ay, right + v.cw * 1.4f, ay + v.ch, Action.ScrollScript(max(1, rowsAvail - 1))) }
         }
         return buttons
     }

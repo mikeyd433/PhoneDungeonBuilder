@@ -285,6 +285,44 @@ class CarEditorTest {
     }
 
     @Test
+    fun `the phone's choice sheet opens the choice's page on the car, reply typed live`() {
+        val c = william.choices.first { it.toNodeId != null }
+        // What the phone is typing reaches the car as a draft, before it is saved.
+        val typed = CarEditor.withDrafts(william, mapOf("reply:${c.id}" to "Carter: Careful, the stairs are wet."))
+        val b = Bench(typed, v)
+        b.s = CarEditor.followChoice(b.s, typed, b.layout(), c.id, v)
+        assertTrue(b.s.choicePage)
+        assertTrue(b.says("REPLY"), "the page has the reply section")
+        assertTrue(b.says("CAREFUL, THE STAIRS") || b.says("Careful, the stairs"), "and the words being typed: " + b.frame().texts())
+        assertTrue(b.says("LEADS TO"))
+        // The phone goes back to the scene's sheet: so does the car.
+        b.s = CarEditor.follow(b.s, typed, b.layout(), c.fromNodeId, v)
+        assertFalse(b.s.choicePage)
+        // On the car alone: BACK from the page is its scene; FOLLOW PHONE comes back to the page.
+        b.s = CarEditor.followChoice(b.s, typed, b.layout(), c.id, v)
+        b.tap("‹ SCENE")
+        assertFalse(b.s.choicePage); assertEquals(c.fromNodeId, b.s.scene); assertFalse(b.s.mirror)
+        b.tap("FOLLOW PHONE")
+        assertTrue(b.s.choicePage); assertEquals(c.id, b.s.choice)
+    }
+
+    @Test
+    fun `tapping a picked choice tile again opens its page`() {
+        val b = Bench(william, v)
+        b.go(Action.OpenScene(william.story.rootNodeId!!))
+        val c = william.choices.first { it.fromNodeId == william.story.rootNodeId }
+        b.go(Action.SelectChoice(c.id)); assertFalse(b.s.choicePage)
+        b.go(Action.SelectChoice(c.id)); assertTrue(b.s.choicePage)
+        assertTrue(b.says("REPLY"))
+        for ((rowsOnScreen, cw) in listOf(22 to 7f, 17 to 9f, 13 to 12f)) {
+            val vv = Viewport(600f, 360f, cw, 360f / rowsOnScreen)
+            val f = CarView.render(william, b.layout(), b.s, vv, MapInfo.of(william, emptySet()), false)
+            assertTrue(f.ops.filterIsInstance<Op.Text>().all { it.x + it.text.length * vv.cw <= vv.w + 1 }, "the choice page fits at $rowsOnScreen rows")
+            if (rowsOnScreen == 17) dump("choice-m", Bench(william, vv, b.s))
+        }
+    }
+
+    @Test
     fun `what is still silent sits in the top bar, not in the script`() {
         for ((rowsOnScreen, cw) in listOf(22 to 7f, 17 to 9f, 13 to 12f)) {
             val vv = Viewport(600f, 360f, cw, 360f / rowsOnScreen)
