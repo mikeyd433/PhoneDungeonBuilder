@@ -365,7 +365,16 @@ private fun PlayScreen() {
     }
     val list = rememberLazyListState()
     val lines = ui.lines.filter { it.shown > 0 || it.text.isEmpty() }
-    LaunchedEffect(lines.size, lines.lastOrNull()?.shown) { if (lines.isNotEmpty()) list.scrollToItem(lines.size - 1) }
+    // Follows the newest line until you scroll up to read something again; then it stays
+    // put while the story carries on below, until you scroll back down or tap LATEST.
+    var follow by remember { mutableStateOf(true) }
+    LaunchedEffect(list) {
+        list.interactionSource.interactions.collect { if (it is androidx.compose.foundation.interaction.DragInteraction.Start) follow = false }
+    }
+    LaunchedEffect(list) {
+        androidx.compose.runtime.snapshotFlow { list.isScrollInProgress to list.canScrollForward }.collect { (moving, more) -> if (!moving && !more) follow = true }
+    }
+    LaunchedEffect(lines.size, lines.lastOrNull()?.shown, follow) { if (follow && lines.isNotEmpty()) list.scrollToItem(lines.size - 1, Int.MAX_VALUE) }
 
     Column(Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -379,11 +388,15 @@ private fun PlayScreen() {
             Phase.ON_HOLD -> Text("ON HOLD", style = style(22, Phosphor.warn))
             else -> Unit
         }
-        LazyColumn(
-            Modifier.weight(1f).fillMaxWidth().border(1.dp, Phosphor.line).background(Phosphor.panel).clickable { AppGraph.tapScreen() }.padding(10.dp),
-            state = list, verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            items(lines.size) { i -> TranscriptLine(lines[i]) }
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            LazyColumn(
+                Modifier.fillMaxSize().border(1.dp, Phosphor.line).background(Phosphor.panel).clickable { AppGraph.tapScreen() }.padding(10.dp),
+                state = list, verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                items(lines.size) { i -> TranscriptLine(lines[i]) }
+            }
+            if (!follow) Text("▼ LATEST", style = style(18, Phosphor.bg),
+                modifier = Modifier.align(Alignment.BottomCenter).padding(8.dp).background(Phosphor.warn).clickable { follow = true }.padding(horizontal = 14.dp, vertical = 6.dp))
         }
         Keypad(Modifier.fillMaxWidth().height(260.dp), compact = true)
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {

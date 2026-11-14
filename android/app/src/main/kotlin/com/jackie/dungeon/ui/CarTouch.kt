@@ -16,7 +16,7 @@ import kotlin.math.hypot
  *   - a tap does whatever the last frame drew there; in PLAY, anywhere that
  *     isn't the EDIT tab skips the typing, as it always has;
  *   - a drag on the map pans it, on the script scrolls it, on the tiles
- *     scrolls them;
+ *     scrolls them; in PLAY, a drag scrolls the transcript back;
  *   - two fingers on the map zoom it, around the point between them. Many
  *     head units only report one finger; VIEW ▾ has ZOOM IN and OUT for those.
  */
@@ -57,7 +57,13 @@ class CarTouch(private val renderer: CrtRenderer) {
                 val (x, y) = renderer.toSource(e.x, e.y)
                 val ch = CarEdit.viewport?.ch ?: 20f
                 if (!moved && hypot(x - downX, y - downY) > ch * 0.5f) moved = true
-                if (moved && !pinching) when (dragging) {
+                // PLAY: a drag scrolls the transcript back to read it again (finger down = older).
+                if (moved && !editing) {
+                    acc += y - lastY
+                    while (acc >= ch) { renderer.scrollPlay(-1); acc -= ch }
+                    while (acc <= -ch) { renderer.scrollPlay(1); acc += ch }
+                }
+                if (moved && !pinching && editing) when (dragging) {
                     Scroll.MAP -> CarEdit.dispatch(Action.Pan(x - lastX, y - lastY))
                     Scroll.SCRIPT -> {
                         acc += y - lastY
@@ -78,6 +84,8 @@ class CarTouch(private val renderer: CrtRenderer) {
                 val action = CarEdit.frame?.hit(downX, downY)
                 when {
                     action != null -> CarEdit.dispatch(action)
+                    // Scrolled back, a tap comes back to the newest; otherwise it skips the typing.
+                    !editing && renderer.scrolledBack -> renderer.toLatest()
                     !editing -> AppGraph.tapScreen()
                 }
             }

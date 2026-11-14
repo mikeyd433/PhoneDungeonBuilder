@@ -238,6 +238,11 @@ The rolling bar and the flicker are worked out on the CPU in double precision an
 passed in as small numbers: computed in the shader from a seconds-since-start clock,
 mediump precision made the bar move in visible steps.
 
+**Reading back in PLAY:** drag the car's terminal down to scroll back through the call
+(`TerminalLayout.window`); while scrolled back it stays put as new text arrives, the last
+row says how much is below, and a tap or dragging to the bottom returns to the newest. The
+phone's transcript does the same, with a ▼ LATEST button.
+
 **Copy and paste:** the scene and choice editors are a `Dialog` drawn like a sheet, not
 Material's `ModalBottomSheet`, because inside one a long press in a text field never
 brought up cut / copy / paste (`PasteProbe` holds it).

@@ -16,8 +16,11 @@ object TerminalLayout {
     data class Row(val text: String, val kind: Kind, val voice: Int)
 
     /** The rows for the transcript body, bottom-aligned, at most [rows] of them. */
-    fun body(lines: List<CallSession.Line>, cols: Int, rows: Int): List<Row> {
-        if (cols <= 0 || rows <= 0) return emptyList()
+    fun body(lines: List<CallSession.Line>, cols: Int, rows: Int): List<Row> = window(all(lines, cols), rows, null).rows
+
+    /** Every row of the transcript so far, oldest first. */
+    fun all(lines: List<CallSession.Line>, cols: Int): List<Row> {
+        if (cols <= 0) return emptyList()
         val out = ArrayList<Row>()
         for (l in lines) {
             if (l.shown <= 0 && l.text.isNotEmpty()) continue
@@ -25,7 +28,32 @@ object TerminalLayout {
             val indent = if (l.kind == Kind.OPT) text.indexOfFirst { it != ' ' }.coerceAtLeast(0) + 9 else 0
             wrap(text, cols, indent.coerceAtMost(cols / 2)).forEach { out += Row(it, l.kind, l.voice) }
         }
-        return if (out.size > rows) out.subList(out.size - rows, out.size) else out
+        return out
+    }
+
+    /**
+     * What a screen of [rows] shows of [all]. [top] null follows the newest
+     * (bottom-aligned); a number is the first row shown, scrolled back to read
+     * something again — and it stays put while new text arrives below, so the
+     * words you're reading don't run away. [Window.top] is null again once
+     * the view reaches the bottom; [Window.below] counts the rows under it.
+     */
+    data class Window(val rows: List<Row>, val top: Int?, val below: Int)
+
+    fun window(all: List<Row>, rows: Int, top: Int?): Window {
+        if (rows <= 0) return Window(emptyList(), null, 0)
+        val last = (all.size - rows).coerceAtLeast(0)
+        val t = top?.coerceIn(0, last)?.takeIf { it < last }
+        val from = t ?: last
+        val shown = all.subList(from, minOf(all.size, from + rows))
+        return Window(shown, t, all.size - from - shown.size)
+    }
+
+    /** Scroll a window by [by] rows (negative is back, older). */
+    fun scrolled(total: Int, rows: Int, top: Int?, by: Int): Int? {
+        val last = (total - rows).coerceAtLeast(0)
+        val t = ((top ?: last) + by).coerceIn(0, last)
+        return if (t >= last) null else t
     }
 
     /** Word wrap with a hanging indent for continuation lines. Never loses text. */

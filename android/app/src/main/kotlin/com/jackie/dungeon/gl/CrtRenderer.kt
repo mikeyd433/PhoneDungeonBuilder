@@ -152,7 +152,7 @@ class CrtRenderer(private val context: Context, private val fps: Int = 30, priva
         val seconds = (System.nanoTime() - startNs) / 1e9
         val time = (seconds % 1000.0).toFloat()
         val key: Any = if (editing) EditKey(CarEdit.state.value, Studio.rows.value, CarEdit.drafts.value, Studio.undo.value.isEmpty(), srcW, srcH, builtSize)
-        else TextKey(AppGraph.screen, ((seconds * 2).toLong() % 2).toInt(), Studio.rows.value != null, srcW, srcH, builtSize)
+        else TextKey(AppGraph.screen, ((seconds * 2).toLong() % 2).toInt(), Studio.rows.value != null, srcW, srcH, builtSize, playTop)
         if (key != drawnKey) {
             val count = if (editing) buildEdit() else buildText(AppGraph.screen, time)
             drawText(count)
@@ -193,7 +193,18 @@ class CrtRenderer(private val context: Context, private val fps: Int = 30, priva
         glDrawArrays(GL_TRIANGLES, 0, 3)
     }
 
-    private data class TextKey(val screen: Screen, val blink: Int, val tab: Boolean, val w: Int, val h: Int, val size: Int)
+    private data class TextKey(val screen: Screen, val blink: Int, val tab: Boolean, val w: Int, val h: Int, val size: Int, val top: Int?)
+
+    // ---- PLAY's scrollback: drag the terminal to read what has gone by ----------------------
+
+    /** First transcript row shown while scrolled back; null follows the newest. Touch thread writes, GL thread reads. */
+    @Volatile var playTop: Int? = null; private set
+    @Volatile private var playTotal = 0
+    @Volatile private var playRows = 0
+    val scrolledBack get() = playTop != null
+    /** Negative is back (older). */
+    fun scrollPlay(by: Int) { playTop = TerminalLayout.scrolled(playTotal, playRows, playTop, by) }
+    fun toLatest() { playTop = null }
     private data class EditKey(val state: Any, val rows: Any?, val drafts: Any, val noUndo: Boolean, val w: Int, val h: Int, val size: Int)
 
     /** Pass 1: the terminal (or the editor), small, into the offscreen texture. */
@@ -266,12 +277,22 @@ class CrtRenderer(private val context: Context, private val fps: Int = 30, priva
         val hints = s.keys.entries.joinToString("  ") { (k, v) -> "[$k] ${v.uppercase()}" }
         val hintRows = if (hints.isEmpty()) emptyList() else TerminalLayout.wrap(hints, cols).take(2)
         val bodyRows = rows - 2 - (if (hintRows.isEmpty()) 0 else hintRows.size + 1)
-        val body = TerminalLayout.body(s.lines, cols, bodyRows)
-        body.forEachIndexed { i, r -> row(2 + i, r.text, colour(r.kind, r.voice)) }
+        val all = TerminalLayout.all(s.lines, cols)
+        if (all.size < playTotal) playTop = null // a new call: start at its newest
+        val win = TerminalLayout.window(all, bodyRows, playTop)
+        playTotal = all.size; playRows = bodyRows; playTop = win.top
+        val body = win.rows
+        if (win.top == null) body.forEachIndexed { i, r -> row(2 + i, r.text, colour(r.kind, r.voice)) }
+        else {
+            // Scrolled back: the last row says there's more, and how to get to it.
+            body.dropLast(1).forEachIndexed { i, r -> row(2 + i, r.text, colour(r.kind, r.voice)) }
+            val note = "▼ ${win.below + 1} MORE ROWS · DRAG UP OR TAP FOR THE LATEST"
+            row(2 + body.size - 1, if (note.length <= cols) centre(note, cols) else centre("▼ TAP FOR LATEST", cols), AMBER, 1f)
+        }
 
-        // The cursor: after the last row, blinking.
+        // The cursor: after the last row, blinking — only while showing the newest.
         val typing = s.lines.any { it.shown < it.text.length }
-        if ((typing || s.phase == Phase.WAITING) && ((time * 2).toInt() % 2 == 0 || typing)) {
+        if (win.top == null && (typing || s.phase == Phase.WAITING) && ((time * 2).toInt() % 2 == 0 || typing)) {
             val last = body.lastOrNull()
             val r = 2 + (body.size - 1).coerceAtLeast(0)
             val c = (last?.text?.length ?: 0).coerceAtMost(cols - 1)
