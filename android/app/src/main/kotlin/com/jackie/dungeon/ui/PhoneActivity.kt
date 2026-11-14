@@ -58,6 +58,13 @@ import com.jackie.dungeon.call.CallSession.Phase
  * without a car.
  */
 class PhoneActivity : ComponentActivity() {
+    /** Play's update screen; a "no" leaves the banner up. */
+    val updateLauncher = registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { r ->
+        if (r.resultCode != RESULT_OK) com.jackie.dungeon.Updates.declined()
+    }
+
+    override fun onResume() { super.onResume(); com.jackie.dungeon.Updates.check(this) }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()

@@ -68,12 +68,34 @@ fun AppScreen() {
     val rows by Studio.rows.collectAsStateWithLifecycle()
     val error by Studio.error.collectAsStateWithLifecycle()
     Box(Modifier.fillMaxSize().background(Phosphor.bg).safeDrawingPadding()) {
-        if (rows == null) StoriesScreen() else StoryScreen()
+        Column(Modifier.fillMaxSize()) {
+            UpdateBanner()
+            Box(Modifier.weight(1f)) { if (rows == null) StoriesScreen() else StoryScreen() }
+        }
         error?.let { e ->
             Box(Modifier.align(Alignment.BottomCenter).padding(16.dp).fillMaxWidth().border(1.dp, Phosphor.alert).background(Phosphor.panel).clickable { Studio.clearError() }.padding(12.dp)) {
                 Text("$e  (tap to dismiss)", style = mono(14, Phosphor.alert))
             }
         }
+    }
+}
+
+/** A newer build is on Play: say so, at the top of every phone screen, until it's installed or waved off. */
+@Composable
+private fun UpdateBanner() {
+    val st by com.jackie.dungeon.Updates.state.collectAsStateWithLifecycle()
+    val activity = LocalContext.current as? PhoneActivity
+    val (words, action, act) = when (val u = st) {
+        com.jackie.dungeon.Updates.State.None -> return
+        is com.jackie.dungeon.Updates.State.Available -> Triple("A new version of the app is out.", "UPDATE") { activity?.let { com.jackie.dungeon.Updates.start(it.updateLauncher) }; Unit }
+        is com.jackie.dungeon.Updates.State.Downloading -> Triple("Downloading the update… ${u.percent}%", null) { }
+        com.jackie.dungeon.Updates.State.Ready -> Triple("The update is ready.", "RESTART") { com.jackie.dungeon.Updates.install() }
+    }
+    Row(Modifier.fillMaxWidth().background(Phosphor.warn).padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(words, style = mono(13, Phosphor.bg), modifier = Modifier.weight(1f))
+        if (action != null) Text(action, style = mono(14, Phosphor.warn), modifier = Modifier.background(Phosphor.bg).clickable { act() }.padding(horizontal = 12.dp, vertical = 6.dp))
+        if (st is com.jackie.dungeon.Updates.State.Available) Text("LATER", style = mono(13, Phosphor.bg), modifier = Modifier.clickable { com.jackie.dungeon.Updates.dismiss() }.padding(6.dp))
     }
 }
 

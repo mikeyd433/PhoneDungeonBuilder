@@ -238,6 +238,11 @@ The rolling bar and the flicker are worked out on the CPU in double precision an
 passed in as small numbers: computed in the shader from a seconds-since-start clock,
 mediump precision made the bar move in visible steps.
 
+**Updates:** each time the phone app comes to the front it asks Google Play whether a newer
+build is out for this tester (`Updates.kt`, Play's in-app updates). If so, an amber bar at the
+top says so: UPDATE downloads it in the background, RESTART installs it, LATER hides it until
+the next launch. Only Play installs can be told; a sideloaded or debug build never shows it.
+
 **Reading back in PLAY:** drag the car's terminal down to scroll back through the call
 (`TerminalLayout.window`); while scrolled back it stays put as new text arrives, the last
 row says how much is below, and a tap or dragging to the bottom returns to the newest. The

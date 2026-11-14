@@ -22,8 +22,8 @@ android {
         applicationId = "com.jackie.dungeon"
         minSdk = 26
         targetSdk = 36
-        versionCode = 30
-        versionName = "0.30.0"
+        versionCode = 31
+        versionName = "0.31.0"
     }
 
     signingConfigs {
@@ -75,6 +75,10 @@ dependencies {
     implementation("io.github.dokar3:quickjs-kt:1.0.3")
     // Sync with Supabase. OkHttp because Android's HttpURLConnection refuses PATCH, which PostgREST needs.
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // Play's in-app updates: tells a tester (internal track included) a newer build is out, and installs it.
+    implementation("com.google.android.play:app-update:2.1.0")
+    // app-update drags in an old androidx.fragment; the activity-result API needs 1.3+.
+    implementation("androidx.fragment:fragment:1.8.6")
 
     // Robolectric renders the phone screens on the JVM, so they can be looked at
     // (and checked) without a device — the Brenda apps' approach.
