@@ -238,6 +238,13 @@ The rolling bar and the flicker are worked out on the CPU in double precision an
 passed in as small numbers: computed in the shader from a seconds-since-start clock,
 mediump precision made the bar move in visible steps.
 
+**Find** (⌕ FIND above the flowchart): like a browser's. Every place the words appear —
+scene names, scripts, choice names, replies, refusals — in map order (`story/Find.kt`),
+"3 of 12" with ▲ ▼ to step through, the flowchart going to each. The words are marked on
+the boxes, every scene they're in gets an amber ring (heavier on the current one), the
+current sighting shows in context under the bar (tap to open it), and while the bar is
+open the scene and choice editors mark the words in their fields too.
+
 **Updates:** each time the phone app comes to the front it asks Google Play whether a newer
 build is out for this tester (`Updates.kt`, Play's in-app updates). If so, an amber bar at the
 top says so: UPDATE downloads it in the background, RESTART installs it, LATER hides it until

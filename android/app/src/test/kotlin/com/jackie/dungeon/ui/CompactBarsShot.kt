@@ -6,6 +6,9 @@ import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.performTextInput
 import com.jackie.dungeon.CarEdit
 import com.jackie.dungeon.Studio
 import org.junit.Rule
@@ -40,6 +43,22 @@ class CompactBarsShot {
         if (openLights) compose.onNodeWithContentDescription("Show highlights").performClick()
         shoot(name)
         CarEdit.setPresent("car", false)
+    }
+
+    @Test fun findCarter() {
+        if (Studio.rows.value == null) Studio.stories.value.firstOrNull { it.title.startsWith("William") }?.let { Studio.open(it.id) }
+        compose.setContent { AppScreen() }
+        compose.waitForIdle()
+        compose.onNodeWithText("⌕ FIND").performClick()
+        compose.waitForIdle()
+        compose.onNode(hasSetTextAction()).performTextInput("carter")
+        compose.waitForIdle()
+        compose.mainClock.advanceTimeBy(1500)
+        shoot("find-carter")
+        compose.onNodeWithText("▼").performClick()
+        compose.waitForIdle()
+        compose.mainClock.advanceTimeBy(1500)
+        shoot("find-carter-2")
     }
 
     @Test fun storiesList() {

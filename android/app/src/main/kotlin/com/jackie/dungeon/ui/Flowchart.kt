@@ -69,6 +69,10 @@ fun Flowchart(
     onView: (Float, Float, Float, Float) -> Unit = { _, _, _, _ -> },
     /** Who else has which scene open (scene id -> names): a tab on that box. */
     others: Map<String, List<String>> = emptyMap(),
+    /** FIND: the words being looked for (highlighted where they show), the scenes they're in, and the current one. */
+    find: String = "",
+    found: Set<String> = emptySet(),
+    foundNow: String? = null,
 ) {
     // What is being dragged right now, and by how much: drawn live, saved on release.
     var drag by remember { mutableStateOf<Pair<String, Offset>?>(null) }
@@ -229,8 +233,14 @@ fun Flowchart(
             val blocks = scale * 1f < 0.28f
             fun style(size: Float, color: Color, bold: Boolean = false, family: FontFamily = FontFamily.Monospace) =
                 TextStyle(fontSize = (size / px / density.fontScale).sp, color = color, fontFamily = family, fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal)
-            fun DrawScope.text(t: String, x: Float, y: Float, st: TextStyle, maxW: Float? = null) {
-                val layoutResult = measurer.measure(t, st, maxLines = 1, softWrap = false)
+            fun DrawScope.text(t: String, x: Float, y: Float, st: TextStyle, maxW: Float? = null, hl: Boolean = false) {
+                val spans = if (hl && find.isNotBlank()) com.jackie.dungeon.story.Find.spans(t, find) else emptyList()
+                val layoutResult = if (spans.isEmpty()) measurer.measure(t, st, maxLines = 1, softWrap = false)
+                else measurer.measure(androidx.compose.ui.text.buildAnnotatedString {
+                    append(t)
+                    // The found words, marked the way a browser's find marks them.
+                    for (r in spans) addStyle(androidx.compose.ui.text.SpanStyle(background = Phosphor.warn, color = Phosphor.bg), r.first, r.last + 1)
+                }, st, maxLines = 1, softWrap = false)
                 val dx = if (maxW != null && layoutResult.size.width > maxW) 0f else 0f
                 drawText(layoutResult, topLeft = Offset(x + dx, y))
             }
@@ -315,6 +325,13 @@ fun Flowchart(
                         Offset(b.x, b.y), Size(FlowLayout.W, b.h), CornerRadius(7f),
                         style = Stroke(if (sel) 3f else 1.5f, pathEffect = if (loose || !written) PathEffect.dashPathEffect(floatArrayOf(6f, 4f)) else null),
                     )
+                    // FIND: an amber ring round every scene the words are in, a heavy one round the current.
+                    if (b.id in found) {
+                        val now = b.id == foundNow
+                        val pad = if (now) 7f else 4f
+                        drawRoundRect(Phosphor.warn, Offset(b.x - pad, b.y - pad), Size(FlowLayout.W + 2 * pad, b.h + 2 * pad), CornerRadius(10f),
+                            style = Stroke(if (now) 5f / scale.coerceAtMost(1f) else 2.5f / scale.coerceAtMost(1f)))
+                    }
                     // Someone else is in this scene: their name on an amber tab over the box's corner.
                     others[b.id]?.let { names ->
                         val tl = measurer.measure(names.joinToString(", "), style(if (blocks) 40f else 12f, Phosphor.bg, bold = true))
@@ -336,7 +353,7 @@ fun Flowchart(
                     }
                     var mx = b.x + 10f
                     for ((t, c) in meta) { text(t, mx, b.y + 7f, style(10f, c)); mx += t.length * 6.6f + 10f }
-                    b.titleLines.forEachIndexed { i, t -> text(t, b.x + 10f, b.y + 24f + i * FlowLayout.TITLE_LINE, style(14f, Phosphor.hi, bold = true)) }
+                    b.titleLines.forEachIndexed { i, t -> text(t, b.x + 10f, b.y + 24f + i * FlowLayout.TITLE_LINE, style(14f, Phosphor.hi, bold = true), hl = true) }
 
                     val head = FlowLayout.headerH(b.titleLines.size)
                     val list = if (ending) emptyList() else doors[b.id].orEmpty()
@@ -354,7 +371,7 @@ fun Flowchart(
                         val room = ((FlowLayout.W - 34f - marksW) / 6.9f).toInt().coerceAtLeast(6)
                         val words = c.label.ifBlank { "(no words yet)" }
                         text(c.digit, b.x + 10f, ry + 4f, style(11.5f, Phosphor.hi, bold = true))
-                        text(if (words.length > room) words.take(room - 1) + "…" else words, b.x + 26f, ry + 4f, style(11.5f, if (c.label.isBlank()) Phosphor.dim else Phosphor.fg))
+                        text(if (words.length > room) words.take(room - 1) + "…" else words, b.x + 26f, ry + 4f, style(11.5f, if (c.label.isBlank()) Phosphor.dim else Phosphor.fg), hl = c.label.isNotBlank())
                         var rx = b.x + FlowLayout.W - 8f
                         for ((t, col) in marks.reversed()) {
                             val tl = measurer.measure(t, style(11f, col, bold = true))

@@ -57,15 +57,28 @@ private val mono = FontFamily.Monospace
 private fun body(size: Int = 15, color: Color = Phosphor.fg) = TextStyle(fontFamily = mono, fontSize = size.sp, color = color)
 private fun label() = TextStyle(fontFamily = mono, fontSize = 11.sp, color = Phosphor.dim, letterSpacing = 1.sp)
 
+/** FIND's words, while the find bar is open: marked in every field of a sheet. */
+val LocalFind = androidx.compose.runtime.compositionLocalOf { "" }
+
+private fun findMarks(find: String) = androidx.compose.ui.text.input.VisualTransformation { t ->
+    val marked = androidx.compose.ui.text.buildAnnotatedString {
+        append(t)
+        for (r in com.jackie.dungeon.story.Find.spans(t.text, find)) addStyle(androidx.compose.ui.text.SpanStyle(background = Phosphor.warn, color = Phosphor.bg), r.first, r.last + 1)
+    }
+    androidx.compose.ui.text.input.TransformedText(marked, androidx.compose.ui.text.input.OffsetMapping.Identity)
+}
+
 @Composable
 private fun Field(name: String, value: String, onChange: (String) -> Unit, lines: Int = 1, hint: String = "") {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(name.uppercase(), style = label())
         Box(Modifier.fillMaxWidth().border(1.dp, Phosphor.line).background(Phosphor.bg).padding(10.dp)) {
             if (value.isEmpty() && hint.isNotEmpty()) Text(hint, style = body(color = Phosphor.dim))
+            val find = LocalFind.current
             BasicTextField(
                 value, onChange, textStyle = body(), cursorBrush = SolidColor(Phosphor.fg),
                 singleLine = lines == 1, minLines = lines, modifier = Modifier.fillMaxWidth(),
+                visualTransformation = if (find.isBlank()) androidx.compose.ui.text.input.VisualTransformation.None else findMarks(find),
             )
         }
     }

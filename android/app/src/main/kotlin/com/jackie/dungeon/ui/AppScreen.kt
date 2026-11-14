@@ -31,6 +31,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import com.jackie.dungeon.story.StoryRows
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
@@ -75,6 +78,45 @@ fun AppScreen() {
         error?.let { e ->
             Box(Modifier.align(Alignment.BottomCenter).padding(16.dp).fillMaxWidth().border(1.dp, Phosphor.alert).background(Phosphor.panel).clickable { Studio.clearError() }.padding(12.dp)) {
                 Text("$e  (tap to dismiss)", style = mono(14, Phosphor.alert))
+            }
+        }
+    }
+}
+
+/**
+ * The find bar: the words, "3 of 12", ▲ ▼ to step through them (the flowchart goes to
+ * each), ✕ to close; and under it the current sighting in context — which field, which
+ * scene, the words marked — a tap on it opens that scene or choice.
+ */
+@Composable
+private fun FindBar(r: StoryRows, query: String, onQuery: (String) -> Unit, hits: List<com.jackie.dungeon.story.Find.Hit>, at: Int,
+                    go: (Int) -> Unit, open: (com.jackie.dungeon.story.Find.Hit) -> Unit, close: () -> Unit) {
+    val focus = remember { androidx.compose.ui.focus.FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Box(Modifier.weight(1f).border(1.dp, Phosphor.cyan).background(Phosphor.bg).padding(horizontal = 10.dp, vertical = 8.dp)) {
+                if (query.isEmpty()) Text("Find in this story", style = mono(15, Phosphor.dim))
+                BasicTextField(query, onQuery, textStyle = mono(15), cursorBrush = SolidColor(Phosphor.fg), singleLine = true,
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Search),
+                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSearch = { go(at + 1) }),
+                    modifier = Modifier.fillMaxWidth().focusRequester(focus))
+            }
+            Text(when { query.isBlank() -> ""; hits.isEmpty() -> "none"; else -> "${at + 1} of ${hits.size}" },
+                style = mono(13, if (query.isNotBlank() && hits.isEmpty()) Phosphor.alert else Phosphor.dim))
+            for ((label, by) in listOf("▲" to -1, "▼" to 1)) Text(label, style = mono(18, if (hits.isEmpty()) Phosphor.line else Phosphor.fg),
+                modifier = Modifier.border(1.dp, Phosphor.line).clickable(enabled = hits.isNotEmpty()) { go(at + by) }.padding(horizontal = 10.dp, vertical = 4.dp))
+            Text("✕", style = mono(18, Phosphor.dim), modifier = Modifier.clickable { close() }.padding(horizontal = 8.dp, vertical = 4.dp))
+        }
+        hits.getOrNull(at)?.let { h ->
+            val (line, a, b) = com.jackie.dungeon.story.Find.snippet(h, 56)
+            val where = h.where.label.uppercase() + " · " + sceneName(r, h.nodeId) + (h.choiceId?.let { id -> r.choices.firstOrNull { it.id == id }?.let { " · choice ${it.digit}" } } ?: "")
+            Column(Modifier.fillMaxWidth().border(1.dp, Phosphor.line).background(Phosphor.panel).clickable { open(h) }.padding(horizontal = 10.dp, vertical = 6.dp)) {
+                Text("$where  ·  tap to open", style = mono(11, Phosphor.dim), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(androidx.compose.ui.text.buildAnnotatedString {
+                    append(line)
+                    addStyle(androidx.compose.ui.text.SpanStyle(background = Phosphor.warn, color = Phosphor.bg), a, b)
+                }, style = mono(13), maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
         }
     }
@@ -231,6 +273,19 @@ private fun StoryScreen() {
     val roles by CloudSync.roles.collectAsStateWithLifecycle()
     val people by CloudSync.people.collectAsStateWithLifecycle()
     val carPresent by CarEdit.present.collectAsStateWithLifecycle()
+    // FIND, like a browser's: the words, every place they are, and which one is current.
+    var finding by rememberSaveable { mutableStateOf(false) }
+    var query by rememberSaveable { mutableStateOf("") }
+    var at by remember { mutableStateOf(0) }
+    val findLayout = remember(r) { com.jackie.dungeon.story.FlowLayout.layout(r) }
+    val hits = remember(r, query, finding) { if (finding) com.jackie.dungeon.story.Find.find(r, query, findLayout) else emptyList() }
+    val foundScenes = remember(hits) { hits.mapTo(HashSet()) { it.nodeId } }
+    // New words: start at the first sighting, and go there.
+    LaunchedEffect(query, finding) {
+        at = 0
+        hits.firstOrNull()?.let { h -> selected = h.nodeId; jump = h.nodeId + "#" + System.nanoTime() }
+    }
+    if (at >= hits.size && hits.isNotEmpty()) at = hits.size - 1
 
     // The car's mode mirrors the tab: EDIT shows the map, PLAY the terminal. And the
     // other way: switching on the car (its EDIT tab, PLAY MODE) switches the phone.
@@ -303,10 +358,16 @@ private fun StoryScreen() {
 
         val chapters = remember(r) { StoryEditor.chapters(r) }
         val moved = StoryEditor.hasNudges(r) || r.story.layoutHome.isNotEmpty()
+        if (tab == "edit" && finding) FindBar(r, query, { query = it }, hits, at,
+            go = { i -> if (hits.isNotEmpty()) { at = ((i % hits.size) + hits.size) % hits.size; hits[at].let { h -> selected = h.nodeId; jump = h.nodeId + "#" + System.nanoTime() } } },
+            open = { h -> if (h.choiceId != null) { scene = null; choice = h.choiceId } else { choice = null; scene = h.nodeId } },
+            close = { finding = false; query = "" })
         if (tab == "edit") {
             // Jump to a chapter's lane: its first scene, near the top of the screen.
             // ALL fits the whole story; a chapter fits its lane, from the top.
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("⌕ FIND", style = mono(13, if (finding) Phosphor.bg else Phosphor.cyan), modifier = Modifier.border(1.dp, Phosphor.cyan)
+                    .background(if (finding) Phosphor.cyan else Phosphor.bg).clickable { finding = !finding; if (!finding) query = "" }.padding(horizontal = 10.dp, vertical = 6.dp))
                 Text("♪ RECORDINGS", style = mono(13, Phosphor.cyan), modifier = Modifier.border(1.dp, Phosphor.cyan).clickable { recordings = true }.padding(horizontal = 10.dp, vertical = 6.dp))
                 // With a car attached, its controls ride in this row: LIGHT UP folds open into its checkboxes.
                 // (The phone's EDIT / PLAY tabs are the car's modes too, so no switch for those.)
@@ -346,6 +407,7 @@ private fun StoryScreen() {
                     onPlayFrom = { id -> AppGraph.playFrom(Studio.packOf(r, startAt = id)); tab = "play" },
                     onView = { cx, cy, vw, vh -> CarEdit.phoneView(com.jackie.dungeon.car.PhoneView(cx, cy, vw, vh)) },
                     others = people.filter { it.sceneId != null }.groupBy({ it.sceneId!! }, { it.name }),
+                    find = if (finding) query else "", found = foundScenes, foundNow = hits.getOrNull(at)?.nodeId,
                     onNudge = { target, dx, dy ->
                         if (target.startsWith("chapter:")) Studio.edit("Move ${target.removePrefix("chapter:")}") { StoryEditor.nudgeChapter(it, target.removePrefix("chapter:"), dx, dy) }
                         else Studio.edit("Move scene") { StoryEditor.nudgeScene(it, target, dx, dy) }
@@ -356,6 +418,8 @@ private fun StoryScreen() {
         }
     }
 
+    // While FIND is open, the sheets mark the words in their fields too.
+    CompositionLocalProvider(LocalFind provides (if (finding) query else "")) {
     scene?.let { id ->
         SceneSheet(r, id, onClose = { scene = null }, onChoice = { scene = null; choice = it },
             onPlay = { sid -> scene = null; AppGraph.playFrom(Studio.packOf(r, startAt = sid)); tab = "play" },
@@ -363,6 +427,7 @@ private fun StoryScreen() {
     }
     choice?.let { id ->
         ChoiceSheet(r, id, onClose = { choice = null }, onGo = { sid -> choice = null; selected = sid; jump = sid })
+    }
     }
     if (exporting) ExportDialog(r) { exporting = false }
     if (managing) ChaptersDialog(r) { managing = false }
