@@ -276,7 +276,12 @@ PASTE · SELECT ALL bar (`ui/TextMenu.kt`), drawn inside the field's own window.
 platform's floating toolbar never showed in the editors on the phone — first in Material's
 bottom sheet, then in the Dialog that replaced it — so every window here (the activity via
 `TextMenuHost`, each dialog via `TextDialog`) answers the field's request itself.
-`PasteProbe` long-presses a field in the editor and taps PASTE.
+The app also keeps its own copy of what was last cut or
+copied (`AppClip`): on the phone, a copy never reached Android's clipboard and the app
+couldn't read one back, so PASTE never appeared. PASTE uses Android's clipboard unless it
+still holds exactly what it held right after the app's copy (the copy never got there);
+anything copied in another app since wins. `PasteProbe` long-presses a field in the editor
+and taps PASTE, and pastes a copy with Android's clipboard empty.
 
 **Heat.** Every frame runs the CRT shader over every pixel, and Android Auto then encodes
 the picture as video, all on the phone. So the frame rate follows what is happening:

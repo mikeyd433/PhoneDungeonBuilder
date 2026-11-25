@@ -20,6 +20,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -41,6 +42,8 @@ import org.robolectric.annotation.GraphicsMode
 class PasteProbe {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
 
+    @org.junit.Before fun fresh() = AppClip.forget()
+
     @Test fun `a long press in the editor offers paste, and paste pastes`() {
         compose.activity.getSystemService(android.content.ClipboardManager::class.java)
             .setPrimaryClip(android.content.ClipData.newPlainText("x", "PASTED"))
@@ -56,16 +59,58 @@ class PasteProbe {
         compose.waitForIdle()
         // On a phone the dialog's window has focus once it's up; the test's windows never
         // get it, and a text field only keeps its menu in a focused window. Give it.
-        @Suppress("UNCHECKED_CAST")
-        val wmg = Class.forName("android.view.WindowManagerGlobal")
-        val views = wmg.getDeclaredField("mViews").apply { isAccessible = true }.get(wmg.getMethod("getInstance").invoke(null)) as List<android.view.View>
-        compose.runOnUiThread { views.forEach { it.dispatchWindowFocusChanged(it === views.last()) } }
-        compose.waitForIdle()
+        focusTopWindow()
         compose.onNodeWithTag("f", useUnmergedTree = true).performTouchInput { longClick(center) }
         compose.mainClock.advanceTimeBy(1000)
         compose.waitForIdle()
         compose.onNodeWithText("PASTE").performClick()
         compose.waitForIdle()
         assertTrue("pasted into the field: \"$t\"", t.contains("PASTED"))
+    }
+
+    private fun focusTopWindow() {
+        val wmg = Class.forName("android.view.WindowManagerGlobal")
+        @Suppress("UNCHECKED_CAST")
+        val views = wmg.getDeclaredField("mViews").apply { isAccessible = true }.get(wmg.getMethod("getInstance").invoke(null)) as List<android.view.View>
+        // The dialog's own window — not the selection handles' popups, which a phone never focuses.
+        val dialog = views.last { it.javaClass.simpleName == "DecorView" }
+        compose.runOnUiThread { views.forEach { it.dispatchWindowFocusChanged(it === dialog) } }
+    }
+
+    @Test fun `a copy pastes even when Android's clipboard comes up empty`() {
+        val cm = compose.activity.getSystemService(android.content.ClipboardManager::class.java)
+        var b by mutableStateOf("x")
+        var clip: androidx.compose.ui.platform.Clipboard? = null
+        compose.setContent {
+            SheetFrame(inSheet = true, onDismiss = {}) {
+                clip = androidx.compose.ui.platform.LocalClipboard.current
+                Column(Modifier.padding(16.dp)) { BasicTextField(b, { b = it }, Modifier.fillMaxWidth().testTag("b")) }
+            }
+        }
+        compose.mainClock.advanceTimeBy(1000); compose.waitForIdle()
+        // COPY in another field hands the words to the clipboard the fields use…
+        kotlinx.coroutines.runBlocking { clip!!.setClipEntry(androidx.compose.ui.platform.ClipEntry(android.content.ClipData.newPlainText("t", "Carter: Careful now"))) }
+        // …and, as on the phone, Android's has no words to give.
+        cm.setPrimaryClip(android.content.ClipData.newIntent("not text", android.content.Intent()))
+        focusTopWindow()
+        compose.onNodeWithTag("b", useUnmergedTree = true).performTouchInput { longClick(center) }
+        compose.mainClock.advanceTimeBy(100)
+        focusTopWindow()
+        compose.mainClock.advanceTimeBy(1000); compose.waitForIdle()
+        compose.onNodeWithText("PASTE").performClick()
+        compose.waitForIdle()
+        assertTrue("pasted the app's copy: \"$b\"", b.contains("Carter: Careful now"))
+    }
+
+    @Test fun `the app's copy is used only when Android's clipboard didn't take it`() {
+        val e = { t: String -> androidx.compose.ui.platform.ClipEntry(android.content.ClipData.newPlainText("s", t)) }
+        fun picked(sys: String?) = AppClip.pick(sys?.let(e))?.clipData?.getItemAt(0)?.text.toString()
+        AppClip.put(e("ours")); AppClip.systemAfterPut("old")   // the copy never reached Android's
+        assertEquals("ours", picked(null))
+        assertEquals("ours", picked("old"))
+        assertEquals("something copied elsewhere since wins", "from Notes", picked("from Notes"))
+        AppClip.put(e("ours")); AppClip.systemAfterPut("ours")  // it did reach it
+        assertEquals("ours", picked("ours"))
+        assertEquals("from Notes", picked("from Notes"))
     }
 }
