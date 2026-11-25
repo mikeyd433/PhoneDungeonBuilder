@@ -271,9 +271,12 @@ the next launch. Only Play installs can be told; a sideloaded or debug build nev
 row says how much is below, and a tap or dragging to the bottom returns to the newest. The
 phone's transcript does the same, with a ▼ LATEST button.
 
-**Copy and paste:** the scene and choice editors are a `Dialog` drawn like a sheet, not
-Material's `ModalBottomSheet`, because inside one a long press in a text field never
-brought up cut / copy / paste (`PasteProbe` holds it).
+**Copy and paste:** a long press in any text field brings up the app's own CUT · COPY ·
+PASTE · SELECT ALL bar (`ui/TextMenu.kt`), drawn inside the field's own window. The
+platform's floating toolbar never showed in the editors on the phone — first in Material's
+bottom sheet, then in the Dialog that replaced it — so every window here (the activity via
+`TextMenuHost`, each dialog via `TextDialog`) answers the field's request itself.
+`PasteProbe` long-presses a field in the editor and taps PASTE.
 
 **Heat.** Every frame runs the CRT shader over every pixel, and Android Auto then encodes
 the picture as video, all on the phone. So the frame rate follows what is happening:

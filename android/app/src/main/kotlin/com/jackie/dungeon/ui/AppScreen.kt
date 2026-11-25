@@ -72,6 +72,7 @@ import com.jackie.dungeon.story.StoryEditor
 fun AppScreen() {
     val rows by Studio.rows.collectAsStateWithLifecycle()
     val error by Studio.error.collectAsStateWithLifecycle()
+    TextMenuHost {
     Box(Modifier.fillMaxSize().background(Phosphor.bg).safeDrawingPadding()) {
         Column(Modifier.fillMaxSize()) {
             UpdateBanner()
@@ -82,6 +83,7 @@ fun AppScreen() {
                 Text("$e  (tap to dismiss)", style = mono(14, Phosphor.alert))
             }
         }
+    }
     }
 }
 
@@ -262,7 +264,7 @@ private fun RestoreDialog(o: Backups.Opened, onDone: () -> Unit) {
             onDone()
         }
     }
-    Dialog(onDismissRequest = onDone) {
+    TextDialog(onDismissRequest = onDone) {
         Column(Modifier.border(1.dp, Phosphor.fg).background(Phosphor.bg).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("RESTORE “${m.title.ifBlank { "Untitled story" }.uppercase()}”", style = style(22, Phosphor.hi))
             Text("${m.scenes} scenes · ${m.takes} recordings · saved ${m.savedAt}", style = mono(13, Phosphor.dim))
@@ -606,7 +608,7 @@ private fun TranscriptLine(l: CallSession.Line) {
 @Composable
 fun AskText(title: String, action: String, initial: String = "", onDone: (String?) -> Unit) {
     var text by remember { mutableStateOf(initial) }
-    Dialog(onDismissRequest = { onDone(null) }) {
+    TextDialog(onDismissRequest = { onDone(null) }) {
         Column(Modifier.border(1.dp, Phosphor.fg).background(Phosphor.bg).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(title, style = mono(17, Phosphor.hi))
             Box(Modifier.fillMaxWidth().border(1.dp, Phosphor.line).padding(10.dp)) {
@@ -622,7 +624,7 @@ fun AskText(title: String, action: String, initial: String = "", onDone: (String
 
 @Composable
 fun Confirm(question: String, action: String, onDone: (Boolean) -> Unit) {
-    Dialog(onDismissRequest = { onDone(false) }) {
+    TextDialog(onDismissRequest = { onDone(false) }) {
         Column(Modifier.border(1.dp, Phosphor.alert).background(Phosphor.bg).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(question, style = mono(15, Phosphor.hi))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

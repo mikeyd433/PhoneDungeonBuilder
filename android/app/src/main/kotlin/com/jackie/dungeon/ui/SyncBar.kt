@@ -97,7 +97,7 @@ fun SignInDialog(onDone: () -> Unit) {
             r.onSuccess { then() }.onFailure { error = it.message ?: "That didn't work." }
         }
     }
-    Dialog(onDismissRequest = onDone) {
+    TextDialog(onDismissRequest = onDone) {
         Column(Modifier.border(1.dp, Phosphor.fg).background(Phosphor.bg).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("SIGN IN TO SYNC", style = style(22, Phosphor.hi))
             Text("Use the email you sign in to the web app with.", style = mono(13, Phosphor.dim))
@@ -164,7 +164,7 @@ fun ShareDialog(storyId: String, title: String, onDone: () -> Unit) {
     val ready = status.state != State.SIGNED_OUT && CloudSync.inCloud(storyId)
     androidx.compose.runtime.LaunchedEffect(ready) { if (ready) reload() else if (status.state != State.SIGNED_OUT) CloudSync.syncNow() }
 
-    Dialog(onDismissRequest = onDone) {
+    TextDialog(onDismissRequest = onDone) {
         Column(Modifier.border(1.dp, Phosphor.fg).background(Phosphor.bg).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("SHARE “${title.uppercase()}”", style = style(22, Phosphor.hi))
             when {

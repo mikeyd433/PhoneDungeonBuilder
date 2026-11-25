@@ -129,7 +129,7 @@ private fun SheetButtons(vararg buttons: Pair<String, () -> Unit>, danger: Set<S
 @Composable
 internal fun SheetFrame(inSheet: Boolean, onDismiss: () -> Unit, content: @Composable () -> Unit) {
     if (!inSheet) { Box(Modifier.background(Phosphor.panel)) { content() }; return }
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+    TextDialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.32f))
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onDismiss)) {
             BoxWithConstraints(Modifier.fillMaxSize().imePadding().navigationBarsPadding()) {
@@ -461,7 +461,7 @@ fun ChaptersDialog(rows: StoryRows, onDone: () -> Unit) {
     var renaming by remember { mutableStateOf(false) }
     val all = StoryEditor.chapters(rows)
     val ch = picked?.takeIf { it in all }
-    Dialog(onDismissRequest = onDone) {
+    TextDialog(onDismissRequest = onDone) {
         Column(Modifier.border(1.dp, Phosphor.fg).background(Phosphor.bg).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (ch == null) {
                 Text("CHAPTERS", style = body(17, Phosphor.hi))
@@ -517,7 +517,7 @@ fun ChaptersDialog(rows: StoryRows, onDone: () -> Unit) {
 @Composable
 fun ScenePicker(rows: StoryRows, title: String, allowNew: Boolean, onDismiss: () -> Unit, onPick: (String?) -> Unit) {
     var query by remember { mutableStateOf("") }
-    Dialog(onDismissRequest = onDismiss) {
+    TextDialog(onDismissRequest = onDismiss) {
         Column(Modifier.border(1.dp, Phosphor.fg).background(Phosphor.bg).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(title, style = body(17, Phosphor.hi))
             Field("Find", query, { query = it }, hint = "Search scenes")
@@ -542,7 +542,7 @@ fun NeedPicker(rows: StoryRows, choiceId: String, title: String, onDone: () -> U
     val need = StoryEditor.need(rows, choiceId)
     val complex = need == null && rows.gates.any { it.choiceId == choiceId }
     var newName by remember { mutableStateOf("") }
-    Dialog(onDismissRequest = onDone) {
+    TextDialog(onDismissRequest = onDone) {
         Column(Modifier.border(1.dp, Phosphor.fg).background(Phosphor.bg).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(title, style = body(17, Phosphor.hi))
             if (complex) Text("Ticking an item replaces the condition written on the web app.", style = body(12, Phosphor.warn))
@@ -581,7 +581,7 @@ fun NeedPicker(rows: StoryRows, choiceId: String, title: String, onDone: () -> U
 @Composable
 fun ItemPicker(rows: StoryRows, title: String, onDismiss: () -> Unit, onPick: (String?) -> Unit) {
     var newName by remember { mutableStateOf("") }
-    Dialog(onDismissRequest = onDismiss) {
+    TextDialog(onDismissRequest = onDismiss) {
         Column(Modifier.border(1.dp, Phosphor.fg).background(Phosphor.bg).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(title, style = body(17, Phosphor.hi))
             LazyColumn(Modifier.heightIn(max = 300.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {

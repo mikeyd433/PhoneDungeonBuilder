@@ -53,7 +53,7 @@ fun ExportDialog(rows: StoryRows, onClose: () -> Unit) {
             rows.dialogueLines.map { it.audioPath }).any { it?.startsWith("/") == true }
     }
 
-    Dialog(onDismissRequest = { if (!busy) onClose() }) {
+    TextDialog(onDismissRequest = { if (!busy) onClose() }) {
         Column(
             Modifier.border(1.dp, Phosphor.fg).background(Phosphor.bg).padding(16.dp).heightIn(max = 640.dp).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp),

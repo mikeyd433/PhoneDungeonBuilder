@@ -114,7 +114,7 @@ fun PlayHereDialog() {
     val rows by Studio.rows.collectAsStateWithLifecycle()
     val p = popup as? Popup.PlayHere ?: return
     val r = rows ?: return
-    Dialog(onDismissRequest = { CarEdit.dispatch(Action.Dismiss) }) {
+    TextDialog(onDismissRequest = { CarEdit.dispatch(Action.Dismiss) }) {
         Column(Modifier.border(1.dp, Phosphor.fg).background(Phosphor.bg).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("PLAY FROM ${sceneName(r, p.nodeId).uppercase()}", style = style(22, Phosphor.hi))
             Text(if (r.stateVars.isEmpty()) "This story has no items." else "Carrying:", style = mono(13, Phosphor.dim))
@@ -149,7 +149,7 @@ fun PlayHereDialog() {
 @Composable
 fun CarSettingsDialog(onDone: () -> Unit) {
     val s by com.jackie.dungeon.CarScreen.settings.collectAsStateWithLifecycle()
-    Dialog(onDismissRequest = onDone) {
+    TextDialog(onDismissRequest = onDone) {
         Column(
             Modifier.border(1.dp, Phosphor.fg).background(Phosphor.bg).padding(16.dp)
                 .heightIn(max = 640.dp).verticalScroll(androidx.compose.foundation.rememberScrollState()),

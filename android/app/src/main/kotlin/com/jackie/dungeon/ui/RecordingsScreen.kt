@@ -49,7 +49,7 @@ fun RecordingsDialog(rows: StoryRows, onGo: (String) -> Unit, onDone: () -> Unit
     // a file doesn't make the row jump away under your finger.
     val shownIds = remember(missingOnly) { all.filter { !missingOnly || !it.recorded }.map { key(it) }.toSet() }
     val shown = all.filter { key(it) in shownIds }
-    Dialog(onDismissRequest = onDone, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    TextDialog(onDismissRequest = onDone, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Column(Modifier.fillMaxSize().background(Phosphor.bg).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("RECORDINGS", style = style(24, Phosphor.hi), modifier = Modifier.weight(1f))
